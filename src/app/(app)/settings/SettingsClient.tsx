@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { CommissionSettings, Patient } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
+import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
 import { saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
@@ -18,6 +19,7 @@ export function SettingsClient({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const { hidden } = usePrivacy();
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -145,6 +147,16 @@ export function SettingsClient({
             </Button>
           </div>
         </form>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-1 text-base font-semibold text-slate-900">Privacy</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          {hidden
+            ? "Earnings/commission figures are hidden on Dashboard, Projections and Patients. Safe to show your screen."
+            : "Earnings/commission figures are visible everywhere. Hide them before sharing your screen."}
+        </p>
+        <PrivacyToggleButton />
       </Card>
 
       <Card className="p-6">

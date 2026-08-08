@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getPatients, getSettings } from "@/lib/data";
 import { addMonths, computeMonthlyAggregates, currentMonthKey, monthLabel } from "@/lib/commission";
+import { formatCurrency } from "@/lib/format";
 import { Badge, Card } from "@/components/ui";
 import { CloseoutSummary } from "./CloseoutSummary";
 import { Money, Percent } from "@/components/privacy";
@@ -99,7 +100,7 @@ export default async function ProjectionsPage() {
                       </div>
                     </td>
                     <td className="py-3 pr-4 text-slate-600">
-                      <Money value={r.actualTotal} currency={settings.currency} />
+                      {formatCurrency(r.actualTotal, settings.currency)}
                     </td>
                     <td className="py-3 pr-4">
                       <Badge tone={tierTone(r.actualTotal, settings)}>
@@ -110,7 +111,7 @@ export default async function ProjectionsPage() {
                       <Money value={r.actualCommission} currency={settings.currency} />
                     </td>
                     <td className="py-3 pr-4 text-slate-600">
-                      <Money value={r.expectedTotal} currency={settings.currency} />
+                      {formatCurrency(r.expectedTotal, settings.currency)}
                     </td>
                     <td className="py-3 pr-4">
                       <Badge tone={tierTone(r.expectedTotal, settings)}>

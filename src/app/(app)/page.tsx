@@ -7,9 +7,9 @@ import {
   lastNMonths,
   monthLabel,
 } from "@/lib/commission";
-import { formatDate } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
 import { Card, StatCard, StatusBadge } from "@/components/ui";
-import { Money, Percent, PrivateEarningsChart, PrivacyToggleButton, TierSublabel } from "@/components/privacy";
+import { Money, Percent, PrivateEarningsChart, TierSublabel } from "@/components/privacy";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -81,12 +81,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-500">Your commission overview at a glance.</p>
-        </div>
-        <PrivacyToggleButton />
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
+        <p className="mt-1 text-sm text-slate-500">Your commission overview at a glance.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -98,11 +95,7 @@ export default async function DashboardPage() {
         <StatCard
           label="This month's earnings so far"
           value={<Money value={thisMonthAgg?.actualCommission ?? 0} currency={settings.currency} />}
-          sublabel={
-            <>
-              From <Money value={thisMonthAgg?.actualTotal ?? 0} currency={settings.currency} /> received
-            </>
-          }
+          sublabel={`From ${formatCurrency(thisMonthAgg?.actualTotal ?? 0, settings.currency)} received`}
         />
         <StatCard
           label="This month's commission tier"
@@ -148,7 +141,7 @@ export default async function DashboardPage() {
                     </div>
                     <div className="text-right">
                       <span className="block text-sm font-medium text-slate-700">
-                        {v.expected != null ? <Money value={v.expected} currency={settings.currency} /> : "—"}
+                        {v.expected != null ? formatCurrency(v.expected, settings.currency) : "—"}
                       </span>
                       <span className="block text-xs text-slate-400">
                         {v.daysLeft === 0

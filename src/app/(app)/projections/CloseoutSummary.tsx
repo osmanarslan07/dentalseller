@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Patient, CommissionSettings } from "@/types";
 import { computeMonthlyAggregates, monthKey, monthLabel } from "@/lib/commission";
+import { formatCurrency } from "@/lib/format";
 import { Card, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 
@@ -74,7 +75,7 @@ export function CloseoutSummary({
           <p className="mt-1 text-xl font-semibold text-slate-900">
             {stats.paymentsReceived}
             <span className="ml-1 text-xs font-normal text-slate-400">
-              (<Money value={stats.paymentsTotal} currency={settings.currency} />)
+              ({formatCurrency(stats.paymentsTotal, settings.currency)})
             </span>
           </p>
         </div>

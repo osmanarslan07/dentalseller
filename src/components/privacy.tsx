@@ -1,29 +1,27 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { EarningsChart } from "@/components/EarningsChart";
 import { tierLabel } from "@/lib/commission";
 import { CommissionSettings } from "@/types";
 
-const STORAGE_KEY = "dental_income_hide_earnings";
+export const PRIVACY_COOKIE = "dental_income_hide_earnings";
 
 const PrivacyContext = createContext<{ hidden: boolean; toggle: () => void }>({
   hidden: false,
   toggle: () => {},
 });
 
-export function PrivacyProvider({ children }: { children: ReactNode }) {
-  const [hidden, setHidden] = useState(false);
-
-  useEffect(() => {
-    if (localStorage.getItem(STORAGE_KEY) === "1") setHidden(true);
-  }, []);
+export function PrivacyProvider({ children, initialHidden }: { children: ReactNode; initialHidden: boolean }) {
+  // Seeded from a server-read cookie (not localStorage) so the very first render — server
+  // and client — already reflects the saved state. No post-mount flash of real numbers.
+  const [hidden, setHidden] = useState(initialHidden);
 
   function toggle() {
     setHidden((prev) => {
       const next = !prev;
-      localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
+      document.cookie = `${PRIVACY_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax`;
       return next;
     });
   }

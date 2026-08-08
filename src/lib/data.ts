@@ -31,6 +31,7 @@ export async function getSettings(supabase: SupabaseClient): Promise<CommissionS
     tier2_rate: Number(data.tier2_rate),
     tier3_rate: Number(data.tier3_rate),
     fixed_monthly_payment: Number(data.fixed_monthly_payment),
+    hide_earnings: Boolean(data.hide_earnings),
     currency: data.currency,
   };
 }

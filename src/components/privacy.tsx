@@ -5,8 +5,7 @@ import { formatCurrency, formatPercent } from "@/lib/format";
 import { EarningsChart } from "@/components/EarningsChart";
 import { tierLabel } from "@/lib/commission";
 import { CommissionSettings } from "@/types";
-
-export const PRIVACY_COOKIE = "dental_income_hide_earnings";
+import { setHideEarnings } from "@/lib/privacy-actions";
 
 const PrivacyContext = createContext<{ hidden: boolean; toggle: () => void }>({
   hidden: false,
@@ -14,14 +13,14 @@ const PrivacyContext = createContext<{ hidden: boolean; toggle: () => void }>({
 });
 
 export function PrivacyProvider({ children, initialHidden }: { children: ReactNode; initialHidden: boolean }) {
-  // Seeded from a server-read cookie (not localStorage) so the very first render — server
-  // and client — already reflects the saved state. No post-mount flash of real numbers.
+  // Seeded from the settings row (read server-side) so the very first render — server and
+  // client — already reflects the saved state. No post-mount flash of real numbers.
   const [hidden, setHidden] = useState(initialHidden);
 
   function toggle() {
     setHidden((prev) => {
       const next = !prev;
-      document.cookie = `${PRIVACY_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax`;
+      setHideEarnings(next).catch(() => setHidden(prev));
       return next;
     });
   }

@@ -179,40 +179,43 @@ export default async function DashboardPage() {
                 <th className="pb-2 font-medium">Name</th>
                 <th className="pb-2 font-medium">Treatment</th>
                 <th className="pb-2 font-medium">Confirmed</th>
-                <th className="pb-2 font-medium">Visit 1</th>
+                <th className="pb-2 font-medium">First visit</th>
                 <th className="pb-2 font-medium">Visit 2</th>
+                <th className="pb-2 font-medium">Komo</th>
               </tr>
             </thead>
             <tbody>
               {patients.slice(0, 6).map((p) => (
                 <tr key={p.id} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2.5 font-medium text-slate-800">
-                    {p.name}
-                    {p.komo_reference && /^https?:\/\//i.test(p.komo_reference) && (
-                      <a
-                        href={p.komo_reference}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Open in Komo"
-                        className="ml-1.5 text-xs font-normal text-teal-600 hover:underline"
-                      >
-                        ↗
-                      </a>
-                    )}
-                  </td>
+                  <td className="py-2.5 font-medium text-slate-800">{p.name}</td>
                   <td className="py-2.5 text-slate-500">{p.treatment || "—"}</td>
                   <td className="py-2.5 text-slate-500">{formatDate(p.confirmation_date)}</td>
-                  <td className="py-2.5">
+                  <td className="py-2.5 text-slate-500">
+                    <div>{formatDate(p.visit1_date)}</div>
                     <StatusBadge status={p.visit1_status} />
                   </td>
                   <td className="py-2.5">
                     <StatusBadge status={p.visit2_status} />
                   </td>
+                  <td className="py-2.5">
+                    {p.komo_reference && /^https?:\/\//i.test(p.komo_reference) ? (
+                      <a
+                        href={p.komo_reference}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-medium text-teal-600 hover:underline"
+                      >
+                        Open ↗
+                      </a>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {patients.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400">
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
                     No patients yet.{" "}
                     <Link href="/patients" className="text-teal-600 hover:underline">
                       Add your first patient

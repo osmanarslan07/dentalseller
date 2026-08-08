@@ -11,6 +11,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/format";
 import Link from "next/link";
 import { Button, Card, Input, Select, StatusBadge } from "@/components/ui";
+import { Money } from "@/components/privacy";
 import { PatientFormModal } from "./PatientFormModal";
 import { deletePatient } from "./actions";
 
@@ -23,16 +24,18 @@ function SortHeader({
   sortKey,
   sortDir,
   onSort,
+  className = "",
 }: {
   label: string;
   sortKeyValue: SortKey;
   sortKey: SortKey;
   sortDir: "asc" | "desc";
   onSort: (key: SortKey) => void;
+  className?: string;
 }) {
   return (
     <th
-      className="cursor-pointer select-none pb-2 pr-4 font-medium hover:text-slate-700"
+      className={`cursor-pointer select-none pb-2 pr-4 font-medium hover:text-slate-700 ${className}`}
       onClick={() => onSort(sortKeyValue)}
     >
       <span className="inline-flex items-center gap-1">
@@ -188,7 +191,7 @@ export function PatientsClient({
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
-                <SortHeader label="Name" sortKeyValue="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Name" sortKeyValue="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="pl-4" />
                 <th className="pb-2 pr-4 font-medium">Treatment</th>
                 <SortHeader label="Confirmed" sortKeyValue="confirmation_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Visit 1" sortKeyValue="visit1_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
@@ -201,7 +204,7 @@ export function PatientsClient({
             <tbody>
               {rows.map(({ patient: p, commission, status }) => (
                 <tr key={p.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                  <td className="py-3 pr-4 font-medium text-slate-800">{p.name}</td>
+                  <td className="py-3 pl-4 pr-4 font-medium text-slate-800">{p.name}</td>
                   <td className="py-3 pr-4 text-slate-500">{p.treatment || "—"}</td>
                   <td className="py-3 pr-4 text-slate-500">{formatDate(p.confirmation_date)}</td>
                   <td className="py-3 pr-4 text-slate-500">
@@ -228,10 +231,10 @@ export function PatientsClient({
                     <StatusBadge status={status} />
                   </td>
                   <td className="py-3 pr-4 font-medium text-slate-700">
-                    {formatCurrency(commission.actual, settings.currency)}
+                    <Money value={commission.actual} currency={settings.currency} />
                     {commission.expected > 0 && (
                       <div className="text-xs font-normal text-slate-400">
-                        +{formatCurrency(commission.expected, settings.currency)} expected
+                        +<Money value={commission.expected} currency={settings.currency} /> expected
                       </div>
                     )}
                   </td>

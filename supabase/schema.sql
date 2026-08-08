@@ -116,6 +116,14 @@ create table if not exists public.settings (
   updated_at timestamptz not null default now()
 );
 
+-- 3-tier commission + fixed monthly payment (replaces the 2-tier columns above; old columns left in place, unused)
+alter table public.settings add column if not exists tier1_threshold numeric(12,2) not null default 40000;
+alter table public.settings add column if not exists tier1_rate numeric(5,4) not null default 0.02;
+alter table public.settings add column if not exists tier2_threshold numeric(12,2) not null default 70000;
+alter table public.settings add column if not exists tier2_rate numeric(5,4) not null default 0.03;
+alter table public.settings add column if not exists tier3_rate numeric(5,4) not null default 0.04;
+alter table public.settings add column if not exists fixed_monthly_payment numeric(12,2) not null default 0;
+
 alter table public.settings enable row level security;
 
 create policy "settings_select_own" on public.settings

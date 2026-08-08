@@ -48,15 +48,21 @@ export type PatientInput = Omit<
 >;
 
 export interface CommissionSettings {
-  low_tier_threshold: number;
-  low_tier_rate: number;
-  high_tier_rate: number;
+  tier1_threshold: number;
+  tier1_rate: number;
+  tier2_threshold: number;
+  tier2_rate: number;
+  tier3_rate: number;
+  fixed_monthly_payment: number;
   currency: string;
 }
 
 export const DEFAULT_SETTINGS: CommissionSettings = {
-  low_tier_threshold: 70000,
-  low_tier_rate: 0.03,
-  high_tier_rate: 0.04,
+  tier1_threshold: 40000,
+  tier1_rate: 0.02,
+  tier2_threshold: 70000,
+  tier2_rate: 0.03,
+  tier3_rate: 0.04,
+  fixed_monthly_payment: 0,
   currency: "GBP",
 };

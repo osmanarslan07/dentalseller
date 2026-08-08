@@ -7,9 +7,9 @@ import {
   lastNMonths,
   monthLabel,
 } from "@/lib/commission";
-import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { Card, StatCard, StatusBadge } from "@/components/ui";
-import { EarningsChart } from "@/components/EarningsChart";
+import { Money, Percent, PrivateEarningsChart, PrivacyToggleButton, TierSublabel } from "@/components/privacy";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -81,32 +81,33 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-500">Your commission overview at a glance.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-500">Your commission overview at a glance.</p>
+        </div>
+        <PrivacyToggleButton />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total earned to date"
-          value={formatCurrency(totalActualCommission, settings.currency)}
+          value={<Money value={totalActualCommission} currency={settings.currency} />}
           sublabel="Confirmed commission, actual payments"
         />
         <StatCard
           label="This month's earnings so far"
-          value={formatCurrency(thisMonthAgg?.actualCommission ?? 0, settings.currency)}
-          sublabel={`From ${formatCurrency(thisMonthAgg?.actualTotal ?? 0, settings.currency)} received`}
+          value={<Money value={thisMonthAgg?.actualCommission ?? 0} currency={settings.currency} />}
+          sublabel={
+            <>
+              From <Money value={thisMonthAgg?.actualTotal ?? 0} currency={settings.currency} /> received
+            </>
+          }
         />
         <StatCard
           label="This month's commission tier"
-          value={formatPercent(
-            thisMonthAgg?.actualRate ?? settings.low_tier_rate
-          )}
-          sublabel={
-            (thisMonthAgg?.actualTotal ?? 0) > settings.low_tier_threshold
-              ? `Above ${formatCurrency(settings.low_tier_threshold, settings.currency)} threshold`
-              : `Up to ${formatCurrency(settings.low_tier_threshold, settings.currency)} threshold`
-          }
+          value={<Percent value={thisMonthAgg?.actualRate ?? settings.tier1_rate} />}
+          sublabel={<TierSublabel total={thisMonthAgg?.actualTotal ?? 0} settings={settings} />}
         />
         <StatCard
           label="Patients sold"
@@ -121,7 +122,7 @@ export default async function DashboardPage() {
             <h2 className="text-base font-semibold text-slate-900">Earnings by month</h2>
             <span className="text-xs text-slate-400">Last 12 months</span>
           </div>
-          <EarningsChart data={chartData} currency={settings.currency} />
+          <PrivateEarningsChart data={chartData} currency={settings.currency} />
         </Card>
 
         <Card className="p-5">
@@ -147,7 +148,7 @@ export default async function DashboardPage() {
                     </div>
                     <div className="text-right">
                       <span className="block text-sm font-medium text-slate-700">
-                        {v.expected != null ? formatCurrency(v.expected, settings.currency) : "—"}
+                        {v.expected != null ? <Money value={v.expected} currency={settings.currency} /> : "—"}
                       </span>
                       <span className="block text-xs text-slate-400">
                         {v.daysLeft === 0
@@ -176,7 +177,7 @@ export default async function DashboardPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                <th className="pb-2 font-medium">Name</th>
+                <th className="pb-2 pl-4 font-medium">Name</th>
                 <th className="pb-2 font-medium">Treatment</th>
                 <th className="pb-2 font-medium">Confirmed</th>
                 <th className="pb-2 font-medium">First visit</th>
@@ -187,7 +188,7 @@ export default async function DashboardPage() {
             <tbody>
               {patients.slice(0, 6).map((p) => (
                 <tr key={p.id} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2.5 font-medium text-slate-800">{p.name}</td>
+                  <td className="py-2.5 pl-4 font-medium text-slate-800">{p.name}</td>
                   <td className="py-2.5 text-slate-500">{p.treatment || "—"}</td>
                   <td className="py-2.5 text-slate-500">{formatDate(p.confirmation_date)}</td>
                   <td className="py-2.5 text-slate-500">

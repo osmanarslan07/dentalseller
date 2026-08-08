@@ -22,7 +22,7 @@ export function Nav({ email }: { email: string }) {
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="Dental Commission Tracker" className="h-24 w-24" />
+            <img src="/logo.svg" alt="Dental Commission Tracker" className="h-10 w-10" />
             <span className="hidden sm:inline">Dental Commission Tracker</span>
           </Link>
 

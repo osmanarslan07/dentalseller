@@ -138,6 +138,19 @@ export function SettingsClient({
             </Select>
           </div>
 
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              name="show_try"
+              defaultChecked={settings.show_try}
+              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+            />
+            Show approx. Turkish Lira (₺) alongside earnings figures
+          </label>
+          <p className="text-xs text-slate-400">
+            Rate fetched automatically once a day — approximate, not for invoicing.
+          </p>
+
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           {saved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Settings saved.</p>}
 

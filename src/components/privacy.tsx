@@ -7,12 +7,29 @@ import { tierLabel } from "@/lib/commission";
 import { CommissionSettings } from "@/types";
 import { setHideEarnings } from "@/lib/privacy-actions";
 
-const PrivacyContext = createContext<{ hidden: boolean; toggle: () => void }>({
+const PrivacyContext = createContext<{
+  hidden: boolean;
+  toggle: () => void;
+  showTry: boolean;
+  tryRate: number | null;
+}>({
   hidden: false,
   toggle: () => {},
+  showTry: false,
+  tryRate: null,
 });
 
-export function PrivacyProvider({ children, initialHidden }: { children: ReactNode; initialHidden: boolean }) {
+export function PrivacyProvider({
+  children,
+  initialHidden,
+  showTry,
+  tryRate,
+}: {
+  children: ReactNode;
+  initialHidden: boolean;
+  showTry: boolean;
+  tryRate: number | null;
+}) {
   // Seeded from the settings row (read server-side) so the very first render — server and
   // client — already reflects the saved state. No post-mount flash of real numbers.
   const [hidden, setHidden] = useState(initialHidden);
@@ -25,7 +42,9 @@ export function PrivacyProvider({ children, initialHidden }: { children: ReactNo
     });
   }
 
-  return <PrivacyContext.Provider value={{ hidden, toggle }}>{children}</PrivacyContext.Provider>;
+  return (
+    <PrivacyContext.Provider value={{ hidden, toggle, showTry, tryRate }}>{children}</PrivacyContext.Provider>
+  );
 }
 
 export function usePrivacy() {
@@ -34,9 +53,30 @@ export function usePrivacy() {
 
 const MASK = "•••";
 
-export function Money({ value, currency }: { value: number; currency: string }) {
-  const { hidden } = usePrivacy();
-  return <>{hidden ? MASK : formatCurrency(value, currency)}</>;
+export function Money({
+  value,
+  currency,
+  showConversion = true,
+}: {
+  value: number;
+  currency: string;
+  /** Set false in cramped spots (per-row table cells) to skip the secondary ≈ TRY line. */
+  showConversion?: boolean;
+}) {
+  const { hidden, showTry, tryRate } = usePrivacy();
+  if (hidden) return <>{MASK}</>;
+
+  const primary = formatCurrency(value, currency);
+  if (!showConversion || !showTry || !tryRate || currency === "TRY") return <>{primary}</>;
+
+  return (
+    <>
+      {primary}
+      <span className="block text-xs font-normal text-slate-400">
+        ≈ {formatCurrency(value * tryRate, "TRY")}
+      </span>
+    </>
+  );
 }
 
 export function Percent({ value }: { value: number }) {

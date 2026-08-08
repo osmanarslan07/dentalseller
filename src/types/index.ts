@@ -55,6 +55,7 @@ export interface CommissionSettings {
   tier3_rate: number;
   fixed_monthly_payment: number;
   hide_earnings: boolean;
+  show_try: boolean;
   currency: string;
 }
 
@@ -66,5 +67,6 @@ export const DEFAULT_SETTINGS: CommissionSettings = {
   tier3_rate: 0.04,
   fixed_monthly_payment: 0,
   hide_earnings: false,
+  show_try: false,
   currency: "GBP",
 };

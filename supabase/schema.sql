@@ -124,6 +124,7 @@ alter table public.settings add column if not exists tier2_rate numeric(5,4) not
 alter table public.settings add column if not exists tier3_rate numeric(5,4) not null default 0.04;
 alter table public.settings add column if not exists fixed_monthly_payment numeric(12,2) not null default 0;
 alter table public.settings add column if not exists hide_earnings boolean not null default false;
+alter table public.settings add column if not exists show_try boolean not null default false;
 
 alter table public.settings enable row level security;
 

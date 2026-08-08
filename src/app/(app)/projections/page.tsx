@@ -54,11 +54,11 @@ export default async function ProjectionsPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Monthly Projections</h1>
         <p className="mt-1 text-sm text-slate-500">
           Commission is <Percent value={settings.tier1_rate} /> up to{" "}
-          <Money value={settings.tier1_threshold} currency={settings.currency} />,{" "}
+          <Money value={settings.tier1_threshold} currency={settings.currency} showConversion={false} />,{" "}
           <Percent value={settings.tier2_rate} /> up to{" "}
-          <Money value={settings.tier2_threshold} currency={settings.currency} />, then{" "}
+          <Money value={settings.tier2_threshold} currency={settings.currency} showConversion={false} />, then{" "}
           <Percent value={settings.tier3_rate} /> above. Plus{" "}
-          <Money value={settings.fixed_monthly_payment} currency={settings.currency} /> fixed per month.
+          <Money value={settings.fixed_monthly_payment} currency={settings.currency} showConversion={false} /> fixed per month.
         </p>
       </div>
 

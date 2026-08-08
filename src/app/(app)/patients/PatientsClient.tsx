@@ -231,10 +231,10 @@ export function PatientsClient({
                     <StatusBadge status={status} />
                   </td>
                   <td className="py-3 pr-4 font-medium text-slate-700">
-                    <Money value={commission.actual} currency={settings.currency} />
+                    <Money value={commission.actual} currency={settings.currency} showConversion={false} />
                     {commission.expected > 0 && (
                       <div className="text-xs font-normal text-slate-400">
-                        +<Money value={commission.expected} currency={settings.currency} /> expected
+                        +<Money value={commission.expected} currency={settings.currency} showConversion={false} /> expected
                       </div>
                     )}
                   </td>

@@ -16,6 +16,7 @@ export async function saveSettings(formData: FormData) {
   const tier2_rate = Number(formData.get("tier2_rate")) / 100;
   const tier3_rate = Number(formData.get("tier3_rate")) / 100;
   const fixed_monthly_payment = Number(formData.get("fixed_monthly_payment"));
+  const show_try = formData.get("show_try") === "on";
   const currency = String(formData.get("currency") ?? "GBP");
 
   if (!Number.isFinite(tier1_threshold) || tier1_threshold < 0 || !Number.isFinite(tier2_threshold) || tier2_threshold < 0) {
@@ -39,6 +40,7 @@ export async function saveSettings(formData: FormData) {
     tier2_rate,
     tier3_rate,
     fixed_monthly_payment,
+    show_try,
     currency,
   });
 

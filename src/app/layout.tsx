@@ -17,6 +17,7 @@ export const metadata: Metadata = {
   description: "Track UK dental patients and Antalya treatment commissions.",
   icons: {
     icon: "/logo.svg",
+    apple: "/apple-icon.png",
   },
 };
 

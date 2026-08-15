@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 
 export async function saveSettings(formData: FormData) {
   const supabase = await createClient();
@@ -50,4 +51,26 @@ export async function saveSettings(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/patients");
   revalidatePath("/projections");
+}
+
+export async function saveDashboardCards(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const validCardIds = new Set<string>(DASHBOARD_CARDS.map((c) => c.id));
+  const dashboard_cards = formData
+    .getAll("dashboard_cards")
+    .filter((id): id is string => typeof id === "string" && validCardIds.has(id));
+
+  const { error } = await supabase
+    .from("settings")
+    .upsert({ user_id: user.id, dashboard_cards });
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/settings");
+  revalidatePath("/");
 }

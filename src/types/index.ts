@@ -1,3 +1,7 @@
+import { DashboardCardId, DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
+
+export type { DashboardCardId };
+
 export type VisitStatus = "upcoming" | "completed";
 
 export interface Patient {
@@ -5,7 +9,9 @@ export interface Patient {
   user_id: string;
   name: string;
   treatment: string | null;
+  letter_treatment_items: string | null;
   confirmation_date: string | null; // ISO date
+  needs_visit2: boolean;
 
   visit1_date: string | null;
   visit1_expected: number | null;
@@ -57,6 +63,7 @@ export interface CommissionSettings {
   hide_earnings: boolean;
   show_try: boolean;
   currency: string;
+  dashboard_cards: DashboardCardId[];
 }
 
 export const DEFAULT_SETTINGS: CommissionSettings = {
@@ -69,4 +76,5 @@ export const DEFAULT_SETTINGS: CommissionSettings = {
   hide_earnings: false,
   show_try: false,
   currency: "GBP",
+  dashboard_cards: DEFAULT_DASHBOARD_CARDS,
 };

@@ -1,4 +1,4 @@
--- Dental Commission Tracker — schema + RLS
+-- DentalSeller — schema + RLS
 -- Run this in the Supabase SQL editor for your project.
 
 create extension if not exists "pgcrypto";
@@ -10,6 +10,7 @@ create table if not exists public.patients (
 
   name text not null,
   treatment text,
+  letter_treatment_items text,
   confirmation_date date,
 
   visit1_date date,
@@ -58,6 +59,8 @@ alter table public.patients drop column if exists hotel_name;
 alter table public.patients drop column if exists room_type;
 
 alter table public.patients add column if not exists komo_reference text;
+alter table public.patients add column if not exists letter_treatment_items text;
+alter table public.patients add column if not exists needs_visit2 boolean not null default true;
 
 alter table public.patients add column if not exists visit1_arrival_date date;
 alter table public.patients add column if not exists visit1_arrival_time text;
@@ -125,6 +128,19 @@ alter table public.settings add column if not exists tier3_rate numeric(5,4) not
 alter table public.settings add column if not exists fixed_monthly_payment numeric(12,2) not null default 0;
 alter table public.settings add column if not exists hide_earnings boolean not null default false;
 alter table public.settings add column if not exists show_try boolean not null default false;
+alter table public.settings add column if not exists dashboard_cards text[] not null default array[
+  'total_earned', 'month_earnings', 'expected_earnings', 'patients_sold', 'confirmed_this_month',
+  'new_patients_delta', 'upcoming_visits_value', 'avg_commission_patient', 'avg_treatment_value',
+  'highest_value_patient'
+]::text[];
+
+-- new card added later: bump the column default so freshly-created settings rows include it
+-- (existing rows keep whatever they already have saved — toggle it on from Settings)
+alter table public.settings alter column dashboard_cards set default array[
+  'total_earned', 'total_commission', 'month_earnings', 'expected_earnings', 'patients_sold',
+  'confirmed_this_month', 'new_patients_delta', 'upcoming_visits_value', 'avg_commission_patient',
+  'avg_treatment_value', 'highest_value_patient'
+]::text[];
 
 alter table public.settings enable row level security;
 
@@ -139,3 +155,22 @@ drop trigger if exists settings_set_updated_at on public.settings;
 create trigger settings_set_updated_at
   before update on public.settings
   for each row execute function public.set_updated_at();
+
+-- ---------- exchange_rates (shared history, not per-user) ----------
+create table if not exists public.exchange_rates (
+  id uuid primary key default gen_random_uuid(),
+  base text not null,
+  quote text not null default 'TRY',
+  rate numeric(12,4) not null,
+  rate_date date not null,
+  created_at timestamptz not null default now(),
+  unique (base, quote, rate_date)
+);
+
+create index if not exists exchange_rates_date_idx on public.exchange_rates(rate_date);
+
+alter table public.exchange_rates enable row level security;
+
+-- readable by any signed-in user; only the service role (cron job) inserts
+create policy "exchange_rates_select_all" on public.exchange_rates
+  for select using (true);

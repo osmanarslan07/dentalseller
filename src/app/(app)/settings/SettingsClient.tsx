@@ -5,21 +5,38 @@ import { CommissionSettings, Patient } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
-import { saveSettings } from "./actions";
+import { DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
+import { DashboardCardsPicker } from "@/components/DashboardCardsPicker";
+import { ExchangeRatePoint } from "@/lib/data";
+import { RateHistoryChart } from "@/components/RateHistoryChart";
+import { saveDashboardCards, saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
 
 export function SettingsClient({
   settings,
   patients,
+  rateHistory,
 }: {
   settings: CommissionSettings;
   patients: Patient[];
+  rateHistory: ExchangeRatePoint[];
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const { hidden } = usePrivacy();
+  const [cardsPending, startCardsTransition] = useTransition();
+  const [cardsError, setCardsError] = useState<string | null>(null);
+  const [cardsSaved, setCardsSaved] = useState(false);
+  const { hidden, tryRate } = usePrivacy();
+
+  const knownCardIds = new Set<DashboardCardId>(DASHBOARD_CARDS.map((c) => c.id));
+  const savedOrder = settings.dashboard_cards.filter((id) => knownCardIds.has(id));
+  const cardsInitialOrder = [
+    ...savedOrder,
+    ...DASHBOARD_CARDS.map((c) => c.id).filter((id) => !savedOrder.includes(id)),
+  ];
+  const cardsInitialEnabled = new Set(savedOrder);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -31,6 +48,20 @@ export function SettingsClient({
         setTimeout(() => setSaved(false), 2500);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong");
+      }
+    });
+  }
+
+  function handleCardsSubmit(formData: FormData) {
+    setCardsError(null);
+    setCardsSaved(false);
+    startCardsTransition(async () => {
+      try {
+        await saveDashboardCards(formData);
+        setCardsSaved(true);
+        setTimeout(() => setCardsSaved(false), 2500);
+      } catch (e) {
+        setCardsError(e instanceof Error ? e.message : "Something went wrong");
       }
     });
   }
@@ -148,7 +179,9 @@ export function SettingsClient({
             Show approx. Turkish Lira (₺) alongside earnings figures
           </label>
           <p className="text-xs text-slate-400">
-            Rate fetched automatically once a day — approximate, not for invoicing.
+            {settings.show_try && settings.currency !== "TRY" && tryRate
+              ? `Current rate: 1 ${settings.currency} ≈ ${tryRate.toFixed(2)} ₺. Refreshed automatically once a day — approximate, not for invoicing.`
+              : "Rate fetched automatically once a day — approximate, not for invoicing."}
           </p>
 
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
@@ -157,6 +190,37 @@ export function SettingsClient({
           <div className="flex justify-end pt-2">
             <Button type="submit" disabled={pending}>
               {pending ? "Saving…" : "Save settings"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      {settings.show_try && settings.currency !== "TRY" && (
+        <Card className="p-6">
+          <h2 className="mb-1 text-base font-semibold text-slate-900">
+            {settings.currency}/TRY rate history
+          </h2>
+          <p className="mb-4 text-sm text-slate-500">
+            Recorded once a day. Approximate — not for invoicing.
+          </p>
+          <RateHistoryChart data={rateHistory} base={settings.currency} />
+        </Card>
+      )}
+
+      <Card className="p-6">
+        <h2 className="mb-1 text-base font-semibold text-slate-900">Dashboard cards</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Choose which stat cards show on the Dashboard, and drag ⠿ to reorder them.
+        </p>
+        <form action={handleCardsSubmit} className="space-y-3">
+          <DashboardCardsPicker initialOrder={cardsInitialOrder} initialEnabled={cardsInitialEnabled} />
+          {cardsError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{cardsError}</p>}
+          {cardsSaved && (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Settings saved.</p>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={cardsPending}>
+              {cardsPending ? "Saving…" : "Save settings"}
             </Button>
           </div>
         </form>

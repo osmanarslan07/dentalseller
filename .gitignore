@@ -36,6 +36,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# real patient documents (never commit)
+/public/*.pdf
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*

@@ -1,7 +1,45 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx --yes create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --no-turbopack)"
+      "Bash(npx --yes create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --no-turbopack)",
+      "Bash(npm install *)",
+      "Bash(rm -rf .next)",
+      "Bash(npx next *)",
+      "Bash(npx eslint *)",
+      "Bash(curl -s -D - -o /dev/null http://localhost:3100/)",
+      "Bash(curl -s http://localhost:3100/login)",
+      "Bash(pkill -f \"next dev -p 3100\")",
+      "Bash(node *)",
+      "Bash(git status *)",
+      "Bash(where vercel *)",
+      "Bash(vercel --version)",
+      "Bash(npx --version)",
+      "Bash(npx vercel *)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "WebFetch(domain:reactjs.org)",
+      "WebFetch(domain:legacy.reactjs.org)",
+      "WebSearch",
+      "Bash(curl -s -D - -o /tmp/apple-icon-check.png \"https://dentalincome.vercel.app/apple-icon.png\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s \"https://dentalincome.vercel.app/login\")",
+      "Bash(curl *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(openssl rand *)",
+      "Bash(sed -i 's/^CRON_SECRET=$/CRON_SECRET=__TRACKED_VAR__/' .env.local)",
+      "Bash(npm audit *)",
+      "Bash(npm ls *)",
+      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"healthcare dental saas professional trust dashboard\" --domain color -n 8)",
+      "Artifact",
+      "Bash(python .claude/skills/ui-ux-pro-max/scripts/search.py \"glassmorphism soft ui bento dark dashboard minimal\" --domain style -n 10)",
+      "Bash(gh auth *)",
+      "Bash(gh --version)",
+      "PowerShell(winget list *)",
+      "PowerShell(winget install *)",
+      "PowerShell(gh *)",
+      "PowerShell(gh auth *)"
     ]
   }
 }

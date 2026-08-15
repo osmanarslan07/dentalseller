@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { EarningsChart } from "@/components/EarningsChart";
+import { CountUp } from "@/components/CountUp";
 import { tierLabel } from "@/lib/commission";
 import { CommissionSettings } from "@/types";
 import { setHideEarnings } from "@/lib/privacy-actions";
@@ -57,16 +58,23 @@ export function Money({
   value,
   currency,
   showConversion = true,
+  animate = false,
 }: {
   value: number;
   currency: string;
   /** Set false in cramped spots (per-row table cells) to skip the secondary ≈ TRY line. */
   showConversion?: boolean;
+  /** Count up from 0 to value on mount — use for headline stat-card numbers, not per-row amounts. */
+  animate?: boolean;
 }) {
   const { hidden, showTry, tryRate } = usePrivacy();
   if (hidden) return <>{MASK}</>;
 
-  const primary = formatCurrency(value, currency);
+  const primary = animate ? (
+    <CountUp value={value} format={(n) => formatCurrency(n, currency)} />
+  ) : (
+    formatCurrency(value, currency)
+  );
   if (!showConversion || !showTry || !tryRate || currency === "TRY") return <>{primary}</>;
 
   return (

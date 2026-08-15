@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 import { Patient } from "@/types";
 import { createPatient, updatePatient } from "./actions";
 
@@ -10,14 +11,57 @@ export function PatientFormModal({
   open,
   onClose,
   patient,
+  duplicateFrom,
+  hotelOptions = [],
+  roomTypeOptions = [],
 }: {
   open: boolean;
   onClose: () => void;
   patient?: Patient | null;
+  /** Prefill a new (non-edit) patient from an existing one — for group bookings sharing a flight/hotel. */
+  duplicateFrom?: Patient | null;
+  /** Previously-used hotel names / room types, offered as autocomplete suggestions. */
+  hotelOptions?: string[];
+  roomTypeOptions?: string[];
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const isEdit = !!patient;
+
+  // Prefill source: the record being edited, or the record being duplicated from. Duplicating clears
+  // fields that shouldn't carry over to a different person (name, CRM ref, confirmation, payments made).
+  const initial: Patient | (Partial<Patient> & { needs_visit2: boolean }) | null | undefined = patient
+    ? patient
+    : duplicateFrom
+    ? {
+        ...duplicateFrom,
+        name: "",
+        komo_reference: null,
+        confirmation_date: null,
+        visit1_actual: null,
+        visit2_actual: null,
+        visit1_status: "upcoming",
+        visit2_status: "upcoming",
+      }
+    : null;
+
+  const [needsVisit2, setNeedsVisit2] = useState(initial ? initial.needs_visit2 : true);
+  const [isDirty, setIsDirty] = useState(false);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    if (open) setIsDirty(false);
+  }, [open, patient?.id, duplicateFrom?.id]);
+
+  useEffect(() => {
+    if (open) setNeedsVisit2(initial ? initial.needs_visit2 : true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, patient?.id, duplicateFrom?.id]);
+
+  function handleRequestClose() {
+    if (isDirty && !confirm("Discard unsaved changes?")) return;
+    onClose();
+  }
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -25,8 +69,10 @@ export function PatientFormModal({
       try {
         if (isEdit && patient) {
           await updatePatient(patient.id, formData);
+          showToast("Patient saved ✓");
         } else {
           await createPatient(formData);
+          showToast("Patient added ✓");
         }
         onClose();
       } catch (e) {
@@ -36,35 +82,73 @@ export function PatientFormModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? "Edit patient" : "Add patient"}>
-      <form action={handleSubmit} className="space-y-5">
+    <Modal
+      open={open}
+      onClose={handleRequestClose}
+      title={isEdit ? "Edit patient" : duplicateFrom ? `Duplicate ${duplicateFrom.name}` : "Add patient"}
+    >
+      <form action={handleSubmit} onChange={() => setIsDirty(true)} className="space-y-5">
+        {duplicateFrom && (
+          <p className="rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-700">
+            Prefilled from {duplicateFrom.name}&apos;s travel, hotel and treatment. Name, Komo reference,
+            confirmation date and payments were left blank for you to fill in.
+          </p>
+        )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Label>Name</Label>
-            <Input name="name" required defaultValue={patient?.name} placeholder="Jane Smith" />
+            <Input name="name" required defaultValue={initial?.name} placeholder="Jane Smith" />
           </div>
           <div className="sm:col-span-2">
             <Label>Treatment</Label>
             <Input
               name="treatment"
-              defaultValue={patient?.treatment ?? ""}
+              defaultValue={initial?.treatment ?? ""}
               placeholder="Full mouth veneers"
             />
+            <p className="mt-1 text-xs text-slate-400">
+              Short label — shown on the dashboard, calendar and upcoming visits.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Confirmation letter treatments</Label>
+            <Textarea
+              name="letter_treatment_items"
+              rows={2}
+              defaultValue={initial?.letter_treatment_items ?? ""}
+              placeholder="12x Nucleoss T6 Dental Implants, 24x Dental Direkt Zirconium Crowns"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Comma-separated — each item becomes a bullet on the confirmation letter. Leave blank to fall
+              back to the Treatment field above.
+            </p>
           </div>
           <div>
             <Label>Confirmation date</Label>
-            <Input type="date" name="confirmation_date" defaultValue={patient?.confirmation_date ?? ""} />
+            <Input type="date" name="confirmation_date" defaultValue={initial?.confirmation_date ?? ""} />
+          </div>
+          <div className="flex items-end pb-2.5">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                name="needs_visit2"
+                checked={needsVisit2}
+                onChange={(e) => setNeedsVisit2(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+              />
+              Needs a second visit
+            </label>
           </div>
           <div className="sm:col-span-2">
             <Label>Komo reference</Label>
             <Input
               name="komo_reference"
-              defaultValue={patient?.komo_reference ?? ""}
+              defaultValue={initial?.komo_reference ?? ""}
               placeholder="Komo lead link or ID"
             />
-            {patient?.komo_reference && /^https?:\/\//i.test(patient.komo_reference) && (
+            {initial?.komo_reference && /^https?:\/\//i.test(initial.komo_reference) && (
               <a
-                href={patient.komo_reference}
+                href={initial.komo_reference}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-1 inline-block text-xs font-medium text-teal-600 hover:underline"
@@ -77,51 +161,59 @@ export function PatientFormModal({
 
         <VisitFields
           index={1}
-          date={patient?.visit1_date}
-          expected={patient?.visit1_expected}
-          actual={patient?.visit1_actual}
-          status={patient?.visit1_status}
+          date={initial?.visit1_date}
+          expected={initial?.visit1_expected}
+          actual={initial?.visit1_actual}
+          status={initial?.visit1_status}
         />
-        <VisitFields
-          index={2}
-          date={patient?.visit2_date}
-          expected={patient?.visit2_expected}
-          actual={patient?.visit2_actual}
-          status={patient?.visit2_status}
-        />
+        {needsVisit2 && (
+          <VisitFields
+            index={2}
+            date={initial?.visit2_date}
+            expected={initial?.visit2_expected}
+            actual={initial?.visit2_actual}
+            status={initial?.visit2_status}
+          />
+        )}
 
         <TravelFields
           index={1}
-          arrivalDate={patient?.visit1_arrival_date}
-          arrivalTime={patient?.visit1_arrival_time}
-          arrivalFlightNo={patient?.visit1_arrival_flight_no}
-          departureDate={patient?.visit1_departure_date}
-          departureTime={patient?.visit1_departure_time}
-          departureFlightNo={patient?.visit1_departure_flight_no}
-          hotelName={patient?.visit1_hotel_name}
-          roomType={patient?.visit1_room_type}
+          arrivalDate={initial?.visit1_arrival_date}
+          arrivalTime={initial?.visit1_arrival_time}
+          arrivalFlightNo={initial?.visit1_arrival_flight_no}
+          departureDate={initial?.visit1_departure_date}
+          departureTime={initial?.visit1_departure_time}
+          departureFlightNo={initial?.visit1_departure_flight_no}
+          hotelName={initial?.visit1_hotel_name}
+          roomType={initial?.visit1_room_type}
+          hotelOptions={hotelOptions}
+          roomTypeOptions={roomTypeOptions}
         />
-        <TravelFields
-          index={2}
-          arrivalDate={patient?.visit2_arrival_date}
-          arrivalTime={patient?.visit2_arrival_time}
-          arrivalFlightNo={patient?.visit2_arrival_flight_no}
-          departureDate={patient?.visit2_departure_date}
-          departureTime={patient?.visit2_departure_time}
-          departureFlightNo={patient?.visit2_departure_flight_no}
-          hotelName={patient?.visit2_hotel_name}
-          roomType={patient?.visit2_room_type}
-        />
+        {needsVisit2 && (
+          <TravelFields
+            index={2}
+            arrivalDate={initial?.visit2_arrival_date}
+            arrivalTime={initial?.visit2_arrival_time}
+            arrivalFlightNo={initial?.visit2_arrival_flight_no}
+            departureDate={initial?.visit2_departure_date}
+            departureTime={initial?.visit2_departure_time}
+            departureFlightNo={initial?.visit2_departure_flight_no}
+            hotelName={initial?.visit2_hotel_name}
+            roomType={initial?.visit2_room_type}
+            hotelOptions={hotelOptions}
+            roomTypeOptions={roomTypeOptions}
+          />
+        )}
 
         <div>
           <Label>Notes</Label>
-          <Textarea name="notes" rows={3} defaultValue={patient?.notes ?? ""} placeholder="Optional notes…" />
+          <Textarea name="notes" rows={3} defaultValue={initial?.notes ?? ""} placeholder="Optional notes…" />
         </div>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={handleRequestClose}>
             Cancel
           </Button>
           <Button type="submit" disabled={pending}>
@@ -143,6 +235,8 @@ function TravelFields({
   departureFlightNo,
   hotelName,
   roomType,
+  hotelOptions = [],
+  roomTypeOptions = [],
 }: {
   index: 1 | 2;
   arrivalDate?: string | null;
@@ -153,6 +247,8 @@ function TravelFields({
   departureFlightNo?: string | null;
   hotelName?: string | null;
   roomType?: string | null;
+  hotelOptions?: string[];
+  roomTypeOptions?: string[];
 }) {
   return (
     <fieldset className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
@@ -182,11 +278,32 @@ function TravelFields({
         </div>
         <div>
           <Label>Hotel name</Label>
-          <Input name={`visit${index}_hotel_name`} defaultValue={hotelName ?? ""} />
+          <Input
+            name={`visit${index}_hotel_name`}
+            defaultValue={hotelName ?? ""}
+            list={`hotel-options-${index}`}
+            autoComplete="off"
+          />
+          <datalist id={`hotel-options-${index}`}>
+            {hotelOptions.map((h) => (
+              <option key={h} value={h} />
+            ))}
+          </datalist>
         </div>
         <div>
           <Label>Room type</Label>
-          <Input name={`visit${index}_room_type`} defaultValue={roomType ?? ""} placeholder="Double room" />
+          <Input
+            name={`visit${index}_room_type`}
+            defaultValue={roomType ?? ""}
+            placeholder="Double room"
+            list={`room-options-${index}`}
+            autoComplete="off"
+          />
+          <datalist id={`room-options-${index}`}>
+            {roomTypeOptions.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
         </div>
       </div>
     </fieldset>

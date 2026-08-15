@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logout } from "@/lib/auth-actions";
 
 const LINKS = [
   { href: "/", label: "Dashboard" },
   { href: "/patients", label: "Patients" },
+  { href: "/calendar", label: "Calendar" },
   { href: "/projections", label: "Projections" },
   { href: "/settings", label: "Settings" },
 ];
@@ -15,6 +16,21 @@ const LINKS = [
 export function Nav({ email }: { email: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+  const linkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    const el = linkRefs.current.get(pathname);
+    const container = navRef.current;
+    if (el && container) {
+      const elRect = el.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      setIndicator({ left: elRect.left - containerRect.left, width: elRect.width });
+    } else {
+      setIndicator(null);
+    }
+  }, [pathname]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur">
@@ -22,19 +38,28 @@ export function Nav({ email }: { email: string }) {
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="Dental Commission Tracker" className="h-10 w-10" />
-            <span className="hidden sm:inline">Dental Commission Tracker</span>
+            <img src="/logo.svg" alt="DentalSeller" className="h-10 w-10" />
+            <span className="hidden sm:inline">DentalSeller</span>
           </Link>
 
-          <nav className="hidden gap-1 md:flex">
+          <nav ref={navRef} className="relative hidden gap-1 md:flex">
+            {indicator && (
+              <span
+                className="absolute inset-y-0 rounded-lg bg-teal-50 transition-all duration-300 ease-out"
+                style={{ left: indicator.left, width: indicator.width }}
+              />
+            )}
             {LINKS.map((link) => {
               const active = pathname === link.href;
               return (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    active ? "bg-teal-50 text-teal-700" : "text-slate-600 hover:bg-slate-100"
+                  ref={(el) => {
+                    if (el) linkRefs.current.set(link.href, el);
+                  }}
+                  className={`relative z-10 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    active ? "text-teal-700" : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   {link.label}

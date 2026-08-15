@@ -19,7 +19,9 @@ function parseInput(formData: FormData): PatientInput {
   return {
     name: String(formData.get("name") ?? "").trim(),
     treatment: str("treatment"),
+    letter_treatment_items: str("letter_treatment_items"),
     confirmation_date: str("confirmation_date"),
+    needs_visit2: formData.get("needs_visit2") === "on",
     visit1_date: str("visit1_date"),
     visit1_expected: num("visit1_expected"),
     visit1_actual: num("visit1_actual"),

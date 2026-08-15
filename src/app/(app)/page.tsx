@@ -1,17 +1,39 @@
+import { ReactNode } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPatients, getSettings } from "@/lib/data";
 import {
+  addMonths,
   computeMonthlyAggregates,
   currentMonthKey,
   lastNMonths,
   monthLabel,
 } from "@/lib/commission";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Card, StatCard, StatusBadge } from "@/components/ui";
-import { Money, Percent, PrivateEarningsChart, TierSublabel } from "@/components/privacy";
+import { Card, StatCard } from "@/components/ui";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Money, PrivateEarningsChart } from "@/components/privacy";
+import { CountUp } from "@/components/CountUp";
+import { RelativeTime } from "@/components/RelativeTime";
+import { DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
+import { CalendarEventKind, KIND_STYLES, flattenCalendarEvents } from "@/lib/calendar-events";
+import { Patient } from "@/types";
+
+const EVENT_ICONS: Record<CalendarEventKind, string> = {
+  visit1_arrival: "🛬",
+  visit1_departure: "🛫",
+  visit2_arrival: "🛬",
+  visit2_departure: "🛫",
+  visit1_self: "📍",
+  visit2_self: "📍",
+};
+
+function treatmentTotal(p: Patient): number {
+  return (p.visit1_expected ?? 0) + (p.visit2_expected ?? 0);
+}
 
 export default async function DashboardPage() {
+  const updatedAt = Date.now();
   const supabase = await createClient();
   const [patients, settings] = await Promise.all([
     getPatients(supabase),
@@ -79,34 +101,231 @@ export default async function DashboardPage() {
   }
   upcoming.sort((a, b) => a.date.localeCompare(b.date));
 
+  type UpcomingEvent = {
+    patientId: string;
+    patientName: string;
+    treatment: string | null;
+    kind: CalendarEventKind;
+    label: string;
+    date: string;
+    time: string | null;
+    flightNo: string | null;
+    daysLeft: number;
+    expected: number | null;
+  };
+
+  const patientMap = new Map(patients.map((p) => [p.id, p]));
+  const upcomingEvents: UpcomingEvent[] = [];
+  for (const e of flattenCalendarEvents(patients)) {
+    const p = patientMap.get(e.patientId);
+    if (!p) continue;
+    const isVisit2 = e.kind.startsWith("visit2");
+    const status = isVisit2 ? p.visit2_status : p.visit1_status;
+    if (status !== "upcoming") continue;
+    const d = new Date(e.date);
+    if (d < today || d > monthAhead) continue;
+    const daysLeft = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    upcomingEvents.push({
+      patientId: e.patientId,
+      patientName: e.patientName,
+      treatment: e.treatment,
+      kind: e.kind,
+      label: e.label,
+      date: e.date,
+      time: e.time,
+      flightNo: e.flightNo,
+      daysLeft,
+      expected: isVisit2 ? p.visit2_expected : p.visit1_expected,
+    });
+  }
+  upcomingEvents.sort((a, b) => a.date.localeCompare(b.date));
+
+  type DayGroup = { date: string; daysLeft: number; events: UpcomingEvent[] };
+  const dayGroups: DayGroup[] = [];
+  for (const e of upcomingEvents) {
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.date === e.date) {
+      last.events.push(e);
+    } else {
+      dayGroups.push({ date: e.date, daysLeft: e.daysLeft, events: [e] });
+    }
+  }
+  const dayHeaderLabel = (daysLeft: number, date: string) =>
+    daysLeft === 0
+      ? "Today"
+      : daysLeft === 1
+      ? "Tomorrow"
+      : `${formatDate(date)} · in ${daysLeft} days`;
+
+  const needsFollowUp = patients
+    .filter((p) => p.visit1_status === "completed" && p.needs_visit2 && !p.visit2_date)
+    .map((p) => {
+      const daysSince = p.visit1_date
+        ? Math.round((today.getTime() - new Date(p.visit1_date).getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      return { patient: p, daysSince };
+    })
+    .sort((a, b) => (b.daysSince ?? 0) - (a.daysSince ?? 0));
+
+  type PaymentMismatch = { patient: Patient; visitLabel: string; visitDate: string; expected: number; daysSince: number };
+  const paymentMismatches: PaymentMismatch[] = [];
+  for (const p of patients) {
+    for (const [visitLabel, date, expected, actual, applies] of [
+      ["Visit 1", p.visit1_date, p.visit1_expected, p.visit1_actual, true],
+      ["Visit 2", p.visit2_date, p.visit2_expected, p.visit2_actual, p.needs_visit2],
+    ] as const) {
+      if (!applies || !date || expected == null || actual != null) continue;
+      const d = new Date(date);
+      if (d >= today) continue;
+      const daysSince = Math.round((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+      paymentMismatches.push({ patient: p, visitLabel, visitDate: date, expected, daysSince });
+    }
+  }
+  paymentMismatches.sort((a, b) => b.daysSince - a.daysSince);
+
+  const lastMonth = addMonths(thisMonth, -1);
+  const patientsLastMonth = patients.filter(
+    (p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === lastMonth
+  ).length;
+  const newPatientsDelta = patientsThisMonth - patientsLastMonth;
+
+  const totalExpectedCommission = aggregates.reduce((sum, a) => sum + a.expectedCommission, 0);
+  const outstandingExpected = totalExpectedCommission - totalActualCommission;
+
+  const upcomingValue = upcoming.reduce((sum, v) => sum + (v.expected ?? 0), 0);
+
+  const avgCommissionPerPatient = totalPatients > 0 ? totalActualCommission / totalPatients : 0;
+  const avgTreatmentValue =
+    totalPatients > 0 ? patients.reduce((sum, p) => sum + treatmentTotal(p), 0) / totalPatients : 0;
+
+  const highestValuePatient = patients
+    .filter((p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === thisMonth)
+    .reduce<{ name: string; value: number } | null>((best, p) => {
+      const value = treatmentTotal(p);
+      return !best || value > best.value ? { name: p.name, value } : best;
+    }, null);
+
+  const cardsById: Record<DashboardCardId, ReactNode> = {
+    total_earned: (
+      <StatCard
+        label="Total earned to date"
+        value={<Money value={totalActualCommission} currency={settings.currency} animate />}
+        sublabel="Confirmed commission, actual payments"
+      />
+    ),
+    total_commission: (
+      <StatCard
+        label="Total commission (earned + expected)"
+        value={<Money value={totalActualCommission + totalExpectedCommission} currency={settings.currency} animate />}
+        sublabel={
+          <>
+            <Money value={totalActualCommission} currency={settings.currency} showConversion={false} /> earned +{" "}
+            <Money value={totalExpectedCommission} currency={settings.currency} showConversion={false} /> expected
+          </>
+        }
+      />
+    ),
+    month_earnings: (
+      <StatCard
+        label="This month's earnings so far"
+        value={<Money value={thisMonthAgg?.actualCommission ?? 0} currency={settings.currency} animate />}
+        sublabel={`From ${formatCurrency(thisMonthAgg?.actualTotal ?? 0, settings.currency)} received`}
+      />
+    ),
+    expected_earnings: (
+      <StatCard
+        label="Total expected earnings"
+        value={<Money value={outstandingExpected} currency={settings.currency} animate />}
+        sublabel="Remaining commission across confirmed treatment plans"
+      />
+    ),
+    patients_sold: (
+      <StatCard
+        label="Total patients sold"
+        value={<CountUp value={totalPatients} />}
+        sublabel={`${patientsThisMonth} confirmed this month`}
+      />
+    ),
+    confirmed_this_month: (
+      <StatCard
+        label="Confirmed this month"
+        value={<CountUp value={patientsThisMonth} />}
+        sublabel={monthLabel(thisMonth)}
+      />
+    ),
+    new_patients_delta: (
+      <StatCard
+        label="New patients vs last month"
+        value={
+          <CountUp
+            value={newPatientsDelta}
+            format={(n) => `${n >= 0 ? "+" : ""}${Math.round(n)}`}
+          />
+        }
+        sublabel={`${patientsThisMonth} this month, ${patientsLastMonth} last month`}
+      />
+    ),
+    upcoming_visits_value: (
+      <StatCard
+        label="Upcoming visits value (30 days)"
+        value={<Money value={upcomingValue} currency={settings.currency} animate />}
+        sublabel={`${upcoming.length} visit${upcoming.length === 1 ? "" : "s"} scheduled`}
+      />
+    ),
+    avg_commission_patient: (
+      <StatCard
+        label="Average commission per patient"
+        value={<Money value={avgCommissionPerPatient} currency={settings.currency} animate />}
+        sublabel={`Across ${totalPatients} patients`}
+      />
+    ),
+    avg_treatment_value: (
+      <StatCard
+        label="Average treatment value per patient"
+        value={<Money value={avgTreatmentValue} currency={settings.currency} animate />}
+        sublabel="Visit 1 + visit 2 expected total"
+      />
+    ),
+    highest_value_patient: (
+      <StatCard
+        label="Highest-value patient this month"
+        value={highestValuePatient ? highestValuePatient.name : "—"}
+        sublabel={
+          highestValuePatient ? (
+            <Money value={highestValuePatient.value} currency={settings.currency} />
+          ) : (
+            "No patients confirmed this month"
+          )
+        }
+      />
+    ),
+  };
+
+  const cardById = new Map(DASHBOARD_CARDS.map((c) => [c.id, c]));
+  const visibleCards = settings.dashboard_cards
+    .map((id) => cardById.get(id))
+    .filter((c): c is (typeof DASHBOARD_CARDS)[number] => c != null);
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
+          <span className="flex items-center gap-1.5" title="Live data">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            <span className="text-xs font-medium text-emerald-600">Live</span>
+          </span>
+        </div>
         <p className="mt-1 text-sm text-slate-500">Your commission overview at a glance.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Total earned to date"
-          value={<Money value={totalActualCommission} currency={settings.currency} />}
-          sublabel="Confirmed commission, actual payments"
-        />
-        <StatCard
-          label="This month's earnings so far"
-          value={<Money value={thisMonthAgg?.actualCommission ?? 0} currency={settings.currency} />}
-          sublabel={`From ${formatCurrency(thisMonthAgg?.actualTotal ?? 0, settings.currency)} received`}
-        />
-        <StatCard
-          label="This month's commission tier"
-          value={<Percent value={thisMonthAgg?.actualRate ?? settings.tier1_rate} />}
-          sublabel={<TierSublabel total={thisMonthAgg?.actualTotal ?? 0} settings={settings} />}
-        />
-        <StatCard
-          label="Patients sold"
-          value={totalPatients}
-          sublabel={`${patientsThisMonth} confirmed this month`}
-        />
+        {visibleCards.map((card) => (
+          <div key={card.id}>{cardsById[card.id]}</div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -116,39 +335,166 @@ export default async function DashboardPage() {
             <span className="text-xs text-slate-400">Last 12 months</span>
           </div>
           <PrivateEarningsChart data={chartData} currency={settings.currency} />
+          <p className="mt-3 text-xs text-slate-400">
+            Updated <RelativeTime timestamp={updatedAt} />
+          </p>
         </Card>
 
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold text-slate-900">Upcoming visits this month</h2>
+            <Link href="/calendar" className="text-sm font-medium text-teal-600 hover:text-teal-700">
+              View calendar →
+            </Link>
           </div>
-          {upcoming.length === 0 ? (
+          {dayGroups.length === 0 ? (
             <p className="py-8 text-center text-sm text-slate-400">No visits scheduled this month.</p>
           ) : (
-            <ul className="space-y-3">
-              {upcoming.map((v, i) => (
-                <li key={i}>
+            <div className="space-y-4">
+              {(() => {
+                let idx = 0;
+                return dayGroups.map((g) => (
+                  <div key={g.date}>
+                    <p
+                      className={`mb-1.5 px-2 text-xs font-semibold uppercase tracking-wide ${
+                        g.daysLeft <= 1 ? "text-red-500" : g.daysLeft <= 7 ? "text-amber-600" : "text-slate-400"
+                      }`}
+                    >
+                      {dayHeaderLabel(g.daysLeft, g.date)}
+                    </p>
+                    <ul className="space-y-1">
+                      {g.events.map((v, i) => (
+                        <li
+                          key={i}
+                          className="animate-fade-in-up"
+                          style={{ animationDelay: `${idx++ * 40}ms` }}
+                        >
+                          <Link
+                            href={`/patients?q=${encodeURIComponent(v.patientName)}`}
+                            className="flex items-center justify-between rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
+                          >
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm ${KIND_STYLES[v.kind]}`}
+                            >
+                              {EVENT_ICONS[v.kind]}
+                            </span>
+                            <div>
+                              <p className="text-sm font-medium text-slate-800">{v.patientName}</p>
+                              <p className="text-xs text-slate-500">
+                                {v.label}
+                                {v.time ? ` · ${v.time}` : ""}
+                                {v.flightNo ? ` · ${v.flightNo}` : ""}
+                                {v.treatment ? ` · ${v.treatment}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-right text-sm font-medium text-slate-700">
+                            {v.expected != null ? formatCurrency(v.expected, settings.currency) : "—"}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ));
+              })()}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Needs follow-up</h2>
+              <p className="text-xs text-slate-500">Visit 1 done, visit 2 not booked yet</p>
+            </div>
+            {needsFollowUp.length > 0 && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                {needsFollowUp.length}
+              </span>
+            )}
+          </div>
+          {needsFollowUp.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">Nothing needs follow-up ✓</p>
+          ) : (
+            <ul className="space-y-1">
+              {needsFollowUp.map(({ patient: p, daysSince }, i) => (
+                <li key={p.id} className="animate-fade-in-up" style={{ animationDelay: `${i * 40}ms` }}>
                   <Link
-                    href={`/patients?q=${encodeURIComponent(v.patientName)}`}
-                    className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-slate-50"
+                    href={`/patients?q=${encodeURIComponent(p.name)}`}
+                    className="flex items-center justify-between rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
                   >
                     <div>
-                      <p className="text-sm font-medium text-slate-800">{v.patientName}</p>
+                      <p className="text-sm font-medium text-slate-800">{p.name}</p>
                       <p className="text-xs text-slate-500">
-                        {v.visitLabel} · {formatDate(v.date)}
-                        {v.treatment ? ` · ${v.treatment}` : ""}
+                        {p.treatment ? `${p.treatment} · ` : ""}Visit 1 completed {formatDate(p.visit1_date)}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-xs font-medium ${
+                        daysSince != null && daysSince >= 30
+                          ? "text-red-500"
+                          : daysSince != null && daysSince >= 14
+                          ? "text-amber-600"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {daysSince == null
+                        ? "—"
+                        : daysSince === 0
+                        ? "Today"
+                        : daysSince === 1
+                        ? "1 day ago"
+                        : `${daysSince} days ago`}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Payment not logged</h2>
+              <p className="text-xs text-slate-500">Visit passed, no actual amount recorded</p>
+            </div>
+            {paymentMismatches.length > 0 && (
+              <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600">
+                {paymentMismatches.length}
+              </span>
+            )}
+          </div>
+          {paymentMismatches.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">All payments logged ✓</p>
+          ) : (
+            <ul className="space-y-1">
+              {paymentMismatches.map((m, i) => (
+                <li key={`${m.patient.id}-${m.visitLabel}`} className="animate-fade-in-up" style={{ animationDelay: `${i * 40}ms` }}>
+                  <Link
+                    href={`/patients?q=${encodeURIComponent(m.patient.name)}`}
+                    className="flex items-center justify-between rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{m.patient.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {m.visitLabel} · {formatDate(m.visitDate)}
                       </p>
                     </div>
                     <div className="text-right">
                       <span className="block text-sm font-medium text-slate-700">
-                        {v.expected != null ? formatCurrency(v.expected, settings.currency) : "—"}
+                        {formatCurrency(m.expected, settings.currency)}
                       </span>
-                      <span className="block text-xs text-slate-400">
-                        {v.daysLeft === 0
-                          ? "Today"
-                          : v.daysLeft === 1
-                          ? "Tomorrow"
-                          : `${v.daysLeft} days`}
+                      <span
+                        className={`block text-xs font-medium ${
+                          m.daysSince >= 30 ? "text-red-500" : m.daysSince >= 14 ? "text-amber-600" : "text-slate-400"
+                        }`}
+                      >
+                        {m.daysSince === 0 ? "Today" : m.daysSince === 1 ? "1 day ago" : `${m.daysSince} days ago`}
                       </span>
                     </div>
                   </Link>
@@ -166,7 +512,7 @@ export default async function DashboardPage() {
             View all →
           </Link>
         </div>
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
@@ -179,8 +525,12 @@ export default async function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {patients.slice(0, 6).map((p) => (
-                <tr key={p.id} className="border-b border-slate-50 last:border-0">
+              {patients.slice(0, 6).map((p, i) => (
+                <tr
+                  key={p.id}
+                  className="animate-fade-in border-b border-slate-50 last:border-0"
+                  style={{ animationDelay: `${i * 40}ms` }}
+                >
                   <td className="py-2.5 pl-4 font-medium text-slate-800">{p.name}</td>
                   <td className="py-2.5 text-slate-500">{p.treatment || "—"}</td>
                   <td className="py-2.5 text-slate-500">{formatDate(p.confirmation_date)}</td>
@@ -221,6 +571,51 @@ export default async function DashboardPage() {
             </tbody>
           </table>
         </div>
+
+        <ul className="divide-y divide-slate-50 sm:hidden">
+          {patients.slice(0, 6).map((p, i) => (
+            <li
+              key={p.id}
+              className="animate-fade-in-up py-3"
+              style={{ animationDelay: `${i * 40}ms` }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">{p.name}</p>
+                  <p className="text-xs text-slate-500">{p.treatment || "—"}</p>
+                </div>
+                {p.komo_reference && /^https?:\/\//i.test(p.komo_reference) && (
+                  <a
+                    href={p.komo_reference}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-xs font-medium text-teal-600 hover:underline"
+                  >
+                    Komo ↗
+                  </a>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
+                <span>Confirmed {formatDate(p.confirmation_date)}</span>
+                <span className="flex items-center gap-1.5">
+                  V1 {formatDate(p.visit1_date)} <StatusBadge status={p.visit1_status} />
+                </span>
+                <span className="flex items-center gap-1.5">
+                  V2 <StatusBadge status={p.visit2_status} />
+                </span>
+              </div>
+            </li>
+          ))}
+          {patients.length === 0 && (
+            <li className="py-8 text-center text-slate-400">
+              No patients yet.{" "}
+              <Link href="/patients" className="text-teal-600 hover:underline">
+                Add your first patient
+              </Link>
+              .
+            </li>
+          )}
+        </ul>
       </Card>
     </div>
   );

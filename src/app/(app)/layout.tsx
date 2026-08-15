@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/data";
 import { getTryRate } from "@/lib/currency";
 import { Nav } from "@/components/Nav";
 import { PrivacyProvider } from "@/components/privacy";
+import { ToastProvider } from "@/components/Toast";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -19,10 +20,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen">
-      <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
-        <Nav email={user.email ?? ""} />
-        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
-      </PrivacyProvider>
+      <ToastProvider>
+        <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
+          <Nav email={user.email ?? ""} />
+          <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
+        </PrivacyProvider>
+      </ToastProvider>
     </div>
   );
 }

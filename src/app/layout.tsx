@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Dental Commission Tracker",
+  title: "DentalSeller",
   description: "Track UK dental patients and Antalya treatment commissions.",
   icons: {
     icon: "/logo.svg",

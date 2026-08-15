@@ -6,8 +6,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Dental Commission Tracker" className="mx-auto mb-4 h-18 w-18" />
-          <h1 className="text-xl font-semibold text-slate-900">Dental Commission Tracker</h1>
+          <img src="/logo.svg" alt="DentalSeller" className="mx-auto mb-4 h-18 w-18" />
+          <h1 className="text-xl font-semibold text-slate-900">DentalSeller</h1>
           <p className="mt-1 text-sm text-slate-500">Antalya treatment patients &amp; commission</p>
         </div>
 

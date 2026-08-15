@@ -9,6 +9,7 @@ export function formatCurrency(value: number, currency: string = "GBP"): string 
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return "—";
   return new Date(dateStr).toLocaleDateString("en-GB", {
+    weekday: "short",
     day: "2-digit",
     month: "short",
     year: "numeric",

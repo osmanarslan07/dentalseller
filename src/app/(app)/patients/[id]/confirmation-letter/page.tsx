@@ -11,7 +11,11 @@ function formatDMY(dateStr: string | null, sep: string = "/"): string {
   if (!dateStr) return "—";
   const [y, m, d] = dateStr.split("-");
   if (!y || !m || !d) return dateStr;
-  return `${d}${sep}${m}${sep}${y}`;
+  const weekday = new Date(Date.UTC(+y, +m - 1, +d)).toLocaleDateString("en-GB", {
+    weekday: "short",
+    timeZone: "UTC",
+  });
+  return `${d}${sep}${m}${sep}${y} (${weekday})`;
 }
 
 function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {

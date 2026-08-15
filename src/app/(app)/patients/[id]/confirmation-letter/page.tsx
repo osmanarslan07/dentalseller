@@ -75,7 +75,7 @@ export default async function ConfirmationLetterPage({
     address: settings.clinic_address,
     phone: settings.clinic_phone,
     email: settings.clinic_email,
-    logoUrl: settings.clinic_logo_url ?? "/Thera_Logo.png",
+    logoUrl: settings.clinic_logo_url ?? null,
   };
 
   const firstVisitPayment = patient.visit1_actual ?? patient.visit1_expected;
@@ -139,8 +139,14 @@ export default async function ConfirmationLetterPage({
 
       <div className="rounded-2xl bg-white p-10 shadow-sm ring-1 ring-slate-900/5 print:rounded-none print:p-0 print:shadow-none print:ring-0">
         <div className="flex items-start justify-between gap-6 border-b-4 border-slate-900 pb-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={clinic.logoUrl} alt={clinic.shortName} className="h-24 w-auto object-contain" />
+          {clinic.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={clinic.logoUrl} alt={clinic.shortName} className="h-24 w-auto object-contain" />
+          ) : (
+            <div className="flex h-24 w-40 items-center justify-center text-sm font-medium text-slate-400">
+              No Logo
+            </div>
+          )}
           <div className="text-right text-xs leading-relaxed text-slate-600">
             <p>{clinic.address}</p>
             <p className="font-semibold text-slate-900">{clinic.phone}</p>

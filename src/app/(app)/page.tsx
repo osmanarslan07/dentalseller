@@ -322,7 +322,7 @@ export default async function DashboardPage() {
         <p className="mt-1 text-sm text-slate-500">Your commission overview at a glance.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {visibleCards.map((card) => (
           <div key={card.id}>{cardsById[card.id]}</div>
         ))}

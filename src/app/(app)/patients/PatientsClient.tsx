@@ -354,7 +354,116 @@ export function PatientsClient({
       )}
 
       {view === "list" && (
-      <Card className="overflow-hidden">
+      <div className="grid gap-3 md:hidden">
+        {rows.map(({ patient: p, commission, stage }) => (
+          <Card
+            key={p.id}
+            className="cursor-pointer p-4"
+            onClick={() => {
+              setEditingPatient(p);
+              setDuplicateFrom(null);
+              setModalOpen(true);
+            }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="font-medium text-slate-800">{p.name}</div>
+                <div className="text-sm text-slate-500">{p.treatment || "—"}</div>
+              </div>
+              <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">Confirmed</div>
+                <div className="text-slate-600">{formatDate(p.confirmation_date)}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">Commission</div>
+                <div className="font-medium text-slate-700">
+                  <Money value={commission.actual} currency={settings.currency} showConversion={false} />
+                  {commission.expected > 0 && (
+                    <div className="text-xs font-normal text-slate-400">
+                      +<Money value={commission.expected} currency={settings.currency} showConversion={false} /> expected
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">Visit 1</div>
+                <div className="text-slate-600">{formatDate(p.visit1_date)}</div>
+                <div className="text-xs text-slate-400">
+                  {p.visit1_actual != null
+                    ? formatCurrency(p.visit1_actual, settings.currency)
+                    : p.visit1_expected != null
+                    ? `${formatCurrency(p.visit1_expected, settings.currency)} (exp.)`
+                    : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">Visit 2</div>
+                <div className="text-slate-600">{formatDate(p.visit2_date)}</div>
+                <div className="text-xs text-slate-400">
+                  {p.visit2_actual != null
+                    ? formatCurrency(p.visit2_actual, settings.currency)
+                    : p.visit2_expected != null
+                    ? `${formatCurrency(p.visit2_expected, settings.currency)} (exp.)`
+                    : "—"}
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {p.komo_reference && /^https?:\/\//i.test(p.komo_reference) && (
+                <a
+                  href={p.komo_reference}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-teal-600 hover:bg-teal-50"
+                >
+                  Komo
+                </a>
+              )}
+              <DocumentsMenu
+                patient={p}
+                open={openDocsId === p.id}
+                onToggle={() => setOpenDocsId((cur) => (cur === p.id ? null : p.id))}
+              />
+              <button
+                title="Duplicate — prefill a new patient from this one"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                onClick={() => {
+                  setEditingPatient(null);
+                  setDuplicateFrom(p);
+                  setModalOpen(true);
+                }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                  <rect x="8" y="8" width="12" height="12" rx="2" />
+                  <path d="M4 16V6a2 2 0 012-2h10" />
+                </svg>
+              </button>
+              <button
+                disabled={deletingId === p.id}
+                className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
+                onClick={() => handleDelete(p.id)}
+              >
+                Delete
+              </button>
+            </div>
+          </Card>
+        ))}
+        {rows.length === 0 && (
+          <div className="py-10 text-center text-slate-400">No patients match your filters.</div>
+        )}
+      </div>
+      )}
+
+      {view === "list" && (
+      <Card className="hidden overflow-hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead>

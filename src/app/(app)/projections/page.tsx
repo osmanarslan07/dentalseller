@@ -69,7 +69,50 @@ export default async function ProjectionsPage() {
         defaultMonth={thisMonth}
       />
 
-      <Card className="overflow-hidden">
+      <div className="grid gap-3 md:hidden">
+        {rows.map((r) => {
+          const isCurrent = r.month === thisMonth;
+          return (
+            <Card key={r.month} className={`p-4 ${isCurrent ? "bg-teal-50/50" : ""}`}>
+              <div className="flex items-center gap-2 font-medium text-slate-800">
+                {monthLabel(r.month)}
+                {isCurrent && <Badge tone="blue">Current</Badge>}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">Actual received</div>
+                  <div className="text-slate-600">{formatCurrency(r.actualTotal, settings.currency)}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">Actual commission</div>
+                  <div className="font-medium text-slate-800">
+                    <Money value={r.actualCommission} currency={settings.currency} />
+                  </div>
+                  <Badge tone={tierTone(r.actualTotal, settings)}>
+                    <Percent value={r.actualRate} />
+                  </Badge>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">Expected (scheduled)</div>
+                  <div className="text-slate-600">{formatCurrency(r.expectedTotal, settings.currency)}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">Expected commission</div>
+                  <div className="font-medium text-slate-800">
+                    <Money value={r.expectedCommission} currency={settings.currency} />
+                  </div>
+                  <Badge tone={tierTone(r.expectedTotal, settings)}>
+                    <Percent value={r.expectedRate} />
+                  </Badge>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Card className="hidden overflow-hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-sm">
             <thead>

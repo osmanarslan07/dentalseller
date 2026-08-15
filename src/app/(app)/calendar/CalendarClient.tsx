@@ -162,18 +162,44 @@ export function CalendarClient({ patients }: { patients: Patient[] }) {
 
       <Card className="hidden p-5 md:block">
         <h2 className="mb-3 text-base font-semibold text-slate-900">
-          {selectedDate ? format(selectedDate, "EEEE, d MMMM yyyy") : "Select a day"}
+          {selectedDate ? format(selectedDate, "EEEE, d MMMM yyyy") : `Events in ${format(cursor, "MMMM yyyy")}`}
         </h2>
-        {!selectedDate ? (
-          <p className="text-sm text-slate-400">Click a day on the calendar to see its details.</p>
-        ) : selectedEvents.length === 0 ? (
-          <p className="text-sm text-slate-400">Nothing scheduled.</p>
+        {selectedDate ? (
+          selectedEvents.length === 0 ? (
+            <p className="text-sm text-slate-400">Nothing scheduled.</p>
+          ) : (
+            <ul className="divide-y divide-slate-50">
+              {selectedEvents.map((e, i) => (
+                <EventRow key={i} event={e} />
+              ))}
+            </ul>
+          )
+        ) : agendaDays.length === 0 ? (
+          <p className="text-sm text-slate-400">No events this month.</p>
         ) : (
-          <ul className="divide-y divide-slate-50">
-            {selectedEvents.map((e, i) => (
-              <EventRow key={i} event={e} />
-            ))}
-          </ul>
+          <div className="space-y-4">
+            {agendaDays.map((day) => {
+              const key = format(day, "yyyy-MM-dd");
+              const dayEvents = eventsByDate.get(key) ?? [];
+              return (
+                <div key={key}>
+                  <h3 className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {format(day, "EEEE, d MMM")}
+                    {isToday(day) && (
+                      <span className="rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-medium text-white">
+                        Today
+                      </span>
+                    )}
+                  </h3>
+                  <ul className="divide-y divide-slate-50">
+                    {dayEvents.map((e, i) => (
+                      <EventRow key={i} event={e} />
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
         )}
       </Card>
     </div>

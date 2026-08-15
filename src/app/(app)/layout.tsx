@@ -23,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <ToastProvider>
         <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
           <Nav email={user.email ?? ""} />
-          <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
+          <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-8 lg:px-8">{children}</main>
         </PrivacyProvider>
       </ToastProvider>
     </div>

@@ -28,6 +28,115 @@ const EVENT_ICONS: Record<CalendarEventKind, string> = {
   visit2_self: "📍",
 };
 
+function WalletIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3.5 7.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16 12.5h2.5a1.5 1.5 0 0 1 1.5 1.5v1a1.5 1.5 0 0 1-1.5 1.5H16a2 2 0 0 1 0-4Z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 8V6.8A1.8 1.8 0 0 1 5.3 5h9.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LayersIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="m12 3 8.5 4.5L12 12 3.5 7.5Z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m3.5 12 8.5 4.5 8.5-4.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m3.5 16.5 8.5 4.5 8.5-4.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TrendingUpIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3.5 16.5 9.5 10.5 13.5 14.5 20.5 7.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14.5 7.5h6v6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function HourglassIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M6 3.5h12M6 20.5h12" strokeLinecap="round" />
+      <path d="M7 3.5v3.2c0 1.7 1.9 3.4 5 5.3 3.1-1.9 5-3.6 5-5.3V3.5M7 20.5v-3.2c0-1.7 1.9-3.4 5-5.3 3.1 1.9 5 3.6 5 5.3v3.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PeopleIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="9" cy="8" r="3.25" />
+      <path d="M3.5 20c.6-3.4 3-5.3 5.5-5.3s4.9 1.9 5.5 5.3" strokeLinecap="round" />
+      <path d="M15.5 6.2c1.4.3 2.5 1.6 2.5 3.1s-1.1 2.8-2.5 3.1" strokeLinecap="round" />
+      <path d="M16.5 14.9c2 .5 3.5 2.2 4 5.1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CheckCircleIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m8.5 12.2 2.4 2.4 4.6-5.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function UserPlusIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="9.5" cy="8" r="3.25" />
+      <path d="M3.5 20c.6-3.4 3-5.3 6-5.3s5.4 1.9 6 5.3" strokeLinecap="round" />
+      <path d="M18 7.5v5M15.5 10h5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PlaneIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path
+        d="M14 3.5c1 0 1.8.8 1.8 1.8v4.4l5 3v2l-5-1.4v3.8l2 1.4v1.6l-3.5-1-3.5 1v-1.6l2-1.4v-3.8l-5 1.4v-2l5-3V5.3c0-1 .8-1.8 1.8-1.8Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PercentIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M6 18 18 6" strokeLinecap="round" />
+      <circle cx="7.5" cy="7.5" r="2" />
+      <circle cx="16.5" cy="16.5" r="2" />
+    </svg>
+  );
+}
+
+function TagIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M11.5 3.5H6a2.5 2.5 0 0 0-2.5 2.5v5.5L13 21l7.5-7.5L11.5 3.5Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="1.25" />
+    </svg>
+  );
+}
+
+function TrophyIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M7 4h10v5a5 5 0 0 1-10 0Z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 5.5H4.5v1a3.5 3.5 0 0 0 3.5 3.5M17 5.5h2.5v1a3.5 3.5 0 0 1-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 14v3M9 20.5h6M9.5 20.5l.7-3.5h3.6l.7 3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function treatmentTotal(p: Patient): number {
   return (p.visit1_expected ?? 0) + (p.visit2_expected ?? 0);
 }
@@ -211,6 +320,7 @@ export default async function DashboardPage() {
         label="Total earned to date"
         value={<Money value={totalActualCommission} currency={settings.currency} animate />}
         sublabel="Confirmed commission, actual payments"
+        icon={<WalletIcon className="h-4 w-4" />}
       />
     ),
     total_commission: (
@@ -223,6 +333,7 @@ export default async function DashboardPage() {
             <Money value={totalExpectedCommission} currency={settings.currency} showConversion={false} /> expected
           </>
         }
+        icon={<LayersIcon className="h-4 w-4" />}
       />
     ),
     month_earnings: (
@@ -230,6 +341,7 @@ export default async function DashboardPage() {
         label="This month's earnings so far"
         value={<Money value={thisMonthAgg?.actualCommission ?? 0} currency={settings.currency} animate />}
         sublabel={`From ${formatCurrency(thisMonthAgg?.actualTotal ?? 0, settings.currency)} received`}
+        icon={<TrendingUpIcon className="h-4 w-4" />}
       />
     ),
     expected_earnings: (
@@ -237,6 +349,7 @@ export default async function DashboardPage() {
         label="Total expected earnings"
         value={<Money value={outstandingExpected} currency={settings.currency} animate />}
         sublabel="Remaining commission across confirmed treatment plans"
+        icon={<HourglassIcon className="h-4 w-4" />}
       />
     ),
     patients_sold: (
@@ -244,6 +357,7 @@ export default async function DashboardPage() {
         label="Total patients sold"
         value={<CountUp value={totalPatients} />}
         sublabel={`${patientsThisMonth} confirmed this month`}
+        icon={<PeopleIcon className="h-4 w-4" />}
       />
     ),
     confirmed_this_month: (
@@ -251,18 +365,17 @@ export default async function DashboardPage() {
         label="Confirmed this month"
         value={<CountUp value={patientsThisMonth} />}
         sublabel={monthLabel(thisMonth)}
+        icon={<CheckCircleIcon className="h-4 w-4" />}
       />
     ),
     new_patients_delta: (
       <StatCard
         label="New patients vs last month"
         value={
-          <CountUp
-            value={newPatientsDelta}
-            format={(n) => `${n >= 0 ? "+" : ""}${Math.round(n)}`}
-          />
+          <CountUp value={newPatientsDelta} signed />
         }
         sublabel={`${patientsThisMonth} this month, ${patientsLastMonth} last month`}
+        icon={<UserPlusIcon className="h-4 w-4" />}
       />
     ),
     upcoming_visits_value: (
@@ -270,6 +383,7 @@ export default async function DashboardPage() {
         label="Upcoming visits value (30 days)"
         value={<Money value={upcomingValue} currency={settings.currency} animate />}
         sublabel={`${upcoming.length} visit${upcoming.length === 1 ? "" : "s"} scheduled`}
+        icon={<PlaneIcon className="h-4 w-4" />}
       />
     ),
     avg_commission_patient: (
@@ -277,6 +391,7 @@ export default async function DashboardPage() {
         label="Average commission per patient"
         value={<Money value={avgCommissionPerPatient} currency={settings.currency} animate />}
         sublabel={`Across ${totalPatients} patients`}
+        icon={<PercentIcon className="h-4 w-4" />}
       />
     ),
     avg_treatment_value: (
@@ -284,6 +399,7 @@ export default async function DashboardPage() {
         label="Average treatment value per patient"
         value={<Money value={avgTreatmentValue} currency={settings.currency} animate />}
         sublabel="Visit 1 + visit 2 expected total"
+        icon={<TagIcon className="h-4 w-4" />}
       />
     ),
     highest_value_patient: (
@@ -297,6 +413,7 @@ export default async function DashboardPage() {
             "No patients confirmed this month"
           )
         }
+        icon={<TrophyIcon className="h-4 w-4" />}
       />
     ),
   };

@@ -6,10 +6,12 @@ import { useEffect, useRef, useState } from "react";
 export function CountUp({
   value,
   duration = 800,
-  format = (n: number) => Math.round(n).toString(),
+  signed = false,
+  format = (n: number) => `${signed && n >= 0 ? "+" : ""}${Math.round(n)}`,
 }: {
   value: number;
   duration?: number;
+  signed?: boolean;
   format?: (n: number) => string;
 }) {
   const [display, setDisplay] = useState(0);

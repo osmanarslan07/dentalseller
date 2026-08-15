@@ -39,7 +39,10 @@
       "PowerShell(winget list *)",
       "PowerShell(winget install *)",
       "PowerShell(gh *)",
-      "PowerShell(gh auth *)"
+      "PowerShell(gh auth *)",
+      "Bash(npx supabase *)",
+      "Bash(npm uninstall *)",
+      "Bash(disown)"
     ]
   }
 }

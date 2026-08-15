@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { ChangeEvent, useState, useTransition } from "react";
 import { CommissionSettings, Patient } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
@@ -9,7 +9,7 @@ import { DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
 import { DashboardCardsPicker } from "@/components/DashboardCardsPicker";
 import { ExchangeRatePoint } from "@/lib/data";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
-import { saveDashboardCards, saveSettings } from "./actions";
+import { saveClinicBranding, saveDashboardCards, saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
 
@@ -28,6 +28,10 @@ export function SettingsClient({
   const [cardsPending, startCardsTransition] = useTransition();
   const [cardsError, setCardsError] = useState<string | null>(null);
   const [cardsSaved, setCardsSaved] = useState(false);
+  const [brandingPending, startBrandingTransition] = useTransition();
+  const [brandingError, setBrandingError] = useState<string | null>(null);
+  const [brandingSaved, setBrandingSaved] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(settings.clinic_logo_url);
   const { hidden, tryRate } = usePrivacy();
 
   const knownCardIds = new Set<DashboardCardId>(DASHBOARD_CARDS.map((c) => c.id));
@@ -64,6 +68,28 @@ export function SettingsClient({
         setCardsError(e instanceof Error ? e.message : "Something went wrong");
       }
     });
+  }
+
+  function handleBrandingSubmit(formData: FormData) {
+    setBrandingError(null);
+    setBrandingSaved(false);
+    startBrandingTransition(async () => {
+      try {
+        await saveClinicBranding(formData);
+        setBrandingSaved(true);
+        setTimeout(() => setBrandingSaved(false), 2500);
+      } catch (e) {
+        setBrandingError(e instanceof Error ? e.message : "Something went wrong");
+      }
+    });
+  }
+
+  function handleLogoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setLogoPreview(reader.result as string);
+    reader.readAsDataURL(file);
   }
 
   function handleExport() {
@@ -190,6 +216,75 @@ export function SettingsClient({
           <div className="flex justify-end pt-2">
             <Button type="submit" disabled={pending}>
               {pending ? "Saving…" : "Save settings"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-1 text-base font-semibold text-slate-900">Confirmation letter branding</h2>
+        <p className="mb-5 text-sm text-slate-500">
+          Clinic name, contact details and logo shown on the patient confirmation letter.
+        </p>
+
+        <form action={handleBrandingSubmit} className="space-y-4">
+          <div>
+            <Label>Logo</Label>
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                {logoPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logoPreview} alt="Clinic logo" className="h-full w-full object-contain" />
+                ) : (
+                  <span className="text-xs text-slate-400">No logo</span>
+                )}
+              </div>
+              <input
+                type="file"
+                name="clinic_logo"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                onChange={handleLogoChange}
+                className="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+              />
+            </div>
+            <p className="mt-1 text-xs text-slate-400">PNG, JPEG, SVG or WebP, up to 2MB.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Clinic name (full)</Label>
+              <Input name="clinic_name" defaultValue={settings.clinic_name} required />
+            </div>
+            <div>
+              <Label>Clinic name (short)</Label>
+              <Input name="clinic_short_name" defaultValue={settings.clinic_short_name} required />
+            </div>
+          </div>
+          <div>
+            <Label>Address</Label>
+            <Input name="clinic_address" defaultValue={settings.clinic_address} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Phone</Label>
+              <Input name="clinic_phone" defaultValue={settings.clinic_phone} />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input type="email" name="clinic_email" defaultValue={settings.clinic_email} />
+            </div>
+          </div>
+
+          {brandingError && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{brandingError}</p>
+          )}
+          {brandingSaved && (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Settings saved.</p>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={brandingPending}>
+              {brandingPending ? "Saving…" : "Save branding"}
             </Button>
           </div>
         </form>

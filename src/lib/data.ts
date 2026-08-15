@@ -53,6 +53,12 @@ export async function getSettings(supabase: SupabaseClient): Promise<CommissionS
       Array.isArray(data.dashboard_cards) && data.dashboard_cards.length > 0
         ? data.dashboard_cards
         : DEFAULT_DASHBOARD_CARDS,
+    clinic_name: data.clinic_name ?? DEFAULT_SETTINGS.clinic_name,
+    clinic_short_name: data.clinic_short_name ?? DEFAULT_SETTINGS.clinic_short_name,
+    clinic_address: data.clinic_address ?? DEFAULT_SETTINGS.clinic_address,
+    clinic_phone: data.clinic_phone ?? DEFAULT_SETTINGS.clinic_phone,
+    clinic_email: data.clinic_email ?? DEFAULT_SETTINGS.clinic_email,
+    clinic_logo_url: data.clinic_logo_url ?? null,
   };
 }
 

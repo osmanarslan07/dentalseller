@@ -142,6 +142,14 @@ alter table public.settings alter column dashboard_cards set default array[
   'avg_treatment_value', 'highest_value_patient'
 ]::text[];
 
+-- confirmation-letter clinic branding (name/contact/logo), editable from Settings
+alter table public.settings add column if not exists clinic_name text not null default 'Thera Dental Clinic Turkey';
+alter table public.settings add column if not exists clinic_short_name text not null default 'Thera Dental Clinic';
+alter table public.settings add column if not exists clinic_address text not null default 'Kasya Plaza, Göksu, 6806 Sok No:8-3, 07260 Kepez/Antalya';
+alter table public.settings add column if not exists clinic_phone text not null default '+90 (544) 954 04 49';
+alter table public.settings add column if not exists clinic_email text not null default 'info@theradentturkey.com';
+alter table public.settings add column if not exists clinic_logo_url text;
+
 alter table public.settings enable row level security;
 
 create policy "settings_select_own" on public.settings
@@ -174,3 +182,9 @@ alter table public.exchange_rates enable row level security;
 -- readable by any signed-in user; only the service role (cron job) inserts
 create policy "exchange_rates_select_all" on public.exchange_rates
   for select using (true);
+
+-- ---------- storage: clinic-assets (confirmation-letter logo) ----------
+-- public read, uploads go through the server action using the service-role client
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('clinic-assets', 'clinic-assets', true, 2097152, array['image/png','image/jpeg','image/svg+xml','image/webp'])
+on conflict (id) do nothing;

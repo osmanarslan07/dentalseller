@@ -6,14 +6,6 @@ import { getPatient, getSettings } from "@/lib/data";
 import { formatCurrency } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
 
-const CLINIC = {
-  name: "Thera Dental Clinic Turkey",
-  shortName: "Thera Dental Clinic",
-  address: "Kasya Plaza, Göksu, 6806 Sok No:8-3, 07260 Kepez/Antalya",
-  phone: "+90 (544) 954 04 49",
-  email: "info@theradentturkey.com",
-};
-
 /** Confirmation-letter dates read DD/MM/YYYY (or DD.MM.YYYY for flights) — matches the clinic's existing template. */
 function formatDMY(dateStr: string | null, sep: string = "/"): string {
   if (!dateStr) return "—";
@@ -77,6 +69,15 @@ export default async function ConfirmationLetterPage({
 
   if (!patient) notFound();
 
+  const clinic = {
+    name: settings.clinic_name,
+    shortName: settings.clinic_short_name,
+    address: settings.clinic_address,
+    phone: settings.clinic_phone,
+    email: settings.clinic_email,
+    logoUrl: settings.clinic_logo_url ?? "/Thera_Logo.png",
+  };
+
   const firstVisitPayment = patient.visit1_actual ?? patient.visit1_expected;
   const secondVisitPayment = patient.visit2_actual ?? patient.visit2_expected;
   const totalPayment = (firstVisitPayment ?? 0) + (secondVisitPayment ?? 0);
@@ -139,12 +140,12 @@ export default async function ConfirmationLetterPage({
       <div className="rounded-2xl bg-white p-10 shadow-sm ring-1 ring-slate-900/5 print:rounded-none print:p-0 print:shadow-none print:ring-0">
         <div className="flex items-start justify-between gap-6 border-b-4 border-slate-900 pb-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/Thera_Logo.png" alt={CLINIC.shortName} className="h-24 w-auto object-contain" />
+          <img src={clinic.logoUrl} alt={clinic.shortName} className="h-24 w-auto object-contain" />
           <div className="text-right text-xs leading-relaxed text-slate-600">
-            <p>{CLINIC.address}</p>
-            <p className="font-semibold text-slate-900">{CLINIC.phone}</p>
+            <p>{clinic.address}</p>
+            <p className="font-semibold text-slate-900">{clinic.phone}</p>
             <p>
-              EMAIL: <span className="font-medium text-teal-700">{CLINIC.email}</span>
+              EMAIL: <span className="font-medium text-teal-700">{clinic.email}</span>
             </p>
           </div>
         </div>
@@ -156,7 +157,7 @@ export default async function ConfirmationLetterPage({
             <h1 className="border-b border-slate-900 pb-1 text-xl font-bold text-slate-900">Thank you!</h1>
             <p className="mt-4 text-sm text-slate-700">Dear {patient.name},</p>
             <p className="mt-3 text-sm font-bold text-slate-900">
-              It&apos;s our pleasure to welcome you to the {CLINIC.shortName} and Antalya!
+              It&apos;s our pleasure to welcome you to the {clinic.shortName} and Antalya!
             </p>
             <p className="mt-3 text-sm leading-relaxed text-slate-700">
               We have included all the key information you may need once you arrive. Our team has taken
@@ -170,7 +171,7 @@ export default async function ConfirmationLetterPage({
             <p className="mt-4 text-sm text-slate-700">
               Thank you,
               <br />
-              {CLINIC.name}
+              {clinic.name}
             </p>
 
             <div className="mt-8">

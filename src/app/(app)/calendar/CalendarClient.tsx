@@ -37,6 +37,11 @@ export function CalendarClient({ patients }: { patients: Patient[] }) {
 
   const selectedEvents = selectedDate ? eventsByDate.get(format(selectedDate, "yyyy-MM-dd")) ?? [] : [];
 
+  const agendaDays = useMemo(() => {
+    const monthDays = eachDayOfInterval({ start: startOfMonth(cursor), end: endOfMonth(cursor) });
+    return monthDays.filter((d) => (eventsByDate.get(format(d, "yyyy-MM-dd"))?.length ?? 0) > 0);
+  }, [cursor, eventsByDate]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -75,7 +80,35 @@ export function CalendarClient({ patients }: { patients: Patient[] }) {
         <LegendDot className="bg-slate-200" label="Visit (self-arranged)" />
       </div>
 
-      <Card className="overflow-hidden">
+      <div className="space-y-3 md:hidden">
+        {agendaDays.length === 0 ? (
+          <Card className="p-5 text-center text-sm text-slate-400">No events this month.</Card>
+        ) : (
+          agendaDays.map((day) => {
+            const key = format(day, "yyyy-MM-dd");
+            const dayEvents = eventsByDate.get(key) ?? [];
+            return (
+              <Card key={key} className="p-4">
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  {format(day, "EEEE, d MMMM")}
+                  {isToday(day) && (
+                    <span className="rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-medium text-white">
+                      Today
+                    </span>
+                  )}
+                </h3>
+                <ul className="divide-y divide-slate-50">
+                  {dayEvents.map((e, i) => (
+                    <EventRow key={i} event={e} />
+                  ))}
+                </ul>
+              </Card>
+            );
+          })
+        )}
+      </div>
+
+      <Card className="hidden overflow-hidden md:block">
         <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/60 text-xs font-medium uppercase tracking-wide text-slate-400">
           {WEEKDAYS.map((d) => (
             <div key={d} className="px-2 py-2 text-center">
@@ -127,7 +160,7 @@ export function CalendarClient({ patients }: { patients: Patient[] }) {
         </div>
       </Card>
 
-      <Card className="p-5">
+      <Card className="hidden p-5 md:block">
         <h2 className="mb-3 text-base font-semibold text-slate-900">
           {selectedDate ? format(selectedDate, "EEEE, d MMMM yyyy") : "Select a day"}
         </h2>

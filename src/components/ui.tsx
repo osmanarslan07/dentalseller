@@ -102,7 +102,7 @@ export function StatCard({
   icon?: ReactNode;
 }) {
   return (
-    <Card className="p-5">
+    <Card className="flex h-full flex-col p-5">
       <div className="flex items-start justify-between">
         <p className="text-sm font-medium text-slate-500">{label}</p>
         {icon && <div className="text-teal-600">{icon}</div>}

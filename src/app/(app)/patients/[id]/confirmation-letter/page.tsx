@@ -141,8 +141,8 @@ export default async function ConfirmationLetterPage({
         <PrintButton />
       </div>
 
-      <div className="rounded-2xl bg-white p-10 shadow-sm ring-1 ring-slate-900/5 print:rounded-none print:p-0 print:shadow-none print:ring-0">
-        <div className="flex items-start justify-between gap-6 border-b-4 border-slate-900 pb-4">
+      <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5 sm:p-10 print:rounded-none print:p-0 print:shadow-none print:ring-0">
+        <div className="flex flex-col items-start gap-4 border-b-4 border-slate-900 pb-4 sm:flex-row sm:justify-between sm:gap-6 print:flex-row print:justify-between print:gap-6">
           {clinic.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={clinic.logoUrl} alt={clinic.shortName} className="h-24 w-auto object-contain" />
@@ -151,7 +151,7 @@ export default async function ConfirmationLetterPage({
               No Logo
             </div>
           )}
-          <div className="text-right text-xs leading-relaxed text-slate-600">
+          <div className="text-xs leading-relaxed text-slate-600 sm:text-right print:text-right">
             <p>{clinic.address}</p>
             <p className="font-semibold text-slate-900">{clinic.phone}</p>
             <p>

@@ -14,8 +14,10 @@ function formatDateTime(date: string | null, time: string | null) {
 
 function buildNewPatientMessage(input: PatientInput): string {
   const arrival = formatDateTime(input.visit1_arrival_date, input.visit1_arrival_time);
-  const departureDate = input.needs_visit2 ? input.visit2_departure_date || input.visit1_departure_date : input.visit1_departure_date;
-  const departureTime = input.needs_visit2 ? input.visit2_departure_time || input.visit1_departure_time : input.visit1_departure_time;
+  const useVisit2Departure = input.needs_visit2 && !!input.visit2_departure_date;
+  const departureDate = useVisit2Departure ? input.visit2_departure_date : input.visit1_departure_date;
+  const departureTime = useVisit2Departure ? input.visit2_departure_time : input.visit1_departure_time;
+  const departureFlightNo = useVisit2Departure ? input.visit2_departure_flight_no : input.visit1_departure_flight_no;
   const departure = formatDateTime(departureDate, departureTime);
   const hotel = input.visit2_hotel_name || input.visit1_hotel_name;
   const roomType = input.visit2_room_type || input.visit1_room_type;
@@ -28,11 +30,7 @@ function buildNewPatientMessage(input: PatientInput): string {
       ? `<b>Geliş:</b> ${arrival}${input.visit1_arrival_flight_no ? ` - <code>${input.visit1_arrival_flight_no}</code>` : ""}`
       : null,
     departure
-      ? `<b>Gidiş:</b> ${departure}${
-          (input.needs_visit2 ? input.visit2_departure_flight_no : input.visit1_departure_flight_no)
-            ? ` - <code>${input.needs_visit2 ? input.visit2_departure_flight_no : input.visit1_departure_flight_no}</code>`
-            : ""
-        }`
+      ? `<b>Gidiş:</b> ${departure}${departureFlightNo ? ` - <code>${departureFlightNo}</code>` : ""}`
       : null,
     hotel ? `<b>Otel:</b> ${hotel}` : null,
     roomType ? `<b>Oda Türü:</b> ${roomType}` : null,

@@ -5,7 +5,7 @@ import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { Patient } from "@/types";
-import { createPatient, updatePatient } from "./actions";
+import { createPatient, updatePatient, sendPatientTelegramMessage } from "./actions";
 
 export function PatientFormModal({
   open,
@@ -25,6 +25,7 @@ export function PatientFormModal({
   roomTypeOptions?: string[];
 }) {
   const [pending, startTransition] = useTransition();
+  const [telegramPending, setTelegramPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isEdit = !!patient;
 
@@ -61,6 +62,19 @@ export function PatientFormModal({
   function handleRequestClose() {
     if (isDirty && !confirm("Discard unsaved changes?")) return;
     onClose();
+  }
+
+  async function handleSendTelegram() {
+    if (!patient) return;
+    setTelegramPending(true);
+    try {
+      await sendPatientTelegramMessage(patient.id);
+      showToast("Sent to Telegram ✓");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to send to Telegram");
+    } finally {
+      setTelegramPending(false);
+    }
   }
 
   function handleSubmit(formData: FormData) {
@@ -212,7 +226,18 @@ export function PatientFormModal({
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex items-center justify-end gap-2 pt-2">
+          {isEdit && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleSendTelegram}
+              disabled={telegramPending}
+              className="mr-auto"
+            >
+              {telegramPending ? "Sending…" : "Send to Telegram"}
+            </Button>
+          )}
           <Button type="button" variant="secondary" onClick={handleRequestClose}>
             Cancel
           </Button>

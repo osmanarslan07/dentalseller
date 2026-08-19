@@ -230,7 +230,10 @@ export default async function DashboardPage() {
     if (!p) continue;
     const isVisit2 = e.kind.startsWith("visit2");
     const status = isVisit2 ? p.visit2_status : p.visit1_status;
-    if (status !== "upcoming") continue;
+    // Departure flights stay relevant even after the visit itself is marked completed —
+    // only arrivals/self-visits should disappear once their status flips.
+    const isDeparture = e.kind === "visit1_departure" || e.kind === "visit2_departure";
+    if (!isDeparture && status !== "upcoming") continue;
     const d = new Date(e.date);
     if (d < today || d > monthAhead) continue;
     const daysLeft = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -459,13 +462,13 @@ export default async function DashboardPage() {
 
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-slate-900">Upcoming visits this month</h2>
+            <h2 className="text-base font-semibold text-slate-900">Upcoming events this month</h2>
             <Link href="/calendar" className="text-sm font-medium text-teal-600 hover:text-teal-700">
               View calendar →
             </Link>
           </div>
           {dayGroups.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No visits scheduled this month.</p>
+            <p className="py-8 text-center text-sm text-slate-400">No events scheduled this month.</p>
           ) : (
             <div className="space-y-4">
               {(() => {

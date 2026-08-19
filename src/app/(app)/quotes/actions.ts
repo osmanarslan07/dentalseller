@@ -24,7 +24,9 @@ function parseInput(formData: FormData): QuoteInput {
     inclusions: str("inclusions"),
     total_price: num("total_price"),
     currency: String(formData.get("currency") ?? "GBP"),
+    split_mode: (formData.get("split_mode") as QuoteInput["split_mode"]) || "percent",
     deposit_percent: num("deposit_percent") ?? 60,
+    first_visit_amount: num("first_visit_amount"),
     include_bone_graft_note: formData.get("include_bone_graft_note") === "on",
     bone_graft_note: str("bone_graft_note"),
     notes: str("notes"),
@@ -88,7 +90,12 @@ export async function convertQuoteToPatient(id: string) {
     .single();
   if (quoteError) throw new Error(quoteError.message);
 
-  const { first, second } = computeQuoteSplit(quote.total_price, quote.deposit_percent);
+  const { first, second } = computeQuoteSplit(
+    quote.total_price,
+    quote.split_mode,
+    quote.deposit_percent,
+    quote.first_visit_amount
+  );
   const letterItems = (quote.inclusions || "")
     .split("\n")
     .map((s: string) => s.replace(/^-\s*/, "").trim())

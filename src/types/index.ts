@@ -54,6 +54,7 @@ export type PatientInput = Omit<
 >;
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";
+export type QuoteSplitMode = "percent" | "amount";
 
 export interface Quote {
   id: string;
@@ -66,7 +67,9 @@ export interface Quote {
 
   total_price: number | null;
   currency: string;
+  split_mode: QuoteSplitMode;
   deposit_percent: number;
+  first_visit_amount: number | null;
 
   include_bone_graft_note: boolean;
   bone_graft_note: string | null;

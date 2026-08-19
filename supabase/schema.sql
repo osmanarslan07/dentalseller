@@ -196,7 +196,9 @@ create table if not exists public.quotes (
 
   total_price numeric(10,2),
   currency text not null default 'GBP',
+  split_mode text not null default 'percent' check (split_mode in ('percent', 'amount')),
   deposit_percent numeric(5,2) not null default 60,
+  first_visit_amount numeric(10,2),
 
   include_bone_graft_note boolean not null default false,
   bone_graft_note text,
@@ -209,6 +211,10 @@ create table if not exists public.quotes (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- migration for existing databases (safe to re-run)
+alter table public.quotes add column if not exists split_mode text not null default 'percent' check (split_mode in ('percent', 'amount'));
+alter table public.quotes add column if not exists first_visit_amount numeric(10,2);
 
 create index if not exists quotes_user_id_idx on public.quotes(user_id);
 create index if not exists quotes_status_idx on public.quotes(status);

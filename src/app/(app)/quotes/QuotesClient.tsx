@@ -153,7 +153,12 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
             </thead>
             <tbody>
               {rows.map((quote) => {
-                const { first, second } = computeQuoteSplit(quote.total_price, quote.deposit_percent);
+                const { first, second } = computeQuoteSplit(
+                  quote.total_price,
+                  quote.split_mode,
+                  quote.deposit_percent,
+                  quote.first_visit_amount
+                );
                 return (
                   <tr
                     key={quote.id}
@@ -246,7 +251,12 @@ function QuoteCard({
   onDelete: () => void;
   onConvert: () => void;
 }) {
-  const { first, second } = computeQuoteSplit(quote.total_price, quote.deposit_percent);
+  const { first, second } = computeQuoteSplit(
+    quote.total_price,
+    quote.split_mode,
+    quote.deposit_percent,
+    quote.first_visit_amount
+  );
   return (
     <Card className="cursor-pointer p-4" onClick={onEdit}>
       <div className="flex items-start justify-between gap-2">

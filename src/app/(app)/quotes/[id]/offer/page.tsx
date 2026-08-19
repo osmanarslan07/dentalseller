@@ -19,9 +19,6 @@ export default async function QuoteOfferPage({ params }: { params: Promise<{ id:
   const clinic = {
     name: settings.clinic_name,
     shortName: settings.clinic_short_name,
-    address: settings.clinic_address,
-    phone: settings.clinic_phone,
-    email: settings.clinic_email,
     logoUrl: settings.clinic_logo_url ?? null,
   };
 
@@ -30,7 +27,12 @@ export default async function QuoteOfferPage({ params }: { params: Promise<{ id:
     .map((s) => s.replace(/^-\s*/, "").trim())
     .filter(Boolean);
 
-  const { first, second } = computeQuoteSplit(quote.total_price, quote.deposit_percent);
+  const { first, second } = computeQuoteSplit(
+    quote.total_price,
+    quote.split_mode,
+    quote.deposit_percent,
+    quote.first_visit_amount
+  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -39,7 +41,7 @@ export default async function QuoteOfferPage({ params }: { params: Promise<{ id:
       </div>
 
       <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5 sm:p-10 print:rounded-none print:p-0 print:shadow-none print:ring-0">
-        <div className="flex flex-col items-start gap-4 border-b-4 border-slate-900 pb-4 sm:flex-row sm:justify-between sm:gap-6 print:flex-row print:justify-between print:gap-6">
+        <div className="border-b-4 border-slate-900 pb-4">
           {clinic.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={clinic.logoUrl} alt={clinic.shortName} className="h-24 w-auto object-contain" />
@@ -48,13 +50,6 @@ export default async function QuoteOfferPage({ params }: { params: Promise<{ id:
               No Logo
             </div>
           )}
-          <div className="text-xs leading-relaxed text-slate-600 sm:text-right print:text-right">
-            <p>{clinic.address}</p>
-            <p className="font-semibold text-slate-900">{clinic.phone}</p>
-            <p>
-              EMAIL: <span className="font-medium text-teal-700">{clinic.email}</span>
-            </p>
-          </div>
         </div>
 
         <p className="mt-6 text-sm font-bold text-slate-900">{todayLabel()}</p>
@@ -89,18 +84,22 @@ export default async function QuoteOfferPage({ params }: { params: Promise<{ id:
 
               {first != null && second != null && (
                 <div className="mt-4">
-                  <p className="text-sm font-semibold text-slate-900">
-                    Split Payment is Available as:
-                  </p>
+                  <p className="text-sm font-semibold text-slate-900">Split Payment is Available as:</p>
                   <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
                     <li className="flex items-baseline justify-between gap-4 border-b border-slate-100 pb-1.5">
                       <span>
-                        {quote.deposit_percent}% at First Visit
+                        {quote.split_mode === "percent"
+                          ? `${quote.deposit_percent}% at First Visit`
+                          : "First Visit Payment"}
                       </span>
                       <span className="font-bold tabular-nums">{formatCurrency(first, quote.currency)}</span>
                     </li>
                     <li className="flex items-baseline justify-between gap-4">
-                      <span>{100 - quote.deposit_percent}% at Second Visit</span>
+                      <span>
+                        {quote.split_mode === "percent"
+                          ? `${100 - quote.deposit_percent}% at Second Visit`
+                          : "Second Visit Payment"}
+                      </span>
                       <span className="font-bold tabular-nums">{formatCurrency(second, quote.currency)}</span>
                     </li>
                   </ul>

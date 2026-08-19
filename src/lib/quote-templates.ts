@@ -11,9 +11,26 @@ export const DEFAULT_QUOTE_INCLUSIONS = [
   "Free Night Guard & Medication",
 ].join("\n");
 
-/** First-visit / second-visit split for a quote's total price. Second visit absorbs the rounding remainder. */
-export function computeQuoteSplit(totalPrice: number | null, depositPercent: number) {
+/**
+ * First-visit / second-visit split for a quote's total price. Second visit absorbs the rounding remainder.
+ * In "percent" mode the first-visit amount is derived from depositPercent; in "amount" mode it's typed
+ * directly and the percentage (if needed for display) can be derived from the result.
+ */
+export function computeQuoteSplit(
+  totalPrice: number | null,
+  splitMode: "percent" | "amount",
+  depositPercent: number,
+  firstVisitAmount: number | null
+) {
   if (totalPrice == null) return { first: null as number | null, second: null as number | null };
+
+  if (splitMode === "amount") {
+    if (firstVisitAmount == null) return { first: null as number | null, second: null as number | null };
+    const first = firstVisitAmount;
+    const second = Math.round((totalPrice - first) * 100) / 100;
+    return { first, second };
+  }
+
   const first = Math.round(totalPrice * (depositPercent / 100) * 100) / 100;
   const second = Math.round((totalPrice - first) * 100) / 100;
   return { first, second };

@@ -31,7 +31,11 @@ export function QuoteFormModal({
   const [isDirty, setIsDirty] = useState(false);
   const [includeBoneGraft, setIncludeBoneGraft] = useState(quote?.include_bone_graft_note ?? false);
   const [totalPrice, setTotalPrice] = useState<string>(quote?.total_price?.toString() ?? "");
+  const [splitMode, setSplitMode] = useState<"percent" | "amount">(quote?.split_mode ?? "percent");
   const [depositPercent, setDepositPercent] = useState<string>(quote?.deposit_percent?.toString() ?? "60");
+  const [firstVisitAmount, setFirstVisitAmount] = useState<string>(
+    quote?.first_visit_amount?.toString() ?? ""
+  );
   const isEdit = !!quote;
   const { showToast } = useToast();
   const router = useRouter();
@@ -63,7 +67,9 @@ export function QuoteFormModal({
 
   const { first, second } = computeQuoteSplit(
     totalPrice === "" ? null : Number(totalPrice),
-    Number(depositPercent) || 0
+    splitMode,
+    Number(depositPercent) || 0,
+    firstVisitAmount === "" ? null : Number(firstVisitAmount)
   );
 
   return (
@@ -107,7 +113,7 @@ export function QuoteFormModal({
           <p className="mt-1 text-xs text-slate-400">One item per line — each becomes a bullet on the offer.</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <Label>Total price</Label>
             <Input
@@ -124,26 +130,70 @@ export function QuoteFormModal({
             <Label>Currency</Label>
             <Input name="currency" defaultValue={quote?.currency ?? defaultCurrency} placeholder="GBP" />
           </div>
-          <div>
-            <Label>First-visit deposit %</Label>
-            <Input
-              type="number"
-              step="1"
-              min="0"
-              max="100"
-              name="deposit_percent"
-              value={depositPercent}
-              onChange={(e) => setDepositPercent(e.target.value)}
-            />
-          </div>
         </div>
 
-        {totalPrice !== "" && first != null && second != null && (
-          <p className="rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-700">
-            Split: {formatCurrency(first, quote?.currency ?? defaultCurrency)} at first visit +{" "}
-            {formatCurrency(second, quote?.currency ?? defaultCurrency)} at second visit
-          </p>
-        )}
+        <div>
+          <Label>Payment split</Label>
+          <div className="inline-flex rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setSplitMode("percent")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                splitMode === "percent" ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Show as percentage
+            </button>
+            <button
+              type="button"
+              onClick={() => setSplitMode("amount")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                splitMode === "amount" ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Fixed amount
+            </button>
+          </div>
+          <input type="hidden" name="split_mode" value={splitMode} />
+
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {splitMode === "percent" ? (
+              <div>
+                <Label>First-visit deposit %</Label>
+                <Input
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  name="deposit_percent"
+                  value={depositPercent}
+                  onChange={(e) => setDepositPercent(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div>
+                <Label>First-visit payment</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  name="first_visit_amount"
+                  value={firstVisitAmount}
+                  onChange={(e) => setFirstVisitAmount(e.target.value)}
+                  placeholder="3150"
+                />
+                <p className="mt-1 text-xs text-slate-400">Second visit is total minus this amount.</p>
+              </div>
+            )}
+          </div>
+
+          {totalPrice !== "" && first != null && second != null && (
+            <p className="mt-3 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-700">
+              Split: {formatCurrency(first, quote?.currency ?? defaultCurrency)} at first visit +{" "}
+              {formatCurrency(second, quote?.currency ?? defaultCurrency)} at second visit
+            </p>
+          )}
+        </div>
 
         <div>
           <label className="flex items-center gap-2 text-sm text-slate-600">

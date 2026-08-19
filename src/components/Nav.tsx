@@ -25,6 +25,16 @@ function PatientsIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function QuotesIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 3v5h5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 13h6M9 16.5h6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function CalendarIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -59,6 +69,7 @@ function SettingsIcon({ className = "" }: { className?: string }) {
 const LINKS: { href: string; label: string; icon: (props: { className?: string }) => ReactNode }[] = [
   { href: "/", label: "Home", icon: HomeIcon },
   { href: "/patients", label: "Patients", icon: PatientsIcon },
+  { href: "/quotes", label: "Quotes", icon: QuotesIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
   { href: "/projections", label: "Projections", icon: ProjectionsIcon },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
@@ -149,7 +160,7 @@ export function Nav({ email }: { email: string }) {
       </header>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden print:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden print:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {LINKS.map((link) => {

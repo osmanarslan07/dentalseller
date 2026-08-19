@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { CommissionSettings, DEFAULT_SETTINGS, Patient } from "@/types";
+import { CommissionSettings, DEFAULT_SETTINGS, Patient, Quote } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 
 /** Cold-start Supabase reads occasionally flake with a network error; one retry clears it. */
@@ -60,6 +60,24 @@ export async function getSettings(supabase: SupabaseClient): Promise<CommissionS
     clinic_email: data.clinic_email ?? DEFAULT_SETTINGS.clinic_email,
     clinic_logo_url: data.clinic_logo_url ?? null,
   };
+}
+
+export async function getQuotes(supabase: SupabaseClient): Promise<Quote[]> {
+  const { data, error } = await withRetry(() =>
+    supabase.from("quotes").select("*").order("created_at", { ascending: false })
+  );
+
+  if (error) throw error;
+  return data as Quote[];
+}
+
+export async function getQuote(supabase: SupabaseClient, id: string): Promise<Quote | null> {
+  const { data, error } = await withRetry(() =>
+    supabase.from("quotes").select("*").eq("id", id).maybeSingle()
+  );
+
+  if (error) throw error;
+  return data as Quote | null;
 }
 
 export interface ExchangeRatePoint {

@@ -183,6 +183,52 @@ alter table public.exchange_rates enable row level security;
 create policy "exchange_rates_select_all" on public.exchange_rates
   for select using (true);
 
+-- ---------- quotes (draft/unconfirmed offers, decoupled from patients) ----------
+create table if not exists public.quotes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+
+  name text not null,
+  status text not null default 'draft' check (status in ('draft', 'sent', 'accepted', 'declined')),
+
+  intro_text text,
+  inclusions text,
+
+  total_price numeric(10,2),
+  currency text not null default 'GBP',
+  deposit_percent numeric(5,2) not null default 60,
+
+  include_bone_graft_note boolean not null default false,
+  bone_graft_note text,
+
+  notes text,
+  komo_reference text,
+
+  converted_patient_id uuid references public.patients(id) on delete set null,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists quotes_user_id_idx on public.quotes(user_id);
+create index if not exists quotes_status_idx on public.quotes(status);
+
+alter table public.quotes enable row level security;
+
+create policy "quotes_select_own" on public.quotes
+  for select using (auth.uid() = user_id);
+create policy "quotes_insert_own" on public.quotes
+  for insert with check (auth.uid() = user_id);
+create policy "quotes_update_own" on public.quotes
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "quotes_delete_own" on public.quotes
+  for delete using (auth.uid() = user_id);
+
+drop trigger if exists quotes_set_updated_at on public.quotes;
+create trigger quotes_set_updated_at
+  before update on public.quotes
+  for each row execute function public.set_updated_at();
+
 -- ---------- storage: clinic-assets (confirmation-letter logo) ----------
 -- public read, uploads go through the server action using the service-role client
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

@@ -53,6 +53,38 @@ export type PatientInput = Omit<
   "id" | "user_id" | "created_at" | "updated_at"
 >;
 
+export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";
+
+export interface Quote {
+  id: string;
+  user_id: string;
+  name: string;
+  status: QuoteStatus;
+
+  intro_text: string | null;
+  inclusions: string | null;
+
+  total_price: number | null;
+  currency: string;
+  deposit_percent: number;
+
+  include_bone_graft_note: boolean;
+  bone_graft_note: string | null;
+
+  notes: string | null;
+  komo_reference: string | null;
+
+  converted_patient_id: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export type QuoteInput = Omit<
+  Quote,
+  "id" | "user_id" | "created_at" | "updated_at" | "converted_patient_id"
+>;
+
 export interface CommissionSettings {
   tier1_threshold: number;
   tier1_rate: number;

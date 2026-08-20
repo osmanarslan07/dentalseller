@@ -9,7 +9,10 @@ import { computeQuoteSplit } from "@/lib/quote-templates";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { QuoteFormModal } from "./QuoteFormModal";
-import { deleteQuote, convertQuoteToPatient } from "./actions";
+import { QuoteCompareModal } from "./QuoteCompareModal";
+import { deleteQuote, convertQuoteToPatient, duplicateQuote } from "./actions";
+
+const groupKey = (quote: Quote) => quote.name.trim().toLowerCase();
 
 const STATUS_TONES: Record<QuoteStatus, "slate" | "green" | "amber" | "blue"> = {
   draft: "slate",
@@ -32,6 +35,8 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [compareKey, setCompareKey] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const { showToast } = useToast();
   const router = useRouter();
@@ -45,8 +50,29 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
     if (statusFilter !== "all") {
       list = list.filter((quote) => quote.status === statusFilter);
     }
-    return list;
+
+    // group quotes that share a name so alternatives for the same patient sit together,
+    // newest group first (source list is already newest-first) and stable within a group
+    const groupOrder = new Map<string, number>();
+    const groupCounts = new Map<string, number>();
+    for (const quote of list) {
+      const key = groupKey(quote);
+      if (!groupOrder.has(key)) groupOrder.set(key, groupOrder.size);
+      groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
+    }
+    const sorted = [...list].sort((a, b) => groupOrder.get(groupKey(a))! - groupOrder.get(groupKey(b))!);
+
+    return sorted.map((quote, i) => {
+      const key = groupKey(quote);
+      const isGroupStart = i === 0 || groupKey(sorted[i - 1]) !== key;
+      return { quote, groupCount: groupCounts.get(key)!, isGroupStart };
+    });
   }, [quotes, search, statusFilter]);
+
+  const compareQuotes = useMemo(
+    () => (compareKey ? quotes.filter((quote) => groupKey(quote) === compareKey) : []),
+    [quotes, compareKey]
+  );
 
   function handleDelete(id: string) {
     if (!confirm("Delete this quote? This cannot be undone.")) return;
@@ -59,6 +85,21 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
         showToast(e instanceof Error ? e.message : "Failed to delete quote", "error");
       } finally {
         setDeletingId(null);
+      }
+    });
+  }
+
+  function handleDuplicate(id: string) {
+    setDuplicatingId(id);
+    startTransition(async () => {
+      try {
+        await duplicateQuote(id);
+        showToast("Quote duplicated ✓");
+        router.refresh();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Failed to duplicate quote", "error");
+      } finally {
+        setDuplicatingId(null);
       }
     });
   }
@@ -120,19 +161,24 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
       </Card>
 
       <div className="grid gap-3 md:hidden">
-        {rows.map((quote) => (
+        {rows.map(({ quote, groupCount, isGroupStart }) => (
           <QuoteCard
             key={quote.id}
             quote={quote}
+            groupCount={groupCount}
+            showCompare={isGroupStart && groupCount > 1}
             defaultCurrency={defaultCurrency}
             deleting={deletingId === quote.id}
             converting={convertingId === quote.id}
+            duplicating={duplicatingId === quote.id}
             onEdit={() => {
               setEditingQuote(quote);
               setModalOpen(true);
             }}
             onDelete={() => handleDelete(quote.id)}
             onConvert={() => handleConvert(quote.id)}
+            onDuplicate={() => handleDuplicate(quote.id)}
+            onCompare={() => setCompareKey(groupKey(quote))}
           />
         ))}
         {rows.length === 0 && <div className="py-10 text-center text-slate-400">No quotes match your filters.</div>}
@@ -152,7 +198,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
               </tr>
             </thead>
             <tbody>
-              {rows.map((quote) => {
+              {rows.map(({ quote, groupCount, isGroupStart }) => {
                 const { first, second } = computeQuoteSplit(
                   quote.total_price,
                   quote.split_mode,
@@ -168,7 +214,28 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
                       setModalOpen(true);
                     }}
                   >
-                    <td className="py-3 pl-4 pr-4 font-medium text-slate-800">{quote.name}</td>
+                    <td className="py-3 pl-4 pr-4 font-medium text-slate-800">
+                      <span className="inline-flex items-center gap-2">
+                        {quote.name}
+                        {quote.label && <span className="text-xs font-normal text-slate-400">{quote.label}</span>}
+                        {groupCount > 1 && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                            {groupCount} quotes
+                          </span>
+                        )}
+                        {isGroupStart && groupCount > 1 && (
+                          <button
+                            className="text-[11px] font-medium text-teal-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCompareKey(groupKey(quote));
+                            }}
+                          >
+                            Compare
+                          </button>
+                        )}
+                      </span>
+                    </td>
                     <td className="py-3 pr-4">
                       <Badge tone={STATUS_TONES[quote.status]}>{STATUS_LABELS[quote.status]}</Badge>
                     </td>
@@ -200,6 +267,13 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
                           </button>
                         )}
                         <button
+                          disabled={duplicatingId === quote.id}
+                          className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                          onClick={() => handleDuplicate(quote.id)}
+                        >
+                          Duplicate
+                        </button>
+                        <button
                           disabled={deletingId === quote.id}
                           className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
                           onClick={() => handleDelete(quote.id)}
@@ -223,6 +297,8 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
         </div>
       </Card>
 
+      <QuoteCompareModal open={!!compareKey} onClose={() => setCompareKey(null)} quotes={compareQuotes} />
+
       <QuoteFormModal
         key={modalOpen ? editingQuote?.id ?? "new" : "closed"}
         open={modalOpen}
@@ -236,20 +312,30 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
 
 function QuoteCard({
   quote,
+  groupCount,
+  showCompare,
   defaultCurrency,
   deleting,
   converting,
+  duplicating,
   onEdit,
   onDelete,
   onConvert,
+  onDuplicate,
+  onCompare,
 }: {
   quote: Quote;
+  groupCount: number;
+  showCompare: boolean;
   defaultCurrency: string;
   deleting: boolean;
   converting: boolean;
+  duplicating: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onConvert: () => void;
+  onDuplicate: () => void;
+  onCompare: () => void;
 }) {
   const { first, second } = computeQuoteSplit(
     quote.total_price,
@@ -261,7 +347,26 @@ function QuoteCard({
     <Card className="cursor-pointer p-4" onClick={onEdit}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="font-medium text-slate-800">{quote.name}</div>
+          <div className="flex items-center gap-2 font-medium text-slate-800">
+            {quote.name}
+            {quote.label && <span className="text-xs font-normal text-slate-400">{quote.label}</span>}
+            {groupCount > 1 && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                {groupCount} quotes
+              </span>
+            )}
+            {showCompare && (
+              <button
+                className="text-[11px] font-medium text-teal-600 hover:underline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCompare();
+                }}
+              >
+                Compare
+              </button>
+            )}
+          </div>
           <div className="text-sm text-slate-500">
             {quote.total_price != null ? formatCurrency(quote.total_price, quote.currency || defaultCurrency) : "—"}
           </div>
@@ -293,6 +398,13 @@ function QuoteCard({
             Convert
           </button>
         )}
+        <button
+          disabled={duplicating}
+          className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+          onClick={onDuplicate}
+        >
+          Duplicate
+        </button>
         <button
           disabled={deleting}
           className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"

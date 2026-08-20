@@ -215,6 +215,7 @@ create table if not exists public.quotes (
 -- migration for existing databases (safe to re-run)
 alter table public.quotes add column if not exists split_mode text not null default 'percent' check (split_mode in ('percent', 'amount'));
 alter table public.quotes add column if not exists first_visit_amount numeric(10,2);
+alter table public.quotes add column if not exists label text;
 
 create index if not exists quotes_user_id_idx on public.quotes(user_id);
 create index if not exists quotes_status_idx on public.quotes(status);

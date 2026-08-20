@@ -81,6 +81,11 @@ export function QuoteFormModal({
             <Input name="name" required defaultValue={quote?.name} placeholder="Jane Smith" />
           </div>
           <div>
+            <Label>Label (optional)</Label>
+            <Input name="label" defaultValue={quote?.label ?? ""} placeholder="Option A — implants" />
+            <p className="mt-1 text-xs text-slate-400">Tells apart multiple quotes for the same patient. Not shown on the offer.</p>
+          </div>
+          <div>
             <Label>Status</Label>
             <Select name="status" defaultValue={quote?.status ?? "draft"}>
               <option value="draft">Draft</option>

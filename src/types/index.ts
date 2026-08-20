@@ -60,6 +60,7 @@ export interface Quote {
   id: string;
   user_id: string;
   name: string;
+  label: string | null;
   status: QuoteStatus;
 
   intro_text: string | null;

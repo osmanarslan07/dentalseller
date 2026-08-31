@@ -10,6 +10,7 @@ import {
 } from "@/lib/commission";
 import { formatCurrency, formatDate } from "@/lib/format";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
@@ -148,6 +149,7 @@ export function PatientsClient({
   settings: CommissionSettings;
   initialQuery: string;
 }) {
+  const router = useRouter();
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState(initialQuery);
   const [stageFilter, setStageFilter] = useState<Stage | "all">("all");
@@ -255,6 +257,7 @@ export function PatientsClient({
       try {
         await deletePatient(id);
         showToast("Patient deleted");
+        router.refresh();
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to delete patient", "error");
       } finally {
@@ -602,7 +605,7 @@ export function PatientsClient({
         key={modalOpen ? editingPatient?.id ?? duplicateFrom?.id ?? "new" : "closed"}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        patient={editingPatient}
+        patient={editingPatient ? patients.find((p) => p.id === editingPatient.id) ?? editingPatient : null}
         duplicateFrom={duplicateFrom}
         hotelOptions={hotelOptions}
         roomTypeOptions={roomTypeOptions}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
@@ -31,6 +32,7 @@ export function PatientFormModal({
   hotelOptions?: string[];
   roomTypeOptions?: string[];
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [telegramPending, setTelegramPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +97,7 @@ export function PatientFormModal({
           await createPatient(formData);
           showToast("Patient added ✓");
         }
+        router.refresh();
         onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong");
@@ -369,6 +372,7 @@ function TimeInput({
 }
 
 function ExtraVisitsSection({ patient }: { patient: Patient }) {
+  const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [pending, startTransition] = useTransition();
   const { showToast } = useToast();
@@ -392,6 +396,7 @@ function ExtraVisitsSection({ patient }: { patient: Patient }) {
         await addExtraVisit(patient.id, formData);
         showToast("Extra visit added ✓");
         setAdding(false);
+        router.refresh();
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to add extra visit");
       }
@@ -518,6 +523,7 @@ function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
 }
 
 function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
   const { showToast } = useToast();
@@ -541,6 +547,7 @@ function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
         await updateExtraVisit(visit.id, formData);
         showToast("Extra visit saved ✓");
         setEditing(false);
+        router.refresh();
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to save extra visit");
       }
@@ -553,6 +560,7 @@ function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
       try {
         await deleteExtraVisit(visit.id);
         showToast("Extra visit deleted ✓");
+        router.refresh();
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to delete extra visit");
       }

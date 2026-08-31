@@ -90,6 +90,12 @@ function DocumentsMenu({
     p.confirmation_date && p.visit2_date
       ? { label: "Operations sheet · Visit 2", href: `/patients/${p.id}/document?visit=2` }
       : null,
+    ...p.extra_visits
+      .filter((v) => v.visit_date)
+      .map((v) => ({
+        label: `Operations sheet · ${v.label}`,
+        href: `/patients/${p.id}/document?visit=${v.id}`,
+      })),
     p.visit1_arrival_flight_no
       ? { label: "Confirmation letter · Visit 1", href: `/patients/${p.id}/confirmation-letter?visit=1` }
       : null,

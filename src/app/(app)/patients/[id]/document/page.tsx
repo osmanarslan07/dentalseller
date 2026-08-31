@@ -56,19 +56,22 @@ export default async function PatientDocumentPage({
 }) {
   const { id } = await params;
   const { visit } = await searchParams;
-  const visitNum: 1 | 2 = visit === "2" ? 2 : 1;
 
   const supabase = await createClient();
   const [patient, settings] = await Promise.all([getPatient(supabase, id), getSettings(supabase)]);
 
   if (!patient) notFound();
 
+  const extraVisit = visit && visit !== "1" && visit !== "2" ? patient.extra_visits.find((v) => v.id === visit) : undefined;
+  const visitNum: 1 | 2 = visit === "2" ? 2 : 1;
+  const mode: "visit1" | "visit2" | "extra" = extraVisit ? "extra" : visitNum === 2 ? "visit2" : "visit1";
+
   const firstVisitPayment = patient.visit1_actual ?? patient.visit1_expected;
   const secondVisitPayment = patient.visit2_actual ?? patient.visit2_expected;
   const totalPayment = (firstVisitPayment ?? 0) + (secondVisitPayment ?? 0);
 
   const travel =
-    visitNum === 1
+    mode === "visit1"
       ? {
           arrivalDate: patient.visit1_arrival_date,
           arrivalTime: patient.visit1_arrival_time,
@@ -79,7 +82,8 @@ export default async function PatientDocumentPage({
           hotelName: patient.visit1_hotel_name,
           roomType: patient.visit1_room_type,
         }
-      : {
+      : mode === "visit2"
+      ? {
           arrivalDate: patient.visit2_arrival_date,
           arrivalTime: patient.visit2_arrival_time,
           arrivalFlightNo: patient.visit2_arrival_flight_no,
@@ -88,16 +92,26 @@ export default async function PatientDocumentPage({
           departureFlightNo: patient.visit2_departure_flight_no,
           hotelName: patient.visit2_hotel_name,
           roomType: patient.visit2_room_type,
+        }
+      : {
+          arrivalDate: extraVisit!.arrival_date,
+          arrivalTime: extraVisit!.arrival_time,
+          arrivalFlightNo: extraVisit!.arrival_flight_no,
+          departureDate: extraVisit!.departure_date,
+          departureTime: extraVisit!.departure_time,
+          departureFlightNo: extraVisit!.departure_flight_no,
+          hotelName: extraVisit!.hotel_name,
+          roomType: extraVisit!.room_type,
         };
 
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex items-center justify-between print:hidden">
-        <div className="inline-flex rounded-lg bg-slate-100 p-1">
+        <div className="inline-flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
           <Link
             href={`/patients/${id}/document?visit=1`}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-              visitNum === 1 ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              mode === "visit1" ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             Visit 1 document
@@ -105,11 +119,24 @@ export default async function PatientDocumentPage({
           <Link
             href={`/patients/${id}/document?visit=2`}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-              visitNum === 2 ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              mode === "visit2" ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             Visit 2 document
           </Link>
+          {patient.extra_visits.map((v) => (
+            <Link
+              key={v.id}
+              href={`/patients/${id}/document?visit=${v.id}`}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                mode === "extra" && extraVisit?.id === v.id
+                  ? "bg-white text-teal-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {v.label}
+            </Link>
+          ))}
         </div>
         <PrintButton />
       </div>
@@ -119,15 +146,28 @@ export default async function PatientDocumentPage({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Operations sheet</p>
             <h1 className="mt-1 text-2xl font-bold text-slate-900">{patient.name}</h1>
-            <p className="mt-1 text-sm text-slate-500">{patient.treatment || "—"}</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {mode === "extra" ? extraVisit!.treatment || extraVisit!.label : patient.treatment || "—"}
+            </p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className="rounded-full bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-700">
-              Visit {visitNum}
+              {mode === "extra" ? extraVisit!.label : `Visit ${visitNum}`}
             </span>
-            <p className="text-xs text-slate-400">Confirmed {formatDate(patient.confirmation_date)}</p>
+            <p className="text-xs text-slate-400">
+              {mode === "extra"
+                ? `Visit ${formatDate(extraVisit!.visit_date)}`
+                : `Confirmed ${formatDate(patient.confirmation_date)}`}
+            </p>
           </div>
         </div>
+
+        {mode === "extra" && extraVisit!.notes && (
+          <div className="mb-5 rounded-xl border border-amber-100 bg-amber-50/60 p-4 text-sm text-slate-700">
+            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-amber-600">Notes</p>
+            {extraVisit!.notes}
+          </div>
+        )}
 
         <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50/70 p-5">
           <div className="mb-4 flex items-center gap-2 text-slate-700">
@@ -171,17 +211,31 @@ export default async function PatientDocumentPage({
             <CoinIcon className="h-4 w-4" />
             <h2 className="text-sm font-bold uppercase tracking-wide">Payment</h2>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field
-              label="First visit payment"
-              value={firstVisitPayment != null ? formatCurrency(firstVisitPayment, settings.currency) : ""}
-            />
-            <Field
-              label="Second visit payment"
-              value={secondVisitPayment != null ? formatCurrency(secondVisitPayment, settings.currency) : ""}
-            />
-            <Field label="Total payment" value={formatCurrency(totalPayment, settings.currency)} strong />
-          </div>
+          {mode === "extra" ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field
+                label="Expected payment"
+                value={extraVisit!.expected != null ? formatCurrency(extraVisit!.expected, settings.currency) : ""}
+              />
+              <Field
+                label="Actual payment"
+                value={extraVisit!.actual != null ? formatCurrency(extraVisit!.actual, settings.currency) : ""}
+              />
+              <Field label="Status" value={extraVisit!.status} strong />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field
+                label="First visit payment"
+                value={firstVisitPayment != null ? formatCurrency(firstVisitPayment, settings.currency) : ""}
+              />
+              <Field
+                label="Second visit payment"
+                value={secondVisitPayment != null ? formatCurrency(secondVisitPayment, settings.currency) : ""}
+              />
+              <Field label="Total payment" value={formatCurrency(totalPayment, settings.currency)} strong />
+            </div>
+          )}
         </div>
       </div>
     </div>

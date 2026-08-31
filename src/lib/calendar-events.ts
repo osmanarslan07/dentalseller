@@ -6,7 +6,8 @@ export type CalendarEventKind =
   | "visit2_arrival"
   | "visit2_departure"
   | "visit1_self"
-  | "visit2_self";
+  | "visit2_self"
+  | "extra_visit";
 
 export interface CalendarEvent {
   date: string; // ISO date, YYYY-MM-DD
@@ -19,6 +20,8 @@ export interface CalendarEvent {
   flightNo: string | null;
   hotelName: string | null;
   roomType: string | null;
+  /** Set only for kind "extra_visit" — id into that patient's extra_visits[], to look up status/expected. */
+  extraVisitId: string | null;
 }
 
 const KIND_LABELS: Record<CalendarEventKind, string> = {
@@ -28,6 +31,7 @@ const KIND_LABELS: Record<CalendarEventKind, string> = {
   visit2_departure: "Departure (V2)",
   visit1_self: "Visit (V1)",
   visit2_self: "Visit (V2)",
+  extra_visit: "Extra visit",
 };
 
 export function eventLabel(kind: CalendarEventKind): string {
@@ -42,6 +46,7 @@ export const KIND_STYLES: Record<CalendarEventKind, string> = {
   visit2_departure: "bg-purple-100 text-purple-700",
   visit1_self: "bg-slate-200 text-slate-700",
   visit2_self: "bg-slate-200 text-slate-700",
+  extra_visit: "bg-rose-100 text-rose-700",
 };
 
 /** Flattens every dated field across all patients (clinic visits + flight legs) into one event list. */
@@ -61,6 +66,7 @@ export function flattenCalendarEvents(patients: Patient[]): CalendarEvent[] {
         flightNo: p.visit1_arrival_flight_no,
         hotelName: p.visit1_hotel_name,
         roomType: p.visit1_room_type,
+        extraVisitId: null,
       });
     }
     if (p.visit1_departure_date) {
@@ -73,6 +79,7 @@ export function flattenCalendarEvents(patients: Patient[]): CalendarEvent[] {
         flightNo: p.visit1_departure_flight_no,
         hotelName: p.visit1_hotel_name,
         roomType: p.visit1_room_type,
+        extraVisitId: null,
       });
     }
     if (!p.visit1_arrival_date && p.visit1_date) {
@@ -85,6 +92,7 @@ export function flattenCalendarEvents(patients: Patient[]): CalendarEvent[] {
         flightNo: null,
         hotelName: null,
         roomType: null,
+        extraVisitId: null,
       });
     }
 
@@ -98,6 +106,7 @@ export function flattenCalendarEvents(patients: Patient[]): CalendarEvent[] {
         flightNo: p.visit2_arrival_flight_no,
         hotelName: p.visit2_hotel_name,
         roomType: p.visit2_room_type,
+        extraVisitId: null,
       });
     }
     if (p.visit2_departure_date) {
@@ -110,6 +119,7 @@ export function flattenCalendarEvents(patients: Patient[]): CalendarEvent[] {
         flightNo: p.visit2_departure_flight_no,
         hotelName: p.visit2_hotel_name,
         roomType: p.visit2_room_type,
+        extraVisitId: null,
       });
     }
     if (!p.visit2_arrival_date && p.visit2_date) {
@@ -122,6 +132,22 @@ export function flattenCalendarEvents(patients: Patient[]): CalendarEvent[] {
         flightNo: null,
         hotelName: null,
         roomType: null,
+        extraVisitId: null,
+      });
+    }
+
+    for (const v of p.extra_visits ?? []) {
+      if (!v.visit_date) continue;
+      events.push({
+        ...base,
+        date: v.visit_date,
+        kind: "extra_visit",
+        label: v.label,
+        time: v.arrival_time,
+        flightNo: v.arrival_flight_no,
+        hotelName: v.hotel_name,
+        roomType: v.room_type,
+        extraVisitId: v.id,
       });
     }
   }

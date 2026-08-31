@@ -367,7 +367,14 @@ export function PatientsClient({
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <div className="font-medium text-slate-800">{p.name}</div>
+                <div className="font-medium text-slate-800">
+                  {p.name}
+                  {p.extra_visits.length > 0 && (
+                    <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                      +{p.extra_visits.length} extra
+                    </span>
+                  )}
+                </div>
                 <div className="text-sm text-slate-500">{p.treatment || "—"}</div>
               </div>
               <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
@@ -489,7 +496,14 @@ export function PatientsClient({
                     setModalOpen(true);
                   }}
                 >
-                  <td className="py-3 pl-4 pr-4 font-medium text-slate-800">{p.name}</td>
+                  <td className="py-3 pl-4 pr-4 font-medium text-slate-800">
+                    {p.name}
+                    {p.extra_visits.length > 0 && (
+                      <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                        +{p.extra_visits.length} extra
+                      </span>
+                    )}
+                  </td>
                   <td className="py-3 pr-4 text-slate-500">{p.treatment || "—"}</td>
                   <td className="py-3 pr-4 text-slate-500">{formatDate(p.confirmation_date)}</td>
                   <td className="py-3 pr-4 text-slate-500">

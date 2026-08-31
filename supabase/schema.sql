@@ -109,6 +109,67 @@ create trigger patients_set_updated_at
   before update on public.patients
   for each row execute function public.set_updated_at();
 
+-- ---------- patient_visits (extra visits between visit 1 and visit 2, e.g. temp crown fix) ----------
+create table if not exists public.patient_visits (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+
+  label text not null,
+  visit_date date,
+  expected numeric(10,2),
+  actual numeric(10,2),
+  status text not null default 'upcoming' check (status in ('upcoming', 'completed')),
+  treatment text,
+  notes text,
+
+  arrival_date date,
+  arrival_time text,
+  arrival_flight_no text,
+  departure_date date,
+  departure_time text,
+  departure_flight_no text,
+  hotel_name text,
+  room_type text,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- migration for existing databases (safe to re-run)
+alter table public.patient_visits add column if not exists treatment text;
+alter table public.patient_visits add column if not exists arrival_date date;
+alter table public.patient_visits add column if not exists arrival_time text;
+alter table public.patient_visits add column if not exists arrival_flight_no text;
+alter table public.patient_visits add column if not exists departure_date date;
+alter table public.patient_visits add column if not exists departure_time text;
+alter table public.patient_visits add column if not exists departure_flight_no text;
+alter table public.patient_visits add column if not exists hotel_name text;
+alter table public.patient_visits add column if not exists room_type text;
+
+create index if not exists patient_visits_patient_id_idx on public.patient_visits(patient_id);
+create index if not exists patient_visits_visit_date_idx on public.patient_visits(visit_date);
+
+alter table public.patient_visits enable row level security;
+
+drop policy if exists "patient_visits_select_own" on public.patient_visits;
+create policy "patient_visits_select_own" on public.patient_visits
+  for select using (auth.uid() = user_id);
+drop policy if exists "patient_visits_insert_own" on public.patient_visits;
+create policy "patient_visits_insert_own" on public.patient_visits
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "patient_visits_update_own" on public.patient_visits;
+create policy "patient_visits_update_own" on public.patient_visits
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "patient_visits_delete_own" on public.patient_visits;
+create policy "patient_visits_delete_own" on public.patient_visits
+  for delete using (auth.uid() = user_id);
+
+drop trigger if exists patient_visits_set_updated_at on public.patient_visits;
+create trigger patient_visits_set_updated_at
+  before update on public.patient_visits
+  for each row execute function public.set_updated_at();
+
 -- ---------- settings (one row per user) ----------
 create table if not exists public.settings (
   user_id uuid primary key references auth.users(id) on delete cascade default auth.uid(),

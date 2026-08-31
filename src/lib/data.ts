@@ -16,8 +16,9 @@ export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> 
   const { data, error } = await withRetry(() =>
     supabase
       .from("patients")
-      .select("*")
+      .select("*, extra_visits:patient_visits(*)")
       .order("confirmation_date", { ascending: false, nullsFirst: false })
+      .order("visit_date", { foreignTable: "patient_visits", ascending: true, nullsFirst: false })
   );
 
   if (error) throw error;
@@ -26,7 +27,7 @@ export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> 
 
 export async function getPatient(supabase: SupabaseClient, id: string): Promise<Patient | null> {
   const { data, error } = await withRetry(() =>
-    supabase.from("patients").select("*").eq("id", id).maybeSingle()
+    supabase.from("patients").select("*, extra_visits:patient_visits(*)").eq("id", id).maybeSingle()
   );
 
   if (error) throw error;

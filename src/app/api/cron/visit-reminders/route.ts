@@ -112,6 +112,30 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  const { data: extraVisits, error: extraError } = await supabase
+    .from("patient_visits")
+    .select("label, visit_date, status, patients(name)")
+    .in("visit_date", [in1, in7])
+    .eq("status", "upcoming");
+
+  if (extraError) {
+    return NextResponse.json({ error: extraError.message }, { status: 500 });
+  }
+
+  for (const v of (extraVisits ?? []) as unknown as {
+    label: string;
+    visit_date: string;
+    patients: { name: string } | null;
+  }[]) {
+    const name = v.patients?.name ?? "Unknown";
+    if (v.visit_date === in7) {
+      lines.push(`🦷 <b>${name}</b> (${v.label}) in 7 days`);
+    }
+    if (v.visit_date === in1) {
+      lines.push(`🦷 <b>${name}</b> (${v.label}) <b>tomorrow</b>`);
+    }
+  }
+
   if (lines.length === 0) {
     return NextResponse.json({ sent: false, reason: "No reminders today" });
   }

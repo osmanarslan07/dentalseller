@@ -143,3 +143,77 @@ export async function deletePatient(id: string) {
   revalidatePath("/");
   revalidatePath("/projections");
 }
+
+function parseExtraVisitInput(formData: FormData) {
+  const num = (key: string) => {
+    const v = formData.get(key);
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const str = (key: string) => {
+    const v = formData.get(key);
+    return v == null || v === "" ? null : String(v);
+  };
+
+  return {
+    label: String(formData.get("label") ?? "").trim(),
+    visit_date: str("visit_date"),
+    expected: num("expected"),
+    actual: num("actual"),
+    status: (formData.get("status") as "upcoming" | "completed") || "upcoming",
+    treatment: str("treatment"),
+    notes: str("notes"),
+    arrival_date: str("arrival_date"),
+    arrival_time: str("arrival_time"),
+    arrival_flight_no: str("arrival_flight_no"),
+    departure_date: str("departure_date"),
+    departure_time: str("departure_time"),
+    departure_flight_no: str("departure_flight_no"),
+    hotel_name: str("hotel_name"),
+    room_type: str("room_type"),
+  };
+}
+
+export async function addExtraVisit(patientId: string, formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const input = parseExtraVisitInput(formData);
+  if (!input.label) throw new Error("Reason is required");
+
+  const { error } = await supabase
+    .from("patient_visits")
+    .insert({ ...input, patient_id: patientId, user_id: user.id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/patients");
+  revalidatePath("/");
+  revalidatePath("/projections");
+}
+
+export async function updateExtraVisit(id: string, formData: FormData) {
+  const supabase = await createClient();
+  const input = parseExtraVisitInput(formData);
+  if (!input.label) throw new Error("Reason is required");
+
+  const { error } = await supabase.from("patient_visits").update(input).eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/patients");
+  revalidatePath("/");
+  revalidatePath("/projections");
+}
+
+export async function deleteExtraVisit(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("patient_visits").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/patients");
+  revalidatePath("/");
+  revalidatePath("/projections");
+}

@@ -26,6 +26,7 @@ const EVENT_ICONS: Record<CalendarEventKind, string> = {
   visit2_departure: "🛫",
   visit1_self: "📍",
   visit2_self: "📍",
+  extra_visit: "🦷",
 };
 
 function WalletIcon({ className = "" }: { className?: string }) {
@@ -138,7 +139,8 @@ function TrophyIcon({ className = "" }: { className?: string }) {
 }
 
 function treatmentTotal(p: Patient): number {
-  return (p.visit1_expected ?? 0) + (p.visit2_expected ?? 0);
+  const extra = p.extra_visits.reduce((sum, v) => sum + (v.expected ?? 0), 0);
+  return (p.visit1_expected ?? 0) + (p.visit2_expected ?? 0) + extra;
 }
 
 export default async function DashboardPage() {
@@ -188,10 +190,12 @@ export default async function DashboardPage() {
 
   const upcoming: UpcomingVisit[] = [];
   for (const p of patients) {
-    for (const [label, date, status, expected] of [
+    const visitEntries: readonly (readonly [string, string | null, "upcoming" | "completed", number | null])[] = [
       ["Visit 1", p.visit1_date, p.visit1_status, p.visit1_expected],
       ["Visit 2", p.visit2_date, p.visit2_status, p.visit2_expected],
-    ] as const) {
+      ...p.extra_visits.map((v) => [v.label, v.visit_date, v.status, v.expected] as const),
+    ];
+    for (const [label, date, status, expected] of visitEntries) {
       if (!date || status !== "upcoming") continue;
       const d = new Date(date);
       if (d >= today && d <= monthAhead) {
@@ -229,7 +233,9 @@ export default async function DashboardPage() {
     const p = patientMap.get(e.patientId);
     if (!p) continue;
     const isVisit2 = e.kind.startsWith("visit2");
-    const status = isVisit2 ? p.visit2_status : p.visit1_status;
+    const isExtra = e.kind === "extra_visit";
+    const extraVisit = isExtra ? p.extra_visits.find((v) => v.id === e.extraVisitId) : undefined;
+    const status = isExtra ? extraVisit?.status : isVisit2 ? p.visit2_status : p.visit1_status;
     // Departure flights stay relevant even after the visit itself is marked completed —
     // only arrivals/self-visits should disappear once their status flips.
     const isDeparture = e.kind === "visit1_departure" || e.kind === "visit2_departure";
@@ -247,7 +253,7 @@ export default async function DashboardPage() {
       time: e.time,
       flightNo: e.flightNo,
       daysLeft,
-      expected: isVisit2 ? p.visit2_expected : p.visit1_expected,
+      expected: isExtra ? extraVisit?.expected ?? null : isVisit2 ? p.visit2_expected : p.visit1_expected,
     });
   }
   upcomingEvents.sort((a, b) => a.date.localeCompare(b.date));
@@ -282,10 +288,12 @@ export default async function DashboardPage() {
   type PaymentMismatch = { patient: Patient; visitLabel: string; visitDate: string; expected: number; daysSince: number };
   const paymentMismatches: PaymentMismatch[] = [];
   for (const p of patients) {
-    for (const [visitLabel, date, expected, actual, applies] of [
+    const mismatchEntries: readonly (readonly [string, string | null, number | null, number | null, boolean])[] = [
       ["Visit 1", p.visit1_date, p.visit1_expected, p.visit1_actual, true],
       ["Visit 2", p.visit2_date, p.visit2_expected, p.visit2_actual, p.needs_visit2],
-    ] as const) {
+      ...p.extra_visits.map((v) => [v.label, v.visit_date, v.expected, v.actual, true] as const),
+    ];
+    for (const [visitLabel, date, expected, actual, applies] of mismatchEntries) {
       if (!applies || !date || expected == null || actual != null) continue;
       const d = new Date(date);
       if (d >= today) continue;

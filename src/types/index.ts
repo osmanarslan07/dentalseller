@@ -4,6 +4,35 @@ export type { DashboardCardId };
 
 export type VisitStatus = "upcoming" | "completed";
 
+export interface PatientExtraVisit {
+  id: string;
+  patient_id: string;
+  label: string;
+  visit_date: string | null;
+  expected: number | null;
+  actual: number | null;
+  status: VisitStatus;
+  treatment: string | null;
+  notes: string | null;
+
+  arrival_date: string | null;
+  arrival_time: string | null;
+  arrival_flight_no: string | null;
+  departure_date: string | null;
+  departure_time: string | null;
+  departure_flight_no: string | null;
+  hotel_name: string | null;
+  room_type: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export type PatientExtraVisitInput = Omit<
+  PatientExtraVisit,
+  "id" | "patient_id" | "created_at" | "updated_at"
+>;
+
 export interface Patient {
   id: string;
   user_id: string;
@@ -44,13 +73,15 @@ export interface Patient {
   visit2_hotel_name: string | null;
   visit2_room_type: string | null;
 
+  extra_visits: PatientExtraVisit[];
+
   created_at: string;
   updated_at: string;
 }
 
 export type PatientInput = Omit<
   Patient,
-  "id" | "user_id" | "created_at" | "updated_at"
+  "id" | "user_id" | "created_at" | "updated_at" | "extra_visits"
 >;
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";

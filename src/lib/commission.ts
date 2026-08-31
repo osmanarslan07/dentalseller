@@ -77,6 +77,12 @@ function patientVisits(p: Patient): Visit[] {
       actual: p.visit2_actual,
       status: p.visit2_status,
     },
+    ...p.extra_visits.map((v) => ({
+      date: v.visit_date,
+      expected: v.expected,
+      actual: v.actual,
+      status: v.status,
+    })),
   ];
 }
 

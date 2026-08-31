@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { Patient } from "@/types";
-import { createPatient, updatePatient, sendPatientTelegramMessage } from "./actions";
+import { Patient, PatientExtraVisit } from "@/types";
+import {
+  createPatient,
+  updatePatient,
+  sendPatientTelegramMessage,
+  addExtraVisit,
+  updateExtraVisit,
+  deleteExtraVisit,
+} from "./actions";
 
 export function PatientFormModal({
   open,
@@ -219,6 +226,8 @@ export function PatientFormModal({
           />
         )}
 
+        {isEdit && patient && <ExtraVisitsSection patient={patient} />}
+
         <div>
           <Label>Notes</Label>
           <Textarea name="notes" rows={3} defaultValue={initial?.notes ?? ""} placeholder="Optional notes…" />
@@ -355,6 +364,261 @@ function TimeInput({
         pattern="([01]\d|2[0-3]):[0-5]\d"
         title="Use 24-hour format, e.g. 14:30"
       />
+    </div>
+  );
+}
+
+function ExtraVisitsSection({ patient }: { patient: Patient }) {
+  const [adding, setAdding] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const { showToast } = useToast();
+  const fieldsRef = useRef<HTMLDivElement>(null);
+
+  function handleAdd() {
+    const container = fieldsRef.current;
+    if (!container) return;
+    const formData = new FormData();
+    for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "[name]"
+    )) {
+      formData.set(el.name, el.value);
+    }
+    if (!String(formData.get("label") ?? "").trim()) {
+      showToast("Reason is required");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await addExtraVisit(patient.id, formData);
+        showToast("Extra visit added ✓");
+        setAdding(false);
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Failed to add extra visit");
+      }
+    });
+  }
+
+  return (
+    <fieldset className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+      <legend className="px-1 text-sm font-semibold text-slate-700">Extra visits</legend>
+      <p className="mb-3 text-xs text-slate-400">
+        Any additional visits between visit 1 and visit 2 — e.g. fixing temporary teeth. Full detail: treatment,
+        payment, notes and travel.
+      </p>
+
+      <div className="space-y-2">
+        {patient.extra_visits.map((v) => (
+          <ExtraVisitRow key={v.id} visit={v} />
+        ))}
+      </div>
+
+      {adding ? (
+        <div ref={fieldsRef} className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+          <ExtraVisitFields />
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={pending} onClick={handleAdd}>
+              {pending ? "Adding…" : "Add visit"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button type="button" variant="secondary" className="mt-3" onClick={() => setAdding(true)}>
+          + Add extra visit
+        </Button>
+      )}
+    </fieldset>
+  );
+}
+
+/** Shared field set for both the add form and the edit form — same shape as visit 1/2's fields + travel. */
+function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="col-span-2 sm:col-span-2">
+          <Label>Reason</Label>
+          <Input name="label" required defaultValue={visit?.label} placeholder="Temporary crown fix" autoFocus />
+        </div>
+        <div>
+          <Label>Date</Label>
+          <Input type="date" name="visit_date" defaultValue={visit?.visit_date ?? ""} />
+        </div>
+        <div>
+          <Label>Expected (£)</Label>
+          <Input type="number" step="0.01" min="0" name="expected" defaultValue={visit?.expected ?? ""} />
+        </div>
+        <div>
+          <Label>Actual (£)</Label>
+          <Input type="number" step="0.01" min="0" name="actual" defaultValue={visit?.actual ?? ""} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Status</Label>
+          <Select name="status" defaultValue={visit?.status ?? "upcoming"}>
+            <option value="upcoming">Upcoming</option>
+            <option value="completed">Completed</option>
+          </Select>
+        </div>
+      </div>
+      <div>
+        <Label>Treatment details</Label>
+        <Textarea
+          name="treatment"
+          rows={2}
+          defaultValue={visit?.treatment ?? ""}
+          placeholder="What was done at this visit"
+        />
+      </div>
+      <div>
+        <Label>Notes</Label>
+        <Textarea name="notes" rows={2} defaultValue={visit?.notes ?? ""} placeholder="Optional notes…" />
+      </div>
+
+      <fieldset className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+        <legend className="px-1 text-xs font-semibold text-slate-600">Travel &amp; hotel</legend>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div>
+            <Label>Arrival date</Label>
+            <Input type="date" name="arrival_date" defaultValue={visit?.arrival_date ?? ""} />
+          </div>
+          <TimeInput name="arrival_time" label="Arrival time" defaultValue={visit?.arrival_time} />
+          <div>
+            <Label>Arrival flight no.</Label>
+            <Input name="arrival_flight_no" defaultValue={visit?.arrival_flight_no ?? ""} placeholder="TK1234" />
+          </div>
+          <div>
+            <Label>Departure date</Label>
+            <Input type="date" name="departure_date" defaultValue={visit?.departure_date ?? ""} />
+          </div>
+          <TimeInput name="departure_time" label="Departure time" defaultValue={visit?.departure_time} />
+          <div>
+            <Label>Departure flight no.</Label>
+            <Input
+              name="departure_flight_no"
+              defaultValue={visit?.departure_flight_no ?? ""}
+              placeholder="TK1235"
+            />
+          </div>
+          <div>
+            <Label>Hotel name</Label>
+            <Input name="hotel_name" defaultValue={visit?.hotel_name ?? ""} />
+          </div>
+          <div>
+            <Label>Room type</Label>
+            <Input name="room_type" defaultValue={visit?.room_type ?? ""} placeholder="Double room" />
+          </div>
+        </div>
+      </fieldset>
+    </div>
+  );
+}
+
+function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
+  const [editing, setEditing] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const { showToast } = useToast();
+  const fieldsRef = useRef<HTMLDivElement>(null);
+
+  function handleSave() {
+    const container = fieldsRef.current;
+    if (!container) return;
+    const formData = new FormData();
+    for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "[name]"
+    )) {
+      formData.set(el.name, el.value);
+    }
+    if (!String(formData.get("label") ?? "").trim()) {
+      showToast("Reason is required");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await updateExtraVisit(visit.id, formData);
+        showToast("Extra visit saved ✓");
+        setEditing(false);
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Failed to save extra visit");
+      }
+    });
+  }
+
+  function handleDelete() {
+    if (!confirm(`Delete "${visit.label}"?`)) return;
+    startTransition(async () => {
+      try {
+        await deleteExtraVisit(visit.id);
+        showToast("Extra visit deleted ✓");
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Failed to delete extra visit");
+      }
+    });
+  }
+
+  if (editing) {
+    return (
+      <div ref={fieldsRef} className="rounded-lg border border-slate-200 bg-white p-3">
+        <ExtraVisitFields visit={visit} />
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+          <Button type="button" disabled={pending} onClick={handleSave}>
+            {pending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const flight = [visit.arrival_flight_no, visit.departure_flight_no].filter(Boolean).join(" / ");
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-slate-700">{visit.label}</span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs ${
+              visit.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+            }`}
+          >
+            {visit.status}
+          </span>
+        </div>
+        <div className="mt-0.5 text-xs text-slate-400">
+          {visit.visit_date ?? "No date"}
+          {visit.actual != null
+            ? ` · £${visit.actual} paid`
+            : visit.expected != null
+            ? ` · £${visit.expected} expected`
+            : ""}
+          {visit.hotel_name ? ` · ${visit.hotel_name}` : ""}
+          {flight ? ` · ${flight}` : ""}
+        </div>
+        {visit.treatment && <div className="mt-0.5 text-xs text-slate-500">{visit.treatment}</div>}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-xs font-medium text-teal-600 hover:underline"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={pending}
+          className="text-xs font-medium text-red-600 hover:underline"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   );
 }

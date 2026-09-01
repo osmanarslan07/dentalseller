@@ -98,10 +98,14 @@ export function computeMonthTotals(patients: Patient[]): Map<string, MonthTotals
 
   for (const p of patients) {
     for (const visit of patientVisits(p)) {
-      if (!visit.date) continue;
-      const month = monthKey(visit.date);
-      if (visit.actual != null) bump(month, "actualTotal", visit.actual);
-      if (visit.expected != null && visit.status !== "completed") bump(month, "expectedTotal", visit.expected);
+      if (visit.actual != null) {
+        if (visit.date) bump(monthKey(visit.date), "actualTotal", visit.actual);
+      } else if (visit.expected != null) {
+        // Not yet paid. Use its own date if scheduled, otherwise bucket into the
+        // current month so the tier rate has some basis for an estimate.
+        const month = visit.date ? monthKey(visit.date) : currentMonthKey();
+        bump(month, "expectedTotal", visit.expected);
+      }
     }
   }
 
@@ -155,11 +159,15 @@ export function patientCommissionContribution(
   let expected = 0;
 
   for (const visit of patientVisits(p)) {
-    if (!visit.date) continue;
-    const rates = monthlyRates.get(monthKey(visit.date));
-    if (!rates) continue;
-    if (visit.actual != null) actual += visit.actual * rates.actualRate;
-    if (visit.expected != null && visit.status !== "completed") expected += visit.expected * rates.expectedRate;
+    if (visit.actual != null) {
+      if (!visit.date) continue;
+      const rates = monthlyRates.get(monthKey(visit.date));
+      if (rates) actual += visit.actual * rates.actualRate;
+    } else if (visit.expected != null) {
+      const month = visit.date ? monthKey(visit.date) : currentMonthKey();
+      const rates = monthlyRates.get(month);
+      if (rates) expected += visit.expected * rates.expectedRate;
+    }
   }
 
   return { actual, expected };

@@ -98,18 +98,27 @@ export function computeMonthTotals(patients: Patient[]): Map<string, MonthTotals
 
   for (const p of patients) {
     for (const visit of patientVisits(p)) {
-      if (visit.actual != null) {
-        if (visit.date) bump(monthKey(visit.date), "actualTotal", visit.actual);
-      } else if (visit.expected != null) {
-        // Not yet paid. Use its own date if scheduled, otherwise bucket into the
-        // current month so the tier rate has some basis for an estimate.
-        const month = visit.date ? monthKey(visit.date) : currentMonthKey();
-        bump(month, "expectedTotal", visit.expected);
-      }
+      if (!visit.date) continue;
+      const month = monthKey(visit.date);
+      if (visit.actual != null) bump(month, "actualTotal", visit.actual);
+      else if (visit.expected != null) bump(month, "expectedTotal", visit.expected);
     }
   }
 
   return map;
+}
+
+/** Expected total for visits with no date yet (e.g. visit2 not booked) —
+ * kept out of the per-month map so they don't skew a specific month's bar. */
+export function computeUnscheduledExpectedTotal(patients: Patient[]): number {
+  let total = 0;
+  for (const p of patients) {
+    for (const visit of patientVisits(p)) {
+      if (visit.date || visit.actual != null || visit.expected == null) continue;
+      total += visit.expected;
+    }
+  }
+  return total;
 }
 
 /** Month totals + tier/commission, sorted ascending by month. Confirmation-date patient counts included. */

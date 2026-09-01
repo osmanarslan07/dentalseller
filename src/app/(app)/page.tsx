@@ -5,6 +5,7 @@ import { getPatients, getSettings } from "@/lib/data";
 import {
   addMonths,
   computeMonthlyAggregates,
+  computeUnscheduledExpectedTotal,
   currentMonthKey,
   lastNMonths,
   monthLabel,
@@ -309,7 +310,14 @@ export default async function DashboardPage() {
   ).length;
   const newPatientsDelta = patientsThisMonth - patientsLastMonth;
 
-  const totalExpectedCommission = aggregates.reduce((sum, a) => sum + a.expectedCommission, 0);
+  // Visits with no date yet (e.g. visit2 not booked) are excluded from the per-month
+  // aggregates/chart so they don't skew a specific month's bar — add them back in here,
+  // valued at the current month's rate, so dashboard totals still reflect all confirmed work.
+  const unscheduledExpectedTotal = computeUnscheduledExpectedTotal(patients);
+  const unscheduledExpectedCommission = unscheduledExpectedTotal * (thisMonthAgg?.expectedRate ?? 0);
+
+  const totalExpectedCommission =
+    aggregates.reduce((sum, a) => sum + a.expectedCommission, 0) + unscheduledExpectedCommission;
   const outstandingExpected = totalExpectedCommission - totalActualCommission;
 
   const upcomingValue = upcoming.reduce((sum, v) => sum + (v.expected ?? 0), 0);

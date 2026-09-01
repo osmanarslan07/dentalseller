@@ -101,7 +101,7 @@ export function computeMonthTotals(patients: Patient[]): Map<string, MonthTotals
       if (!visit.date) continue;
       const month = monthKey(visit.date);
       if (visit.actual != null) bump(month, "actualTotal", visit.actual);
-      if (visit.expected != null) bump(month, "expectedTotal", visit.expected);
+      if (visit.expected != null && visit.status !== "completed") bump(month, "expectedTotal", visit.expected);
     }
   }
 
@@ -159,7 +159,7 @@ export function patientCommissionContribution(
     const rates = monthlyRates.get(monthKey(visit.date));
     if (!rates) continue;
     if (visit.actual != null) actual += visit.actual * rates.actualRate;
-    if (visit.expected != null) expected += visit.expected * rates.expectedRate;
+    if (visit.expected != null && visit.status !== "completed") expected += visit.expected * rates.expectedRate;
   }
 
   return { actual, expected };

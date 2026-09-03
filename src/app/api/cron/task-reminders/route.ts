@@ -22,7 +22,10 @@ export async function GET(request: NextRequest) {
 
   const supabase = createAdminClient();
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
+
+  // due_date/due_time are entered as Europe/Istanbul wall-clock (clinic timezone, fixed UTC+3, no DST)
+  const TZ_OFFSET = "+03:00";
+  const today = new Date(now.getTime() + 3 * 3600 * 1000).toISOString().slice(0, 10);
 
   // due today with a time that's already passed, or due on an earlier date at all — either way it's due
   const { data, error } = await supabase
@@ -38,8 +41,9 @@ export async function GET(request: NextRequest) {
 
   const due = (data ?? []).filter((t) => {
     if (t.due_date < today) return true;
-    if (!t.due_time) return true;
-    return `${t.due_date}T${t.due_time}` <= now.toISOString().slice(0, 16);
+    if (!t.due_time) return t.due_date <= today;
+    const dueInstant = new Date(`${t.due_date}T${t.due_time}:00${TZ_OFFSET}`);
+    return dueInstant.getTime() <= now.getTime();
   }) as unknown as TaskRow[];
 
   if (due.length === 0) {

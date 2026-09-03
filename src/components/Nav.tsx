@@ -35,6 +35,15 @@ function QuotesIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function TasksIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="4" y="4" width="16" height="16" rx="2.5" />
+      <path d="M8 12.5 10.5 15 16 9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function CalendarIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -70,6 +79,7 @@ const LINKS: { href: string; label: string; icon: (props: { className?: string }
   { href: "/", label: "Home", icon: HomeIcon },
   { href: "/patients", label: "Patients", icon: PatientsIcon },
   { href: "/quotes", label: "Quotes", icon: QuotesIcon },
+  { href: "/tasks", label: "Tasks", icon: TasksIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
   { href: "/projections", label: "Projections", icon: ProjectionsIcon },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
@@ -160,7 +170,7 @@ export function Nav({ email }: { email: string }) {
       </header>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden print:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden print:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {LINKS.map((link) => {

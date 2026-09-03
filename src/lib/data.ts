@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { CommissionSettings, DEFAULT_SETTINGS, Patient, Quote } from "@/types";
+import { CommissionSettings, DEFAULT_SETTINGS, Patient, Quote, Task } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 
 /** Cold-start Supabase reads occasionally flake with a network error; one retry clears it. */
@@ -79,6 +79,20 @@ export async function getQuote(supabase: SupabaseClient, id: string): Promise<Qu
 
   if (error) throw error;
   return data as Quote | null;
+}
+
+export async function getTasks(supabase: SupabaseClient): Promise<Task[]> {
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from("tasks")
+      .select("*")
+      .order("status", { ascending: true })
+      .order("due_date", { ascending: true })
+      .order("due_time", { ascending: true, nullsFirst: false })
+  );
+
+  if (error) throw error;
+  return data as Task[];
 }
 
 export interface ExchangeRatePoint {

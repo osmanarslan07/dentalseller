@@ -120,6 +120,29 @@ export type QuoteInput = Omit<
   "id" | "user_id" | "created_at" | "updated_at" | "converted_patient_id"
 >;
 
+export type TaskStatus = "pending" | "done";
+
+export interface Task {
+  id: string;
+  user_id: string;
+  title: string;
+  notes: string | null;
+
+  due_date: string; // ISO date
+  due_time: string | null; // "HH:MM"
+
+  patient_id: string | null;
+  patient_name: string | null;
+
+  status: TaskStatus;
+  notified_at: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export type TaskInput = Omit<Task, "id" | "user_id" | "created_at" | "updated_at" | "notified_at">;
+
 export interface CommissionSettings {
   tier1_threshold: number;
   tier1_rate: number;

@@ -13,6 +13,7 @@ export interface CalendarEvent {
   date: string; // ISO date, YYYY-MM-DD
   patientId: string;
   patientName: string;
+  responsibleSellerId: string;
   treatment: string | null;
   kind: CalendarEventKind;
   label: string;
@@ -54,7 +55,12 @@ export function flattenCalendarEvents(patients: Patient[]): CalendarEvent[] {
   const events: CalendarEvent[] = [];
 
   for (const p of patients) {
-    const base = { patientId: p.id, patientName: p.name, treatment: p.treatment };
+    const base = {
+      patientId: p.id,
+      patientName: p.name,
+      responsibleSellerId: p.responsible_seller_id,
+      treatment: p.treatment,
+    };
 
     if (p.visit1_arrival_date) {
       events.push({

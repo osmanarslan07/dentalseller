@@ -2,6 +2,18 @@ import { DashboardCardId, DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards"
 
 export type { DashboardCardId };
 
+export type SellerRole = "seller" | "admin";
+
+export interface Profile {
+  id: string;
+  display_name: string | null;
+  role: SellerRole;
+  telegram_chat_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export type VisitStatus = "upcoming" | "completed";
 
 export interface PatientExtraVisit {
@@ -35,7 +47,8 @@ export type PatientExtraVisitInput = Omit<
 
 export interface Patient {
   id: string;
-  user_id: string;
+  /** The seller who earns commission on this patient. Editable by that seller or an admin only. */
+  responsible_seller_id: string;
   name: string;
   treatment: string | null;
   letter_treatment_items: string | null;
@@ -81,7 +94,7 @@ export interface Patient {
 
 export type PatientInput = Omit<
   Patient,
-  "id" | "user_id" | "created_at" | "updated_at" | "extra_visits"
+  "id" | "responsible_seller_id" | "created_at" | "updated_at" | "extra_visits"
 >;
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";

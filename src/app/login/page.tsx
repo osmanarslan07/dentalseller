@@ -9,6 +9,7 @@ export default function LoginPage() {
           <img src="/logo.svg" alt="DentalSeller" className="mx-auto mb-4 h-18 w-18" />
           <h1 className="text-xl font-semibold text-slate-900">DentalSeller</h1>
           <p className="mt-1 text-sm text-slate-500">Antalya treatment patients &amp; commission</p>
+          <p className="mt-1 text-xs text-slate-400">Accounts are created by your clinic admin.</p>
         </div>
 
         <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5">

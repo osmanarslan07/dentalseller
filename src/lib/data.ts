@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { CommissionSettings, DEFAULT_SETTINGS, Patient, Quote, Task } from "@/types";
+import { CommissionSettings, DEFAULT_SETTINGS, Patient, Profile, Quote, Task } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 
 /** Cold-start Supabase reads occasionally flake with a network error; one retry clears it. */
@@ -34,8 +34,12 @@ export async function getPatient(supabase: SupabaseClient, id: string): Promise<
   return data as Patient | null;
 }
 
-export async function getSettings(supabase: SupabaseClient): Promise<CommissionSettings> {
-  const { data, error } = await withRetry(() => supabase.from("settings").select("*").maybeSingle());
+/** userId must be explicit: admin can now read every seller's settings row (for the team
+ * breakdown view), so relying on RLS + maybeSingle() to mean "just mine" no longer holds. */
+export async function getSettings(supabase: SupabaseClient, userId: string): Promise<CommissionSettings> {
+  const { data, error } = await withRetry(() =>
+    supabase.from("settings").select("*").eq("user_id", userId).maybeSingle()
+  );
 
   if (error) throw error;
   if (!data) return DEFAULT_SETTINGS;
@@ -61,6 +65,24 @@ export async function getSettings(supabase: SupabaseClient): Promise<CommissionS
     clinic_email: data.clinic_email ?? DEFAULT_SETTINGS.clinic_email,
     clinic_logo_url: data.clinic_logo_url ?? null,
   };
+}
+
+export async function getMyProfile(supabase: SupabaseClient, userId: string): Promise<Profile | null> {
+  const { data, error } = await withRetry(() =>
+    supabase.from("profiles").select("*").eq("id", userId).maybeSingle()
+  );
+
+  if (error) throw error;
+  return data as Profile | null;
+}
+
+export async function getProfiles(supabase: SupabaseClient): Promise<Profile[]> {
+  const { data, error } = await withRetry(() =>
+    supabase.from("profiles").select("*").order("created_at", { ascending: true })
+  );
+
+  if (error) throw error;
+  return data as Profile[];
 }
 
 export async function getQuotes(supabase: SupabaseClient): Promise<Quote[]> {

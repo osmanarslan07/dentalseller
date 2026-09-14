@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useState, useTransition } from "react";
-import { CommissionSettings, Patient } from "@/types";
+import { CommissionSettings, Patient, Profile } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
@@ -9,6 +9,8 @@ import { DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
 import { DashboardCardsPicker } from "@/components/DashboardCardsPicker";
 import { ExchangeRatePoint } from "@/lib/data";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
+import { AccountCard } from "./AccountCard";
+import { TeamCard } from "./TeamCard";
 import { saveClinicBranding, saveDashboardCards, saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
@@ -17,10 +19,18 @@ export function SettingsClient({
   settings,
   patients,
   rateHistory,
+  profiles,
+  currentUserId,
+  currentUserEmail,
+  currentDisplayName,
 }: {
   settings: CommissionSettings;
   patients: Patient[];
   rateHistory: ExchangeRatePoint[];
+  profiles: Profile[];
+  currentUserId: string;
+  currentUserEmail: string;
+  currentDisplayName: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +113,10 @@ export function SettingsClient({
         <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
         <p className="mt-1 text-sm text-slate-500">Commission rules, currency and data export.</p>
       </div>
+
+      <AccountCard email={currentUserEmail} displayName={currentDisplayName} />
+
+      <TeamCard profiles={profiles} currentUserId={currentUserId} />
 
       <Card className="p-6">
         <h2 className="mb-1 text-base font-semibold text-slate-900">Commission tiers</h2>

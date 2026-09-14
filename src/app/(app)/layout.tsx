@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSettings } from "@/lib/data";
+import { getMyProfile, getSettings } from "@/lib/data";
 import { getTryRate } from "@/lib/currency";
 import { Nav } from "@/components/Nav";
 import { PrivacyProvider } from "@/components/privacy";
@@ -14,7 +14,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect("/login");
 
-  const settings = await getSettings(supabase);
+  const profile = await getMyProfile(supabase, user.id);
+  if (!profile?.display_name) redirect("/welcome");
+
+  const settings = await getSettings(supabase, user.id);
   const tryRate =
     settings.show_try && settings.currency !== "TRY" ? await getTryRate(settings.currency) : null;
 
@@ -22,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen">
       <ToastProvider>
         <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
-          <Nav email={user.email ?? ""} />
+          <Nav email={user.email ?? ""} displayName={profile.display_name} isAdmin={profile.role === "admin"} />
           <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-8 lg:px-8">{children}</main>
         </PrivacyProvider>
       </ToastProvider>

@@ -342,6 +342,195 @@ create trigger tasks_set_updated_at
   before update on public.tasks
   for each row execute function public.set_updated_at();
 
+-- ---------- profiles (one row per auth user — the seller directory) ----------
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  role text not null default 'seller' check (role in ('seller', 'admin')),
+  telegram_chat_id text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- security-definer helpers so RLS policies/triggers can check role/active status
+-- without re-entering RLS on profiles themselves (avoids self-referential recursion).
+create or replace function public.is_active_profile(uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce((select is_active from public.profiles where id = uid), false);
+$$;
+
+create or replace function public.is_admin(uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce((select role = 'admin' from public.profiles where id = uid), false);
+$$;
+
+-- auto-create a bare profile row whenever a new auth user is created
+-- (covers accounts made via admin.createUser, the Supabase dashboard, etc).
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id) values (new.id) on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- only admin may change role/is_active — anyone can still update their own
+-- display_name/telegram_chat_id via the normal update policy below.
+create or replace function public.guard_profile_privilege_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if (new.role is distinct from old.role or new.is_active is distinct from old.is_active)
+     and not public.is_admin(auth.uid()) then
+    raise exception 'Only an admin can change role or active status';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_guard_privilege on public.profiles;
+create trigger profiles_guard_privilege
+  before update on public.profiles
+  for each row execute function public.guard_profile_privilege_change();
+
+alter table public.profiles enable row level security;
+
+-- any active seller can see the whole directory (needed for "Responsible: X" badges,
+-- assignment dropdowns, admin team view).
+drop policy if exists "profiles_select_active_sellers" on public.profiles;
+create policy "profiles_select_active_sellers" on public.profiles
+  for select using (public.is_active_profile(auth.uid()));
+
+-- everyone can update their own row (display_name, telegram_chat_id); admin can update anyone's.
+-- the trigger above still blocks a non-admin from smuggling a role/is_active change through this.
+drop policy if exists "profiles_update_self_or_admin" on public.profiles;
+create policy "profiles_update_self_or_admin" on public.profiles
+  for update using (auth.uid() = id or public.is_admin(auth.uid()))
+  with check (auth.uid() = id or public.is_admin(auth.uid()));
+
+drop trigger if exists profiles_set_updated_at on public.profiles;
+create trigger profiles_set_updated_at
+  before update on public.profiles
+  for each row execute function public.set_updated_at();
+
+-- ---------- shared patients: rename ownership column + open visibility to all active sellers ----------
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'patients' and column_name = 'user_id'
+  ) then
+    alter table public.patients rename column user_id to responsible_seller_id;
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'patient_visits' and column_name = 'user_id'
+  ) then
+    alter table public.patient_visits rename column user_id to created_by_seller_id;
+  end if;
+end $$;
+
+alter index if exists patients_user_id_idx rename to patients_responsible_seller_id_idx;
+
+drop policy if exists "patients_select_own" on public.patients;
+drop policy if exists "patients_insert_own" on public.patients;
+drop policy if exists "patients_update_own" on public.patients;
+drop policy if exists "patients_delete_own" on public.patients;
+
+drop policy if exists "patients_select_active_sellers" on public.patients;
+create policy "patients_select_active_sellers" on public.patients
+  for select using (public.is_active_profile(auth.uid()));
+
+drop policy if exists "patients_insert_self" on public.patients;
+create policy "patients_insert_self" on public.patients
+  for insert with check (responsible_seller_id = auth.uid() and public.is_active_profile(auth.uid()));
+
+-- any active seller can edit (arrange logistics for a colleague's patient); reassigning
+-- responsible_seller_id itself is separately guarded by the trigger below.
+drop policy if exists "patients_update_active_sellers" on public.patients;
+create policy "patients_update_active_sellers" on public.patients
+  for update using (public.is_active_profile(auth.uid()))
+  with check (public.is_active_profile(auth.uid()));
+
+drop policy if exists "patients_delete_owner_or_admin" on public.patients;
+create policy "patients_delete_owner_or_admin" on public.patients
+  for delete using (responsible_seller_id = auth.uid() or public.is_admin(auth.uid()));
+
+create or replace function public.guard_patient_reassignment()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.responsible_seller_id is distinct from old.responsible_seller_id
+     and not (auth.uid() = old.responsible_seller_id or public.is_admin(auth.uid())) then
+    raise exception 'Only the responsible seller or an admin can reassign this patient';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists patients_guard_reassignment on public.patients;
+create trigger patients_guard_reassignment
+  before update on public.patients
+  for each row execute function public.guard_patient_reassignment();
+
+drop policy if exists "patient_visits_select_own" on public.patient_visits;
+drop policy if exists "patient_visits_insert_own" on public.patient_visits;
+drop policy if exists "patient_visits_update_own" on public.patient_visits;
+drop policy if exists "patient_visits_delete_own" on public.patient_visits;
+
+drop policy if exists "patient_visits_select_active_sellers" on public.patient_visits;
+create policy "patient_visits_select_active_sellers" on public.patient_visits
+  for select using (public.is_active_profile(auth.uid()));
+
+drop policy if exists "patient_visits_insert_active_sellers" on public.patient_visits;
+create policy "patient_visits_insert_active_sellers" on public.patient_visits
+  for insert with check (created_by_seller_id = auth.uid() and public.is_active_profile(auth.uid()));
+
+drop policy if exists "patient_visits_update_active_sellers" on public.patient_visits;
+create policy "patient_visits_update_active_sellers" on public.patient_visits
+  for update using (public.is_active_profile(auth.uid()))
+  with check (public.is_active_profile(auth.uid()));
+
+drop policy if exists "patient_visits_delete_active_sellers" on public.patient_visits;
+create policy "patient_visits_delete_active_sellers" on public.patient_visits
+  for delete using (public.is_active_profile(auth.uid()));
+
+-- admin can also read every seller's commission settings (for a future cross-seller
+-- breakdown view); each seller's own row otherwise stays private via settings_select_own.
+drop policy if exists "settings_select_admin" on public.settings;
+create policy "settings_select_admin" on public.settings
+  for select using (public.is_admin(auth.uid()));
+
 -- ---------- storage: clinic-assets (confirmation-letter logo) ----------
 -- public read, uploads go through the server action using the service-role client
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

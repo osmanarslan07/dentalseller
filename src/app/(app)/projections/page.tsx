@@ -15,7 +15,15 @@ function tierTone(total: number, settings: CommissionSettings): "slate" | "amber
 
 export default async function ProjectionsPage() {
   const supabase = await createClient();
-  const [patients, settings] = await Promise.all([getPatients(supabase), getSettings(supabase)]);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const [allPatients, settings] = await Promise.all([
+    getPatients(supabase),
+    getSettings(supabase, user?.id ?? ""),
+  ]);
+  // Projections mirror Dashboard: each seller's own commission only, never a colleague's.
+  const patients = allPatients.filter((p) => p.responsible_seller_id === user?.id);
 
   const aggregates = computeMonthlyAggregates(patients, settings);
   const aggregateMap = new Map(aggregates.map((a) => [a.month, a]));

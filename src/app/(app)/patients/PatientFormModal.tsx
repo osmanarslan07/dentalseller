@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { Patient, PatientExtraVisit } from "@/types";
+import { Patient, PatientExtraVisit, Profile } from "@/types";
 import {
   createPatient,
   updatePatient,
+  reassignPatient,
   sendPatientTelegramMessage,
   addExtraVisit,
   updateExtraVisit,
@@ -22,6 +23,9 @@ export function PatientFormModal({
   duplicateFrom,
   hotelOptions = [],
   roomTypeOptions = [],
+  profiles = [],
+  currentUserId = "",
+  isAdmin = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -31,6 +35,9 @@ export function PatientFormModal({
   /** Previously-used hotel names / room types, offered as autocomplete suggestions. */
   hotelOptions?: string[];
   roomTypeOptions?: string[];
+  profiles?: Profile[];
+  currentUserId?: string;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -59,9 +66,17 @@ export function PatientFormModal({
   const [isDirty, setIsDirty] = useState(false);
   const { showToast } = useToast();
 
+  const [responsibleId, setResponsibleId] = useState(patient?.responsible_seller_id ?? "");
+  const [reassignPending, setReassignPending] = useState(false);
+  const canReassign = isEdit && (patient?.responsible_seller_id === currentUserId || isAdmin);
+
   useEffect(() => {
     if (open) setIsDirty(false);
   }, [open, patient?.id, duplicateFrom?.id]);
+
+  useEffect(() => {
+    if (open) setResponsibleId(patient?.responsible_seller_id ?? "");
+  }, [open, patient?.id]);
 
   useEffect(() => {
     if (open) setNeedsVisit2(initial ? initial.needs_visit2 : true);
@@ -71,6 +86,26 @@ export function PatientFormModal({
   function handleRequestClose() {
     if (isDirty && !confirm("Discard unsaved changes?")) return;
     onClose();
+  }
+
+  function handleReassign(newSellerId: string) {
+    if (!patient || newSellerId === responsibleId) return;
+    if (!confirm("Reassign this patient to another seller? They will earn the commission from now on.")) {
+      return;
+    }
+    setReassignPending(true);
+    (async () => {
+      try {
+        await reassignPatient(patient.id, newSellerId);
+        setResponsibleId(newSellerId);
+        showToast("Patient reassigned ✓");
+        router.refresh();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Failed to reassign patient", "error");
+      } finally {
+        setReassignPending(false);
+      }
+    })();
   }
 
   async function handleSendTelegram() {
@@ -118,6 +153,36 @@ export function PatientFormModal({
             confirmation date and payments were left blank for you to fill in.
           </p>
         )}
+
+        {isEdit && (
+          <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+            <Label className="mb-1">Responsible seller</Label>
+            {canReassign ? (
+              <Select
+                value={responsibleId}
+                disabled={reassignPending}
+                onChange={(e) => handleReassign(e.target.value)}
+              >
+                {profiles
+                  .filter((p) => p.is_active || p.id === responsibleId)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.display_name || "Unnamed seller"}
+                      {p.id === currentUserId ? " (you)" : ""}
+                    </option>
+                  ))}
+              </Select>
+            ) : (
+              <p className="text-sm font-medium text-slate-700">
+                {profiles.find((p) => p.id === responsibleId)?.display_name || "Unknown"}
+              </p>
+            )}
+            <p className="mt-1 text-xs text-slate-400">
+              Earns the commission on this patient. Only they or an admin can hand it to someone else.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Label>Name</Label>

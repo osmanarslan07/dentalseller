@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Patient, CommissionSettings } from "@/types";
+import { Patient, CommissionSettings, Profile } from "@/types";
 import {
   computeMonthlyAggregates,
   monthLabel,
@@ -144,11 +144,21 @@ export function PatientsClient({
   patients,
   settings,
   initialQuery,
+  profiles,
+  currentUserId,
+  isAdmin,
 }: {
   patients: Patient[];
   settings: CommissionSettings;
   initialQuery: string;
+  profiles: Profile[];
+  currentUserId: string;
+  isAdmin: boolean;
 }) {
+  const sellerName = useMemo(() => {
+    const map = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
+    return (id: string) => map.get(id) ?? "Unknown";
+  }, [profiles]);
   const router = useRouter();
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState(initialQuery);
@@ -172,7 +182,14 @@ export function PatientsClient({
     return () => document.removeEventListener("click", close);
   }, [openDocsId]);
 
-  const aggregates = useMemo(() => computeMonthlyAggregates(patients, settings), [patients, settings]);
+  // Commission tiers are computed from the viewer's OWN patients only — this list is the
+  // shared clinic roster, so mixing in colleagues' totals would both misreport the tier
+  // (wrong monthly total) and, worse, expose derived commission on patients that aren't theirs.
+  const ownPatients = useMemo(
+    () => patients.filter((p) => p.responsible_seller_id === currentUserId),
+    [patients, currentUserId]
+  );
+  const aggregates = useMemo(() => computeMonthlyAggregates(ownPatients, settings), [ownPatients, settings]);
   const ratesMap = useMemo(() => ratesMapFromAggregates(aggregates), [aggregates]);
 
   const months = useMemo(() => {
@@ -206,11 +223,15 @@ export function PatientsClient({
   }, [patients]);
 
   const rows = useMemo(() => {
-    let list = patients.map((p) => ({
-      patient: p,
-      commission: patientCommissionContribution(p, ratesMap),
-      stage: patientStage(p),
-    }));
+    let list = patients.map((p) => {
+      const isMine = p.responsible_seller_id === currentUserId;
+      return {
+        patient: p,
+        isMine,
+        commission: isMine ? patientCommissionContribution(p, ratesMap) : { actual: 0, expected: 0 },
+        stage: patientStage(p),
+      };
+    });
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -240,7 +261,7 @@ export function PatientsClient({
     });
 
     return list;
-  }, [patients, search, stageFilter, monthFilter, treatmentFilter, sortKey, sortDir, ratesMap]);
+  }, [patients, search, stageFilter, monthFilter, treatmentFilter, sortKey, sortDir, ratesMap, currentUserId]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -354,6 +375,7 @@ export function PatientsClient({
         <KanbanBoard
           rows={rows}
           settings={settings}
+          sellerName={sellerName}
           onCardClick={(p) => {
             setEditingPatient(p);
             setDuplicateFrom(null);
@@ -364,7 +386,7 @@ export function PatientsClient({
 
       {view === "list" && (
       <div className="grid gap-3 md:hidden">
-        {rows.map(({ patient: p, commission, stage }) => (
+        {rows.map(({ patient: p, commission, stage, isMine }) => (
           <Card
             key={p.id}
             className="cursor-pointer p-4"
@@ -385,6 +407,11 @@ export function PatientsClient({
                   )}
                 </div>
                 <div className="text-sm text-slate-500">{p.treatment || "—"}</div>
+                {!isMine && (
+                  <div className="mt-0.5 text-xs text-slate-400">
+                    Responsible: {sellerName(p.responsible_seller_id)}
+                  </div>
+                )}
               </div>
               <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
             </div>
@@ -396,14 +423,18 @@ export function PatientsClient({
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-400">Commission</div>
-                <div className="font-medium text-slate-700">
-                  <Money value={commission.actual} currency={settings.currency} showConversion={false} />
-                  {commission.expected > 0 && (
-                    <div className="text-xs font-normal text-slate-400">
-                      +<Money value={commission.expected} currency={settings.currency} showConversion={false} /> expected
-                    </div>
-                  )}
-                </div>
+                {isMine ? (
+                  <div className="font-medium text-slate-700">
+                    <Money value={commission.actual} currency={settings.currency} showConversion={false} />
+                    {commission.expected > 0 && (
+                      <div className="text-xs font-normal text-slate-400">
+                        +<Money value={commission.expected} currency={settings.currency} showConversion={false} /> expected
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-slate-300">—</div>
+                )}
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-400">Visit 1</div>
@@ -495,7 +526,7 @@ export function PatientsClient({
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ patient: p, commission, stage }) => (
+              {rows.map(({ patient: p, commission, stage, isMine }) => (
                 <tr
                   key={p.id}
                   className="cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/50"
@@ -511,6 +542,11 @@ export function PatientsClient({
                       <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
                         +{p.extra_visits.length} extra
                       </span>
+                    )}
+                    {!isMine && (
+                      <div className="text-xs font-normal text-slate-400">
+                        Responsible: {sellerName(p.responsible_seller_id)}
+                      </div>
                     )}
                   </td>
                   <td className="py-3 pr-4 text-slate-500">{p.treatment || "—"}</td>
@@ -539,11 +575,17 @@ export function PatientsClient({
                     <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
                   </td>
                   <td className="py-3 pr-4 font-medium text-slate-700">
-                    <Money value={commission.actual} currency={settings.currency} showConversion={false} />
-                    {commission.expected > 0 && (
-                      <div className="text-xs font-normal text-slate-400">
-                        +<Money value={commission.expected} currency={settings.currency} showConversion={false} /> expected
-                      </div>
+                    {isMine ? (
+                      <>
+                        <Money value={commission.actual} currency={settings.currency} showConversion={false} />
+                        {commission.expected > 0 && (
+                          <div className="text-xs font-normal text-slate-400">
+                            +<Money value={commission.expected} currency={settings.currency} showConversion={false} /> expected
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-slate-300">—</span>
                     )}
                   </td>
                   <td className="py-3 pr-4">
@@ -609,6 +651,9 @@ export function PatientsClient({
         duplicateFrom={duplicateFrom}
         hotelOptions={hotelOptions}
         roomTypeOptions={roomTypeOptions}
+        profiles={profiles}
+        currentUserId={currentUserId}
+        isAdmin={isAdmin}
       />
     </div>
   );
@@ -617,10 +662,12 @@ export function PatientsClient({
 function KanbanBoard({
   rows,
   settings,
+  sellerName,
   onCardClick,
 }: {
-  rows: { patient: Patient; commission: { actual: number; expected: number }; stage: Stage }[];
+  rows: { patient: Patient; commission: { actual: number; expected: number }; stage: Stage; isMine: boolean }[];
   settings: CommissionSettings;
+  sellerName: (id: string) => string;
   onCardClick: (p: Patient) => void;
 }) {
   const columns = STAGES.map((stage) => ({
@@ -637,7 +684,7 @@ function KanbanBoard({
             <span className="text-xs text-slate-400">{col.items.length}</span>
           </div>
           <div className="space-y-2">
-            {col.items.map(({ patient: p, commission }) => (
+            {col.items.map(({ patient: p, commission, isMine }) => (
               <Card
                 key={p.id}
                 className="cursor-pointer p-3 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 hover:ring-teal-500/30"
@@ -652,9 +699,13 @@ function KanbanBoard({
                   {col.id === "visit2_scheduled" && `Visit 2 · ${formatDate(p.visit2_date)}`}
                   {col.id === "done" && `Last visit · ${formatDate(p.visit2_date ?? p.visit1_date)}`}
                 </p>
-                <p className="mt-2 text-sm font-medium text-slate-700">
-                  <Money value={commission.actual + commission.expected} currency={settings.currency} showConversion={false} />
-                </p>
+                {isMine ? (
+                  <p className="mt-2 text-sm font-medium text-slate-700">
+                    <Money value={commission.actual + commission.expected} currency={settings.currency} showConversion={false} />
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-400">Responsible: {sellerName(p.responsible_seller_id)}</p>
+                )}
               </Card>
             ))}
             {col.items.length === 0 && (

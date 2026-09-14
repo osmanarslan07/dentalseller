@@ -69,9 +69,11 @@ export default async function ConfirmationLetterPage({
   const visitNum: 1 | 2 = visit === "2" ? 2 : 1;
 
   const supabase = await createClient();
-  const [patient, settings] = await Promise.all([getPatient(supabase, id), getSettings(supabase)]);
+  const patient = await getPatient(supabase, id);
 
   if (!patient) notFound();
+
+  const settings = await getSettings(supabase, patient.responsible_seller_id);
 
   const clinic = {
     name: settings.clinic_name,

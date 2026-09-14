@@ -62,6 +62,17 @@ function ProjectionsIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function TeamIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="8" cy="8" r="3" />
+      <circle cx="16" cy="8" r="3" />
+      <path d="M2.5 20c.5-3.2 2.7-5 5.5-5s5 1.8 5.5 5" strokeLinecap="round" />
+      <path d="M13 15.3c.6-.2 1.3-.3 2-.3 2.8 0 5 1.8 5.5 5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function SettingsIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -75,7 +86,7 @@ function SettingsIcon({ className = "" }: { className?: string }) {
   );
 }
 
-const LINKS: { href: string; label: string; icon: (props: { className?: string }) => ReactNode }[] = [
+const BASE_LINKS: { href: string; label: string; icon: (props: { className?: string }) => ReactNode }[] = [
   { href: "/", label: "Home", icon: HomeIcon },
   { href: "/patients", label: "Patients", icon: PatientsIcon },
   { href: "/quotes", label: "Quotes", icon: QuotesIcon },
@@ -85,11 +96,22 @@ const LINKS: { href: string; label: string; icon: (props: { className?: string }
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
-export function Nav({ email }: { email: string }) {
+const TEAM_LINK = { href: "/team", label: "Team", icon: TeamIcon };
+
+export function Nav({
+  email,
+  displayName,
+  isAdmin = false,
+}: {
+  email: string;
+  displayName: string;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
   const navRef = useRef<HTMLElement>(null);
   const linkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  const LINKS = isAdmin ? [...BASE_LINKS, TEAM_LINK] : BASE_LINKS;
 
   useEffect(() => {
     const el = linkRefs.current.get(pathname);
@@ -142,7 +164,9 @@ export function Nav({ email }: { email: string }) {
           </div>
 
           <div className="hidden items-center gap-3 md:flex">
-            <span className="text-sm text-slate-500">{email}</span>
+            <span className="text-sm text-slate-500" title={email}>
+              {displayName}
+            </span>
             <form action={logout}>
               <button className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
                 Sign out
@@ -154,7 +178,7 @@ export function Nav({ email }: { email: string }) {
             <button
               className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
               aria-label="Sign out"
-              title={email}
+              title={displayName}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path
@@ -173,7 +197,8 @@ export function Nav({ email }: { email: string }) {
         className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden print:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        {LINKS.map((link) => {
+        {/* Team is desktop-nav only (admin) — an 8th column would cramp the mobile bar. */}
+        {BASE_LINKS.map((link) => {
           const active = pathname === link.href;
           const Icon = link.icon;
           return (

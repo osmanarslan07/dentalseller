@@ -12,9 +12,11 @@ function todayLabel(): string {
 export default async function QuoteOfferPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const [quote, settings] = await Promise.all([getQuote(supabase, id), getSettings(supabase)]);
+  const quote = await getQuote(supabase, id);
 
   if (!quote) notFound();
+
+  const settings = await getSettings(supabase, quote.user_id);
 
   const clinic = {
     name: settings.clinic_name,

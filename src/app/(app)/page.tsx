@@ -147,10 +147,16 @@ function treatmentTotal(p: Patient): number {
 export default async function DashboardPage() {
   const updatedAt = Date.now();
   const supabase = await createClient();
-  const [patients, settings] = await Promise.all([
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const [allPatients, settings] = await Promise.all([
     getPatients(supabase),
-    getSettings(supabase),
+    getSettings(supabase, user?.id ?? ""),
   ]);
+  // Dashboard is each seller's own performance view — commission/earnings must never
+  // leak another seller's numbers. The shared roster lives on /patients and /calendar.
+  const patients = allPatients.filter((p) => p.responsible_seller_id === user?.id);
 
   const aggregates = computeMonthlyAggregates(patients, settings);
   const aggregateMap = new Map(aggregates.map((a) => [a.month, a]));

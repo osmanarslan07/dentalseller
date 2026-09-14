@@ -1,10 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
-import { getPatients } from "@/lib/data";
+import { getPatients, getProfiles } from "@/lib/data";
 import { CalendarClient } from "./CalendarClient";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
-  const patients = await getPatients(supabase);
+  const [patients, profiles] = await Promise.all([getPatients(supabase), getProfiles(supabase)]);
 
-  return <CalendarClient patients={patients} />;
+  return <CalendarClient patients={patients} profiles={profiles} />;
 }

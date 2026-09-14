@@ -15,14 +15,19 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { Patient } from "@/types";
+import { Patient, Profile } from "@/types";
 import { Button, Card } from "@/components/ui";
 import { CalendarEvent, KIND_STYLES, flattenCalendarEvents, groupEventsByDate } from "@/lib/calendar-events";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE = 3;
 
-export function CalendarClient({ patients }: { patients: Patient[] }) {
+export function CalendarClient({ patients, profiles }: { patients: Patient[]; profiles: Profile[] }) {
+  const sellerName = useMemo(() => {
+    const map = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
+    return (id: string) => map.get(id) ?? "Unknown";
+  }, [profiles]);
+
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
@@ -99,7 +104,7 @@ export function CalendarClient({ patients }: { patients: Patient[] }) {
                 </h3>
                 <ul className="divide-y divide-slate-50">
                   {dayEvents.map((e, i) => (
-                    <EventRow key={i} event={e} />
+                    <EventRow key={i} event={e} sellerName={sellerName(e.responsibleSellerId)} />
                   ))}
                 </ul>
               </Card>
@@ -143,7 +148,7 @@ export function CalendarClient({ patients }: { patients: Patient[] }) {
                     <div
                       key={i}
                       className={`truncate rounded px-1 py-0.5 text-[10px] font-medium ${KIND_STYLES[e.kind]}`}
-                      title={`${e.label} · ${e.patientName}${e.time ? ` · ${e.time}` : ""}${e.treatment ? ` · ${e.treatment}` : ""}`}
+                      title={`${e.label} · ${e.patientName}${e.time ? ` · ${e.time}` : ""}${e.treatment ? ` · ${e.treatment}` : ""} · Responsible: ${sellerName(e.responsibleSellerId)}`}
                     >
                       {e.time ? `${e.time} ` : ""}
                       {e.patientName}
@@ -170,7 +175,7 @@ export function CalendarClient({ patients }: { patients: Patient[] }) {
           ) : (
             <ul className="divide-y divide-slate-50">
               {selectedEvents.map((e, i) => (
-                <EventRow key={i} event={e} />
+                <EventRow key={i} event={e} sellerName={sellerName(e.responsibleSellerId)} />
               ))}
             </ul>
           )
@@ -193,7 +198,7 @@ export function CalendarClient({ patients }: { patients: Patient[] }) {
                   </h3>
                   <ul className="divide-y divide-slate-50">
                     {dayEvents.map((e, i) => (
-                      <EventRow key={i} event={e} />
+                      <EventRow key={i} event={e} sellerName={sellerName(e.responsibleSellerId)} />
                     ))}
                   </ul>
                 </div>
@@ -215,7 +220,7 @@ function LegendDot({ className, label }: { className: string; label: string }) {
   );
 }
 
-function EventRow({ event }: { event: CalendarEvent }) {
+function EventRow({ event, sellerName }: { event: CalendarEvent; sellerName: string }) {
   const details = [event.treatment, event.time, event.flightNo, event.hotelName, event.roomType].filter(Boolean);
   return (
     <li className="py-3">
@@ -226,6 +231,7 @@ function EventRow({ event }: { event: CalendarEvent }) {
         <div>
           <p className="text-sm font-medium text-slate-800">{event.patientName}</p>
           <p className="text-xs text-slate-500">{details.join(" · ") || "—"}</p>
+          <p className="text-xs text-slate-400">Responsible: {sellerName}</p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${KIND_STYLES[event.kind]}`}>
           {event.label}

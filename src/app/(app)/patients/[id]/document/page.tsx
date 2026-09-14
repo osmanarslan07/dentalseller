@@ -58,9 +58,11 @@ export default async function PatientDocumentPage({
   const { visit } = await searchParams;
 
   const supabase = await createClient();
-  const [patient, settings] = await Promise.all([getPatient(supabase, id), getSettings(supabase)]);
+  const patient = await getPatient(supabase, id);
 
   if (!patient) notFound();
+
+  const settings = await getSettings(supabase, patient.responsible_seller_id);
 
   const extraVisit = visit && visit !== "1" && visit !== "2" ? patient.extra_visits.find((v) => v.id === visit) : undefined;
   const visitNum: 1 | 2 = visit === "2" ? 2 : 1;

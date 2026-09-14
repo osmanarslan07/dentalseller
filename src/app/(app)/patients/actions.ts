@@ -99,7 +99,7 @@ export async function createPatient(formData: FormData) {
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
 
-  const { error } = await supabase.from("patients").insert({ ...input, user_id: user.id });
+  const { error } = await supabase.from("patients").insert({ ...input, responsible_seller_id: user.id });
   if (error) throw new Error(error.message);
 
   try {
@@ -132,6 +132,21 @@ export async function sendPatientTelegramMessage(id: string) {
   if (error) throw new Error(error.message);
 
   await sendTelegramMessage(buildNewPatientMessage(data as PatientInput));
+}
+
+/** Hands the patient to another seller — they earn the commission from here on.
+ * The DB trigger enforces that only the current responsible seller or an admin may do this. */
+export async function reassignPatient(id: string, newSellerId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("patients")
+    .update({ responsible_seller_id: newSellerId })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/patients");
+  revalidatePath("/");
+  revalidatePath("/projections");
 }
 
 export async function deletePatient(id: string) {
@@ -187,7 +202,7 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
 
   const { error } = await supabase
     .from("patient_visits")
-    .insert({ ...input, patient_id: patientId, user_id: user.id });
+    .insert({ ...input, patient_id: patientId, created_by_seller_id: user.id });
   if (error) throw new Error(error.message);
 
   revalidatePath("/patients");

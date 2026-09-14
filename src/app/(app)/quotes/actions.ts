@@ -141,7 +141,7 @@ export async function convertQuoteToPatient(id: string) {
   const { data: patient, error: patientError } = await supabase
     .from("patients")
     .insert({
-      user_id: user.id,
+      responsible_seller_id: user.id,
       name: quote.name,
       treatment: letterItems.split(",")[0]?.trim() || null,
       letter_treatment_items: letterItems || null,

@@ -550,6 +550,31 @@ drop policy if exists "telegram_link_codes_insert_own" on public.telegram_link_c
 create policy "telegram_link_codes_insert_own" on public.telegram_link_codes
   for insert with check (user_id = auth.uid());
 
+-- ---------- activity_log (admin-only audit trail for security-relevant actions) ----------
+create table if not exists public.activity_log (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid references auth.users(id) on delete set null,
+  action text not null,
+  target_type text not null,
+  target_id text,
+  detail text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists activity_log_created_at_idx on public.activity_log(created_at desc);
+
+alter table public.activity_log enable row level security;
+
+-- only admin can read the log; any signed-in user can log their own action (admin-only
+-- actions that use the service-role client bypass RLS entirely, so this is enough).
+drop policy if exists "activity_log_select_admin" on public.activity_log;
+create policy "activity_log_select_admin" on public.activity_log
+  for select using (public.is_admin(auth.uid()));
+
+drop policy if exists "activity_log_insert_self" on public.activity_log;
+create policy "activity_log_insert_self" on public.activity_log
+  for insert with check (actor_id = auth.uid());
+
 -- ---------- storage: clinic-assets (confirmation-letter logo) ----------
 -- public read, uploads go through the server action using the service-role client
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

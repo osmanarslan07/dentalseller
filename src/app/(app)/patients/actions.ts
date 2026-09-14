@@ -4,6 +4,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
+import { logActivity } from "@/lib/activity-log";
 import { PatientInput } from "@/types";
 
 /** The responsible seller's own chat plus the clinic-wide fallback (deduped) — so a
@@ -153,11 +154,18 @@ export async function sendPatientTelegramMessage(id: string) {
  * The DB trigger enforces that only the current responsible seller or an admin may do this. */
 export async function reassignPatient(id: string, newSellerId: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const { error } = await supabase
     .from("patients")
     .update({ responsible_seller_id: newSellerId })
     .eq("id", id);
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "patient_reassigned", "patient", id, newSellerId);
 
   revalidatePath("/patients");
   revalidatePath("/");

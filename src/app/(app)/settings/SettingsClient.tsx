@@ -25,6 +25,7 @@ export function SettingsClient({
   currentUserEmail,
   currentDisplayName,
   telegramConnected,
+  isAdmin,
 }: {
   settings: CommissionSettings;
   patients: Patient[];
@@ -34,6 +35,7 @@ export function SettingsClient({
   currentUserEmail: string;
   currentDisplayName: string;
   telegramConnected: boolean;
+  isAdmin: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export function SettingsClient({
 
       <TelegramCard connected={telegramConnected} />
 
-      <TeamCard profiles={profiles} currentUserId={currentUserId} />
+      <TeamCard profiles={profiles} currentUserId={currentUserId} isAdmin={isAdmin} />
 
       <Card className="p-6">
         <h2 className="mb-1 text-base font-semibold text-slate-900">Commission tiers</h2>

@@ -1,28 +1,45 @@
 "use client";
 
 import { FormEvent, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Profile } from "@/types";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { addSeller, AddSellerResult } from "./team-actions";
+import { addSeller, adminResetPassword, setSellerActive, setSellerRole, AddSellerResult } from "./team-actions";
 
-export function TeamCard({ profiles, currentUserId }: { profiles: Profile[]; currentUserId: string }) {
+interface CredentialResult extends AddSellerResult {
+  kind: "created" | "reset";
+}
+
+export function TeamCard({
+  profiles,
+  currentUserId,
+  isAdmin,
+}: {
+  profiles: Profile[];
+  currentUserId: string;
+  isAdmin: boolean;
+}) {
   const [pending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AddSellerResult | null>(null);
+  const [credentialResult, setCredentialResult] = useState<CredentialResult | null>(null);
+  const [rowPendingId, setRowPendingId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
   const { showToast } = useToast();
+  const router = useRouter();
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setResult(null);
+    setCredentialResult(null);
     startTransition(async () => {
       try {
         const r = await addSeller(email);
-        setResult(r);
+        setCredentialResult({ ...r, kind: "created" });
         setEmail("");
         showToast("Seller added ✓");
+        router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to add seller");
       }
@@ -30,8 +47,54 @@ export function TeamCard({ profiles, currentUserId }: { profiles: Profile[]; cur
   }
 
   function copyPassword() {
-    if (!result) return;
-    navigator.clipboard.writeText(result.tempPassword).then(() => showToast("Password copied"));
+    if (!credentialResult) return;
+    navigator.clipboard.writeText(credentialResult.tempPassword).then(() => showToast("Password copied"));
+  }
+
+  async function handleToggleActive(seller: Profile) {
+    setRowError(null);
+    setRowPendingId(seller.id);
+    try {
+      await setSellerActive(seller.id, !seller.is_active);
+      showToast(seller.is_active ? "Seller deactivated ✓" : "Seller reactivated ✓");
+      router.refresh();
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : "Failed to update seller");
+    } finally {
+      setRowPendingId(null);
+    }
+  }
+
+  async function handleToggleRole(seller: Profile) {
+    const nextRole = seller.role === "admin" ? "seller" : "admin";
+    if (!confirm(`${nextRole === "admin" ? "Promote" : "Demote"} ${seller.display_name || "this seller"}?`)) return;
+    setRowError(null);
+    setRowPendingId(seller.id);
+    try {
+      await setSellerRole(seller.id, nextRole);
+      showToast(nextRole === "admin" ? "Promoted to admin ✓" : "Demoted to seller ✓");
+      router.refresh();
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : "Failed to update role");
+    } finally {
+      setRowPendingId(null);
+    }
+  }
+
+  async function handleResetPassword(seller: Profile) {
+    if (!confirm(`Reset ${seller.display_name || "this seller"}'s password?`)) return;
+    setRowError(null);
+    setCredentialResult(null);
+    setRowPendingId(seller.id);
+    try {
+      const r = await adminResetPassword(seller.id);
+      setCredentialResult({ ...r, kind: "reset" });
+      showToast("Password reset ✓");
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : "Failed to reset password");
+    } finally {
+      setRowPendingId(null);
+    }
   }
 
   return (
@@ -42,20 +105,57 @@ export function TeamCard({ profiles, currentUserId }: { profiles: Profile[]; cur
       </p>
 
       <ul className="mb-5 divide-y divide-slate-100">
-        {profiles.map((p) => (
-          <li key={p.id} className="flex items-center justify-between py-2.5 text-sm">
-            <span className="font-medium text-slate-900">
-              {p.display_name || "Invited — awaiting first login"}
-              {p.id === currentUserId && <span className="ml-1.5 text-xs font-normal text-slate-400">(you)</span>}
-            </span>
-            <div className="flex items-center gap-1.5">
-              {p.role === "admin" && <Badge tone="blue">Admin</Badge>}
-              {!p.is_active && <Badge tone="amber">Inactive</Badge>}
-              {!p.display_name && <Badge tone="slate">Pending</Badge>}
-            </div>
-          </li>
-        ))}
+        {profiles.map((p) => {
+          const isSelf = p.id === currentUserId;
+          const rowBusy = rowPendingId === p.id;
+          return (
+            <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+              <span className="font-medium text-slate-900">
+                {p.display_name || "Invited — awaiting first login"}
+                {isSelf && <span className="ml-1.5 text-xs font-normal text-slate-400">(you)</span>}
+              </span>
+              <div className="flex items-center gap-1.5">
+                {p.role === "admin" && <Badge tone="blue">Admin</Badge>}
+                {!p.is_active && <Badge tone="amber">Inactive</Badge>}
+                {!p.display_name && <Badge tone="slate">Pending</Badge>}
+                {isAdmin && !isSelf && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={rowBusy}
+                      onClick={() => handleResetPassword(p)}
+                    >
+                      Reset password
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={rowBusy}
+                      onClick={() => handleToggleRole(p)}
+                    >
+                      {p.role === "admin" ? "Demote" : "Promote"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={p.is_active ? "danger" : "secondary"}
+                      disabled={rowBusy}
+                      onClick={() => handleToggleActive(p)}
+                    >
+                      {p.is_active ? "Deactivate" : "Reactivate"}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
+
+      {rowError && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{rowError}</p>}
 
       <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <div className="flex-1">
@@ -75,16 +175,19 @@ export function TeamCard({ profiles, currentUserId }: { profiles: Profile[]; cur
 
       {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
-      {result && (
+      {credentialResult && (
         <div className="mt-4 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800">
-          <p className="font-medium">Account created for {result.email}</p>
+          <p className="font-medium">
+            {credentialResult.kind === "created" ? "Account created for" : "Password reset for"}{" "}
+            {credentialResult.email}
+          </p>
           <p className="mt-1">
             Temporary password:{" "}
-            <code className="rounded bg-white px-1.5 py-0.5 font-mono">{result.tempPassword}</code>
+            <code className="rounded bg-white px-1.5 py-0.5 font-mono">{credentialResult.tempPassword}</code>
           </p>
           <p className="mt-2 text-xs text-emerald-700">
-            Share this with them directly, not by email — they&apos;ll pick their own name on first
-            login. This password is shown once and isn&apos;t saved anywhere.
+            Share this with them directly, not by email — this password is shown once and isn&apos;t saved
+            anywhere.
           </p>
           <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={copyPassword}>
             Copy password

@@ -86,6 +86,19 @@ function patientVisits(p: Patient): Visit[] {
   ];
 }
 
+/** Distinct patients with at least one completed visit dated in the given month — "how many
+ * patients actually came in" as opposed to how many were sold/confirmed. */
+export function countPatientsWithCompletedVisitInMonth(patients: Patient[], month: string): number {
+  let count = 0;
+  for (const p of patients) {
+    const came = patientVisits(p).some(
+      (v) => v.status === "completed" && v.date && monthKey(v.date) === month
+    );
+    if (came) count++;
+  }
+  return count;
+}
+
 /** Raw actual/expected totals per calendar month across all patients. */
 export function computeMonthTotals(patients: Patient[]): Map<string, MonthTotals> {
   const map = new Map<string, MonthTotals>();

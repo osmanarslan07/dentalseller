@@ -70,12 +70,25 @@ export function PatientFormModal({
   const [reassignPending, setReassignPending] = useState(false);
   const canReassign = isEdit && (patient?.responsible_seller_id === currentUserId || isAdmin);
 
+  const visitOptions = patient
+    ? [
+        { value: "visit1", label: "Visit 1" },
+        ...(patient.needs_visit2 ? [{ value: "visit2", label: "Visit 2" }] : []),
+        ...patient.extra_visits.map((v) => ({ value: v.id, label: v.label })),
+      ]
+    : [];
+  const [visitToSend, setVisitToSend] = useState("visit1");
+
   useEffect(() => {
     if (open) setIsDirty(false);
   }, [open, patient?.id, duplicateFrom?.id]);
 
   useEffect(() => {
     if (open) setResponsibleId(patient?.responsible_seller_id ?? "");
+  }, [open, patient?.id]);
+
+  useEffect(() => {
+    if (open) setVisitToSend("visit1");
   }, [open, patient?.id]);
 
   useEffect(() => {
@@ -112,7 +125,7 @@ export function PatientFormModal({
     if (!patient) return;
     setTelegramPending(true);
     try {
-      await sendPatientTelegramMessage(patient.id);
+      await sendPatientTelegramMessage(patient.id, visitToSend);
       showToast("Sent to Telegram ✓");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Failed to send to Telegram");
@@ -303,17 +316,30 @@ export function PatientFormModal({
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
-        <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
           {isEdit && (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleSendTelegram}
-              disabled={telegramPending}
-              className="mr-auto"
-            >
-              {telegramPending ? "Sending…" : "Send to Telegram"}
-            </Button>
+            <div className="mr-auto flex items-center gap-1.5">
+              <Select
+                value={visitToSend}
+                onChange={(e) => setVisitToSend(e.target.value)}
+                className="w-auto"
+                aria-label="Visit to send"
+              >
+                {visitOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleSendTelegram}
+                disabled={telegramPending}
+              >
+                {telegramPending ? "Sending…" : "Send to Telegram"}
+              </Button>
+            </div>
           )}
           <Button type="button" variant="secondary" onClick={handleRequestClose}>
             Cancel

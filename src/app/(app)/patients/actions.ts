@@ -3,9 +3,10 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getPatient } from "@/lib/data";
 import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { logActivity } from "@/lib/activity-log";
-import { PatientInput } from "@/types";
+import { Patient, PatientInput } from "@/types";
 
 /** The responsible seller's own chat plus the clinic-wide fallback (deduped) — so a
  * notification never silently disappears just because a seller hasn't linked Telegram yet. */
@@ -50,6 +51,82 @@ function buildNewPatientMessage(input: PatientInput): string {
     input.visit1_expected != null ? `<b>İlk visit ödeme:</b> £${input.visit1_expected}` : null,
     input.needs_visit2 && input.visit2_expected != null ? `<b>İkinci visit ödeme:</b> £${input.visit2_expected}` : null,
     total ? `<b>Toplam Ödeme:</b> £${total}` : null,
+  ].filter(Boolean);
+
+  return lines.join("\n");
+}
+
+/** "visit1" | "visit2" | an extra_visits row id — resolved to that one visit's own fields only,
+ * so a resend never mixes e.g. visit 1's arrival with visit 2's departure like the initial
+ * new-patient summary does. */
+function buildVisitMessage(patient: Patient, visitKey: string): string {
+  let label: string;
+  let treatment: string | null;
+  let expected: number | null;
+  let actual: number | null;
+  let arrivalDate: string | null, arrivalTime: string | null, arrivalFlightNo: string | null;
+  let departureDate: string | null, departureTime: string | null, departureFlightNo: string | null;
+  let hotelName: string | null, roomType: string | null;
+
+  if (visitKey === "visit1") {
+    label = "Visit 1";
+    treatment = patient.treatment;
+    expected = patient.visit1_expected;
+    actual = patient.visit1_actual;
+    arrivalDate = patient.visit1_arrival_date;
+    arrivalTime = patient.visit1_arrival_time;
+    arrivalFlightNo = patient.visit1_arrival_flight_no;
+    departureDate = patient.visit1_departure_date;
+    departureTime = patient.visit1_departure_time;
+    departureFlightNo = patient.visit1_departure_flight_no;
+    hotelName = patient.visit1_hotel_name;
+    roomType = patient.visit1_room_type;
+  } else if (visitKey === "visit2") {
+    label = "Visit 2";
+    treatment = patient.treatment;
+    expected = patient.visit2_expected;
+    actual = patient.visit2_actual;
+    arrivalDate = patient.visit2_arrival_date;
+    arrivalTime = patient.visit2_arrival_time;
+    arrivalFlightNo = patient.visit2_arrival_flight_no;
+    departureDate = patient.visit2_departure_date;
+    departureTime = patient.visit2_departure_time;
+    departureFlightNo = patient.visit2_departure_flight_no;
+    hotelName = patient.visit2_hotel_name;
+    roomType = patient.visit2_room_type;
+  } else {
+    const extra = patient.extra_visits.find((v) => v.id === visitKey);
+    if (!extra) throw new Error("Visit not found");
+    label = extra.label;
+    treatment = extra.treatment ?? patient.treatment;
+    expected = extra.expected;
+    actual = extra.actual;
+    arrivalDate = extra.arrival_date;
+    arrivalTime = extra.arrival_time;
+    arrivalFlightNo = extra.arrival_flight_no;
+    departureDate = extra.departure_date;
+    departureTime = extra.departure_time;
+    departureFlightNo = extra.departure_flight_no;
+    hotelName = extra.hotel_name;
+    roomType = extra.room_type;
+  }
+
+  const arrival = formatDateTime(arrivalDate, arrivalTime);
+  const departure = formatDateTime(departureDate, departureTime);
+
+  const lines = [
+    `<b>Hasta Adı:</b> ${patient.name}`,
+    `<b>Visit:</b> ${label}`,
+    treatment ? `<b>Tedavi:</b> ${treatment}` : null,
+    arrival ? `<b>Geliş:</b> ${arrival}${arrivalFlightNo ? ` - <code>${arrivalFlightNo}</code>` : ""}` : null,
+    departure ? `<b>Gidiş:</b> ${departure}${departureFlightNo ? ` - <code>${departureFlightNo}</code>` : ""}` : null,
+    hotelName ? `<b>Otel:</b> ${hotelName}` : null,
+    roomType ? `<b>Oda Türü:</b> ${roomType}` : null,
+    actual != null
+      ? `<b>Ödeme (alındı):</b> £${actual}`
+      : expected != null
+      ? `<b>Ödeme (beklenen):</b> £${expected}`
+      : null,
   ].filter(Boolean);
 
   return lines.join("\n");
@@ -140,14 +217,14 @@ export async function updatePatient(id: string, formData: FormData) {
   revalidatePath("/projections");
 }
 
-export async function sendPatientTelegramMessage(id: string) {
+export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("patients").select("*").eq("id", id).single();
-  if (error) throw new Error(error.message);
+  const patient = await getPatient(supabase, id);
+  if (!patient) throw new Error("Patient not found");
 
-  const chatIds = await getRecipientChatIds(supabase, data.responsible_seller_id);
+  const chatIds = await getRecipientChatIds(supabase, patient.responsible_seller_id);
   if (chatIds.length === 0) throw new Error("No Telegram chat linked for this patient's seller");
-  await sendTelegramMessageToMany(chatIds, buildNewPatientMessage(data as PatientInput));
+  await sendTelegramMessageToMany(chatIds, buildVisitMessage(patient, visitKey));
 }
 
 /** Hands the patient to another seller — they earn the commission from here on.

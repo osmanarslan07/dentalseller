@@ -1,9 +1,21 @@
 "use server";
 
+import { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { sendTelegramMessage } from "@/lib/telegram";
+import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { PatientInput } from "@/types";
+
+/** The responsible seller's own chat plus the clinic-wide fallback (deduped) — so a
+ * notification never silently disappears just because a seller hasn't linked Telegram yet. */
+async function getRecipientChatIds(supabase: SupabaseClient, sellerId: string): Promise<string[]> {
+  const { data } = await supabase.from("profiles").select("telegram_chat_id").eq("id", sellerId).maybeSingle();
+  const ids = new Set<string>();
+  if (data?.telegram_chat_id) ids.add(data.telegram_chat_id);
+  const fallback = getFallbackChatId();
+  if (fallback) ids.add(fallback);
+  return [...ids];
+}
 
 function formatDateTime(date: string | null, time: string | null) {
   if (!date) return null;
@@ -103,7 +115,8 @@ export async function createPatient(formData: FormData) {
   if (error) throw new Error(error.message);
 
   try {
-    await sendTelegramMessage(buildNewPatientMessage(input));
+    const chatIds = await getRecipientChatIds(supabase, user.id);
+    if (chatIds.length > 0) await sendTelegramMessageToMany(chatIds, buildNewPatientMessage(input));
   } catch (err) {
     console.error("Telegram notify failed:", err);
   }
@@ -131,7 +144,9 @@ export async function sendPatientTelegramMessage(id: string) {
   const { data, error } = await supabase.from("patients").select("*").eq("id", id).single();
   if (error) throw new Error(error.message);
 
-  await sendTelegramMessage(buildNewPatientMessage(data as PatientInput));
+  const chatIds = await getRecipientChatIds(supabase, data.responsible_seller_id);
+  if (chatIds.length === 0) throw new Error("No Telegram chat linked for this patient's seller");
+  await sendTelegramMessageToMany(chatIds, buildNewPatientMessage(data as PatientInput));
 }
 
 /** Hands the patient to another seller — they earn the commission from here on.

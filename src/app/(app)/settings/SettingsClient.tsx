@@ -11,6 +11,7 @@ import { ExchangeRatePoint } from "@/lib/data";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
 import { AccountCard } from "./AccountCard";
 import { TeamCard } from "./TeamCard";
+import { TelegramCard } from "./TelegramCard";
 import { saveClinicBranding, saveDashboardCards, saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
@@ -23,6 +24,7 @@ export function SettingsClient({
   currentUserId,
   currentUserEmail,
   currentDisplayName,
+  telegramConnected,
 }: {
   settings: CommissionSettings;
   patients: Patient[];
@@ -31,6 +33,7 @@ export function SettingsClient({
   currentUserId: string;
   currentUserEmail: string;
   currentDisplayName: string;
+  telegramConnected: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +118,8 @@ export function SettingsClient({
       </div>
 
       <AccountCard email={currentUserEmail} displayName={currentDisplayName} />
+
+      <TelegramCard connected={telegramConnected} />
 
       <TeamCard profiles={profiles} currentUserId={currentUserId} />
 

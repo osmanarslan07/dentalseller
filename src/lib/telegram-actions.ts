@@ -1,0 +1,40 @@
+"use server";
+
+import { randomBytes } from "crypto";
+import { createClient } from "@/lib/supabase/server";
+import { getBotUsername } from "@/lib/telegram";
+
+const CODE_TTL_MINUTES = 10;
+
+export interface TelegramLinkInfo {
+  deepLink: string;
+  botUsername: string;
+  code: string;
+  expiresInMinutes: number;
+}
+
+/** Generates a one-time code the user sends to the bot as `/start <code>` to link their chat. */
+export async function generateTelegramLinkCode(): Promise<TelegramLinkInfo> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const code = randomBytes(6).toString("hex");
+  const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString();
+
+  const { error } = await supabase
+    .from("telegram_link_codes")
+    .insert({ code, user_id: user.id, expires_at: expiresAt });
+  if (error) throw new Error(error.message);
+
+  const botUsername = await getBotUsername();
+
+  return {
+    deepLink: `https://t.me/${botUsername}?start=${code}`,
+    botUsername,
+    code,
+    expiresInMinutes: CODE_TTL_MINUTES,
+  };
+}

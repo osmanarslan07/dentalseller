@@ -27,6 +27,7 @@ export default async function SettingsPage() {
       currentUserId={user?.id ?? ""}
       currentUserEmail={user?.email ?? ""}
       currentDisplayName={myProfile?.display_name ?? ""}
+      telegramConnected={!!myProfile?.telegram_chat_id}
     />
   );
 }

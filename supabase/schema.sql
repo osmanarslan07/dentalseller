@@ -531,6 +531,25 @@ drop policy if exists "settings_select_admin" on public.settings;
 create policy "settings_select_admin" on public.settings
   for select using (public.is_admin(auth.uid()));
 
+-- ---------- telegram_link_codes (short-lived, one-time codes to link a seller's own chat) ----------
+create table if not exists public.telegram_link_codes (
+  code text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at timestamptz
+);
+
+create index if not exists telegram_link_codes_user_id_idx on public.telegram_link_codes(user_id);
+
+alter table public.telegram_link_codes enable row level security;
+
+-- a seller can create their own code; nothing else is exposed to normal clients — the
+-- webhook that verifies/consumes a code runs with the service-role key, which bypasses RLS.
+drop policy if exists "telegram_link_codes_insert_own" on public.telegram_link_codes;
+create policy "telegram_link_codes_insert_own" on public.telegram_link_codes
+  for insert with check (user_id = auth.uid());
+
 -- ---------- storage: clinic-assets (confirmation-letter logo) ----------
 -- public read, uploads go through the server action using the service-role client
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

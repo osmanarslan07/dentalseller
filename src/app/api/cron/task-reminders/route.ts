@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendTelegramMessage } from "@/lib/telegram";
+import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 
 interface TaskRow {
   id: string;
+  user_id: string;
   title: string;
   notes: string | null;
   due_date: string;
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   // due today with a time that's already passed, or due on an earlier date at all — either way it's due
   const { data, error } = await supabase
     .from("tasks")
-    .select("id, title, notes, due_date, due_time, patient_name, patients(name)")
+    .select("id, user_id, title, notes, due_date, due_time, patient_name, patients(name)")
     .eq("status", "pending")
     .is("notified_at", null)
     .lte("due_date", today);
@@ -50,23 +51,47 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ sent: false, reason: "No tasks due" });
   }
 
-  const lines = due.map((t) => {
-    const patient = t.patient_name || t.patients?.name;
-    const when = t.due_time ? `${t.due_date} ${t.due_time}` : t.due_date;
-    return [
-      `⏰ <b>${t.title}</b>`,
-      patient ? ` — ${patient}` : "",
-      ` (${when})`,
-      t.notes ? `\n${t.notes}` : "",
-    ].join("");
-  });
+  const dueByOwner = new Map<string, TaskRow[]>();
+  for (const t of due) {
+    const list = dueByOwner.get(t.user_id) ?? [];
+    list.push(t);
+    dueByOwner.set(t.user_id, list);
+  }
 
-  await sendTelegramMessage(`<b>Task reminders</b>\n\n${lines.join("\n\n")}`);
+  const { data: profiles } = await supabase.from("profiles").select("id, telegram_chat_id");
+  const chatByOwner = new Map((profiles ?? []).map((p) => [p.id, p.telegram_chat_id as string | null]));
+  const fallback = getFallbackChatId();
+
+  await Promise.all(
+    [...dueByOwner.entries()].map(async ([ownerId, tasks]) => {
+      const chatIds = new Set<string>();
+      const own = chatByOwner.get(ownerId);
+      if (own) chatIds.add(own);
+      if (fallback) chatIds.add(fallback);
+      if (chatIds.size === 0) return;
+
+      const lines = tasks.map((t) => {
+        const patient = t.patient_name || t.patients?.name;
+        const when = t.due_time ? `${t.due_date} ${t.due_time}` : t.due_date;
+        return [
+          `⏰ <b>${t.title}</b>`,
+          patient ? ` — ${patient}` : "",
+          ` (${when})`,
+          t.notes ? `\n${t.notes}` : "",
+        ].join("");
+      });
+
+      await sendTelegramMessageToMany([...chatIds], `<b>Task reminders</b>\n\n${lines.join("\n\n")}`);
+    })
+  );
 
   await supabase
     .from("tasks")
     .update({ notified_at: now.toISOString() })
-    .in("id", due.map((t) => t.id));
+    .in(
+      "id",
+      due.map((t) => t.id)
+    );
 
   return NextResponse.json({ sent: true, count: due.length });
 }

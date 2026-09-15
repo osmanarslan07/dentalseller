@@ -64,6 +64,17 @@ function formatDateTime(date: string | null, time: string | null) {
   return time ? `${datePart} ${time}` : datePart;
 }
 
+/** Actual takes priority — once a payment is received, that's the number that matters. */
+function paymentLine(label: string, actual: number | null, expected: number | null): string | null {
+  if (actual != null) return `<b>${label} (alındı):</b> £${actual}`;
+  if (expected != null) return `<b>${label} (beklenen):</b> £${expected}`;
+  return null;
+}
+
+function amountOf(actual: number | null, expected: number | null): number {
+  return actual ?? expected ?? 0;
+}
+
 function buildNewPatientMessage(input: PatientInput): string {
   const arrival = formatDateTime(input.visit1_arrival_date, input.visit1_arrival_time);
   const useVisit2Departure = input.needs_visit2 && !!input.visit2_departure_date;
@@ -152,6 +163,26 @@ function buildVisitMessage(patient: Patient, visitKey: string): string {
   const arrival = formatDateTime(arrivalDate, arrivalTime);
   const departure = formatDateTime(departureDate, departureTime);
 
+  // visit1/visit2 messages carry both visits' payments (+ a running total) for planning
+  // purposes — whoever's arranging visit2 logistics needs to know what visit1 already
+  // brought in, and vice versa. Extra visits stay single-payment, as before.
+  const paymentLines: (string | null)[] = [];
+  if (visitKey === "visit1") {
+    paymentLines.push(paymentLine("İlk visit ödeme", actual, expected));
+    if (patient.needs_visit2) {
+      paymentLines.push(paymentLine("İkinci visit ödeme", patient.visit2_actual, patient.visit2_expected));
+      const total = amountOf(actual, expected) + amountOf(patient.visit2_actual, patient.visit2_expected);
+      if (total > 0) paymentLines.push(`<b>Toplam Ödeme:</b> £${total}`);
+    }
+  } else if (visitKey === "visit2") {
+    paymentLines.push(paymentLine("İlk visit ödeme", patient.visit1_actual, patient.visit1_expected));
+    paymentLines.push(paymentLine("İkinci visit ödeme", actual, expected));
+    const total = amountOf(patient.visit1_actual, patient.visit1_expected) + amountOf(actual, expected);
+    if (total > 0) paymentLines.push(`<b>Toplam Ödeme:</b> £${total}`);
+  } else {
+    paymentLines.push(paymentLine("Ödeme", actual, expected));
+  }
+
   const lines = [
     `<b>Hasta Adı:</b> ${patient.name}`,
     `<b>Visit:</b> ${label}`,
@@ -160,11 +191,7 @@ function buildVisitMessage(patient: Patient, visitKey: string): string {
     departure ? `<b>Gidiş:</b> ${departure}${departureFlightNo ? ` - <code>${departureFlightNo}</code>` : ""}` : null,
     hotelName ? `<b>Otel:</b> ${hotelName}` : null,
     roomType ? `<b>Oda Türü:</b> ${roomType}` : null,
-    actual != null
-      ? `<b>Ödeme (alındı):</b> £${actual}`
-      : expected != null
-      ? `<b>Ödeme (beklenen):</b> £${expected}`
-      : null,
+    ...paymentLines,
   ].filter(Boolean);
 
   return lines.join("\n");

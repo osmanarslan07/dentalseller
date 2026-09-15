@@ -575,6 +575,81 @@ drop policy if exists "activity_log_insert_self" on public.activity_log;
 create policy "activity_log_insert_self" on public.activity_log
   for insert with check (actor_id = auth.uid());
 
+-- ---------- per-visit commission attribution ----------
+-- Locks in "who earned this" the moment a payment is actually recorded, so reassigning a
+-- patient later never drags already-earned commission along to the new seller — only visits
+-- still unpaid at reassignment time follow the new owner (see reassignPatient in the app).
+alter table public.patients add column if not exists visit1_earned_by_seller_id uuid references auth.users(id) on delete set null;
+alter table public.patients add column if not exists visit2_earned_by_seller_id uuid references auth.users(id) on delete set null;
+alter table public.patient_visits add column if not exists earned_by_seller_id uuid references auth.users(id) on delete set null;
+
+-- Owns visit1/visit2_earned_by_seller_id entirely: once set it can't be moved by a client
+-- update (the trigger keeps whatever OLD had), and it clears itself if a payment is un-recorded.
+create or replace function public.set_patient_visit_earned_by()
+returns trigger as $$
+begin
+  if new.visit1_actual is null then
+    new.visit1_earned_by_seller_id := null;
+  elsif TG_OP = 'UPDATE' and old.visit1_earned_by_seller_id is not null then
+    new.visit1_earned_by_seller_id := old.visit1_earned_by_seller_id;
+  else
+    new.visit1_earned_by_seller_id := new.responsible_seller_id;
+  end if;
+
+  if new.visit2_actual is null then
+    new.visit2_earned_by_seller_id := null;
+  elsif TG_OP = 'UPDATE' and old.visit2_earned_by_seller_id is not null then
+    new.visit2_earned_by_seller_id := old.visit2_earned_by_seller_id;
+  else
+    new.visit2_earned_by_seller_id := new.responsible_seller_id;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists patients_set_visit_earned_by on public.patients;
+create trigger patients_set_visit_earned_by
+  before insert or update on public.patients
+  for each row execute function public.set_patient_visit_earned_by();
+
+-- Same rule for extra visits, credited against whichever seller currently owns the parent
+-- patient at the moment the payment is recorded.
+create or replace function public.set_extra_visit_earned_by()
+returns trigger as $$
+begin
+  if new.actual is null then
+    new.earned_by_seller_id := null;
+  elsif TG_OP = 'UPDATE' and old.earned_by_seller_id is not null then
+    new.earned_by_seller_id := old.earned_by_seller_id;
+  else
+    select responsible_seller_id into new.earned_by_seller_id from public.patients where id = new.patient_id;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists patient_visits_set_earned_by on public.patient_visits;
+create trigger patient_visits_set_earned_by
+  before insert or update on public.patient_visits
+  for each row execute function public.set_extra_visit_earned_by();
+
+-- Backfill: existing completed visits keep crediting whoever currently owns the patient —
+-- matches today's behavior exactly, so nothing moves on migration day. Only reassignments
+-- from this point on stop dragging already-earned commission along with them.
+update public.patients
+set visit1_earned_by_seller_id = responsible_seller_id
+where visit1_actual is not null and visit1_earned_by_seller_id is null;
+
+update public.patients
+set visit2_earned_by_seller_id = responsible_seller_id
+where visit2_actual is not null and visit2_earned_by_seller_id is null;
+
+update public.patient_visits pv
+set earned_by_seller_id = p.responsible_seller_id
+from public.patients p
+where pv.patient_id = p.id and pv.actual is not null and pv.earned_by_seller_id is null;
+
 -- ---------- storage: clinic-assets (confirmation-letter logo) ----------
 -- public read, uploads go through the server action using the service-role client
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

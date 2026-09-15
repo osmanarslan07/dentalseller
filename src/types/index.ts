@@ -24,6 +24,9 @@ export interface PatientExtraVisit {
   expected: number | null;
   actual: number | null;
   status: VisitStatus;
+  /** Locked in the moment `actual` is first recorded (DB trigger) — the seller who gets
+   * commission credit for this visit, independent of who owns the patient later on. */
+  earned_by_seller_id: string | null;
   treatment: string | null;
   notes: string | null;
 
@@ -42,12 +45,14 @@ export interface PatientExtraVisit {
 
 export type PatientExtraVisitInput = Omit<
   PatientExtraVisit,
-  "id" | "patient_id" | "created_at" | "updated_at"
+  "id" | "patient_id" | "created_at" | "updated_at" | "earned_by_seller_id"
 >;
 
 export interface Patient {
   id: string;
-  /** The seller who earns commission on this patient. Editable by that seller or an admin only. */
+  /** The seller who currently owns this patient — earns commission on visits not yet paid,
+   * and can be handed to a colleague via reassignment. See `visit*_earned_by_seller_id` for
+   * who actually earns commission on a visit already paid, which reassignment can't change. */
   responsible_seller_id: string;
   name: string;
   treatment: string | null;
@@ -59,11 +64,15 @@ export interface Patient {
   visit1_expected: number | null;
   visit1_actual: number | null;
   visit1_status: VisitStatus;
+  /** Locked in (DB trigger) the moment visit1_actual is first recorded. */
+  visit1_earned_by_seller_id: string | null;
 
   visit2_date: string | null;
   visit2_expected: number | null;
   visit2_actual: number | null;
   visit2_status: VisitStatus;
+  /** Locked in (DB trigger) the moment visit2_actual is first recorded. */
+  visit2_earned_by_seller_id: string | null;
 
   notes: string | null;
   komo_reference: string | null;
@@ -94,7 +103,13 @@ export interface Patient {
 
 export type PatientInput = Omit<
   Patient,
-  "id" | "responsible_seller_id" | "created_at" | "updated_at" | "extra_visits"
+  | "id"
+  | "responsible_seller_id"
+  | "created_at"
+  | "updated_at"
+  | "extra_visits"
+  | "visit1_earned_by_seller_id"
+  | "visit2_earned_by_seller_id"
 >;
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";

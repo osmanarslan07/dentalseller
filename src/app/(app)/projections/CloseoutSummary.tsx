@@ -8,22 +8,32 @@ import { Card, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 
 export function CloseoutSummary({
-  patients,
+  allPatients,
+  currentUserId,
   settings,
   months,
   defaultMonth,
 }: {
-  patients: Patient[];
+  allPatients: Patient[];
+  currentUserId: string;
   settings: CommissionSettings;
   months: string[];
   defaultMonth: string;
 }) {
   const [month, setMonth] = useState(defaultMonth);
 
+  // Pipeline counts (confirmed/visits done) follow current ownership; money follows
+  // visit-level attribution so a reassigned-away patient's already-earned commission
+  // still counts here — see patientCommissionContribution in lib/commission.
+  const patients = useMemo(
+    () => allPatients.filter((p) => p.responsible_seller_id === currentUserId),
+    [allPatients, currentUserId]
+  );
+
   const aggregateMap = useMemo(() => {
-    const aggregates = computeMonthlyAggregates(patients, settings);
+    const aggregates = computeMonthlyAggregates(allPatients, settings, currentUserId);
     return new Map(aggregates.map((a) => [a.month, a]));
-  }, [patients, settings]);
+  }, [allPatients, settings, currentUserId]);
 
   const stats = useMemo(() => {
     let confirmed = 0;

@@ -23,9 +23,10 @@ export default async function ProjectionsPage() {
     getSettings(supabase, user?.id ?? ""),
   ]);
   // Projections mirror Dashboard: each seller's own commission only, never a colleague's.
-  const patients = allPatients.filter((p) => p.responsible_seller_id === user?.id);
-
-  const aggregates = computeMonthlyAggregates(patients, settings);
+  // Computed from ALL patients (not a pre-filtered list) so a seller keeps credit for
+  // commission already earned on a patient that's since been reassigned to a colleague —
+  // reassignment only moves ownership of visits that haven't been paid yet.
+  const aggregates = computeMonthlyAggregates(allPatients, settings, user?.id ?? "");
   const aggregateMap = new Map(aggregates.map((a) => [a.month, a]));
 
   const thisMonth = currentMonthKey();
@@ -71,7 +72,8 @@ export default async function ProjectionsPage() {
       </div>
 
       <CloseoutSummary
-        patients={patients}
+        allPatients={allPatients}
+        currentUserId={user?.id ?? ""}
         settings={settings}
         months={[...fullRange].reverse()}
         defaultMonth={thisMonth}

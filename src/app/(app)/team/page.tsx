@@ -41,6 +41,28 @@ function describeActivity(
       const newSeller = (entry.detail && nameById.get(entry.detail)) || "another seller";
       return `${actor} reassigned ${patientName} to ${newSeller}`;
     }
+    case "patient_created": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || entry.detail || "a patient";
+      return `${actor} added patient ${patientName}`;
+    }
+    case "patient_updated": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} edited ${patientName}${entry.detail ? ` — ${entry.detail}` : ""}`;
+    }
+    case "patient_deleted":
+      return `${actor} deleted patient ${entry.detail || "(unnamed)"}`;
+    case "visit_added": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} added a visit for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
+    }
+    case "visit_updated": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} edited a visit for ${patientName}${entry.detail ? ` — ${entry.detail}` : ""}`;
+    }
+    case "visit_deleted": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} deleted a visit for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
+    }
     default:
       return `${actor} — ${entry.action}`;
   }
@@ -61,9 +83,12 @@ export default async function TeamPage() {
 
   const rows = await Promise.all(
     profiles.map(async (seller) => {
+      // Pipeline counts (patient count, sold-this-month) follow current ownership; money and
+      // "came this month" follow visit-level attribution so reassigning a patient away doesn't
+      // erase a seller's already-earned commission from their own breakdown here.
       const sellerPatients = allPatients.filter((p) => p.responsible_seller_id === seller.id);
       const settings = await getSettings(supabase, seller.id);
-      const aggregates = computeMonthlyAggregates(sellerPatients, settings);
+      const aggregates = computeMonthlyAggregates(allPatients, settings, seller.id);
       const thisMonthAgg = aggregates.find((a) => a.month === thisMonth);
 
       const patientsSoldThisMonth = sellerPatients.filter(
@@ -75,7 +100,7 @@ export default async function TeamPage() {
         currency: settings.currency,
         patientCount: sellerPatients.length,
         patientsSoldThisMonth,
-        patientsCameThisMonth: countPatientsWithCompletedVisitInMonth(sellerPatients, thisMonth),
+        patientsCameThisMonth: countPatientsWithCompletedVisitInMonth(allPatients, thisMonth, seller.id),
         paidThisMonth: thisMonthAgg?.actualTotal ?? 0,
         thisMonthActual: thisMonthAgg?.actualCommission ?? 0,
         totalActual: aggregates.reduce((sum, a) => sum + a.actualCommission, 0),
@@ -88,7 +113,7 @@ export default async function TeamPage() {
     .from("activity_log")
     .select("id, actor_id, action, target_type, target_id, detail, created_at")
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(50);
 
   const nameById = new Map<string, string>(
     profiles.map((p: Profile) => [p.id, p.display_name || "Unnamed seller"])

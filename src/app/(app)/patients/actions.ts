@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPatient } from "@/lib/data";
 import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { logActivity } from "@/lib/activity-log";
-import { Patient, PatientInput } from "@/types";
+import { Patient, PatientExtraVisit, PatientInput } from "@/types";
 
 /** The responsible seller's own chat plus the clinic-wide fallback (deduped) — so a
  * notification never silently disappears just because a seller hasn't linked Telegram yet. */
@@ -18,6 +18,44 @@ async function getRecipientChatIds(supabase: SupabaseClient, sellerId: string): 
   if (fallback) ids.add(fallback);
   return [...ids];
 }
+
+/** Compact human-readable diff of the fields worth auditing on a shared record — money,
+ * dates, and status, not every logistics field (arrival flight, hotel, etc). `before` (the
+ * full DB row) and `after` (a form-parsed input) are different shapes that merely share
+ * these field names, hence the two independent type parameters. */
+function diffFields<B, A>(before: B, after: A, fields: { key: keyof B & keyof A; label: string }[]): string {
+  const changes: string[] = [];
+  for (const { key, label } of fields) {
+    const b = (before as Record<string, unknown>)[key as string] ?? null;
+    const a = (after as Record<string, unknown>)[key as string] ?? null;
+    if (b !== a) changes.push(`${label} ${b ?? "—"} → ${a ?? "—"}`);
+  }
+  return changes.join(", ");
+}
+
+const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
+  { key: "name", label: "name" },
+  { key: "treatment", label: "treatment" },
+  { key: "confirmation_date", label: "confirmed" },
+  { key: "needs_visit2", label: "needs visit 2" },
+  { key: "visit1_date", label: "visit1 date" },
+  { key: "visit1_expected", label: "visit1 expected" },
+  { key: "visit1_actual", label: "visit1 actual" },
+  { key: "visit1_status", label: "visit1 status" },
+  { key: "visit2_date", label: "visit2 date" },
+  { key: "visit2_expected", label: "visit2 expected" },
+  { key: "visit2_actual", label: "visit2 actual" },
+  { key: "visit2_status", label: "visit2 status" },
+];
+
+const EXTRA_VISIT_AUDIT_FIELDS: { key: keyof ReturnType<typeof parseExtraVisitInput>; label: string }[] = [
+  { key: "label", label: "label" },
+  { key: "visit_date", label: "date" },
+  { key: "expected", label: "expected" },
+  { key: "actual", label: "actual" },
+  { key: "status", label: "status" },
+  { key: "treatment", label: "treatment" },
+];
 
 function formatDateTime(date: string | null, time: string | null) {
   if (!date) return null;
@@ -189,8 +227,14 @@ export async function createPatient(formData: FormData) {
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
 
-  const { error } = await supabase.from("patients").insert({ ...input, responsible_seller_id: user.id });
+  const { data: created, error } = await supabase
+    .from("patients")
+    .insert({ ...input, responsible_seller_id: user.id })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "patient_created", "patient", created?.id ?? null, input.name);
 
   try {
     const chatIds = await getRecipientChatIds(supabase, user.id);
@@ -206,11 +250,25 @@ export async function createPatient(formData: FormData) {
 
 export async function updatePatient(id: string, formData: FormData) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
 
+  // Shared patients can be edited by any active seller — snapshot the before-state so the
+  // audit log records who actually changed money/date/status fields, not just that "someone did".
+  const before = await getPatient(supabase, id);
+
   const { error } = await supabase.from("patients").update(input).eq("id", id);
   if (error) throw new Error(error.message);
+
+  if (before) {
+    const changes = diffFields(before, input, PATIENT_AUDIT_FIELDS);
+    if (changes) await logActivity(supabase, user.id, "patient_updated", "patient", id, changes);
+  }
 
   revalidatePath("/patients");
   revalidatePath("/");
@@ -227,8 +285,11 @@ export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   await sendTelegramMessageToMany(chatIds, buildVisitMessage(patient, visitKey));
 }
 
-/** Hands the patient to another seller — they earn the commission from here on.
- * The DB trigger enforces that only the current responsible seller or an admin may do this. */
+/** Hands the patient to another seller — they earn commission on any visit not yet paid.
+ * A DB trigger locks in credit for visits already paid before the handoff, so this never
+ * moves commission the previous seller already earned (see visit*_earned_by_seller_id).
+ * A separate DB trigger enforces that only the current responsible seller or an admin may
+ * reassign at all. */
 export async function reassignPatient(id: string, newSellerId: string) {
   const supabase = await createClient();
   const {
@@ -251,8 +312,19 @@ export async function reassignPatient(id: string, newSellerId: string) {
 
 export async function deletePatient(id: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Grab the name before it's gone — the log has to be self-contained since the patient
+  // row (and any later name lookup by id) won't exist anymore.
+  const patient = await getPatient(supabase, id);
+
   const { error } = await supabase.from("patients").delete().eq("id", id);
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "patient_deleted", "patient", id, patient?.name ?? undefined);
 
   revalidatePath("/patients");
   revalidatePath("/");
@@ -305,6 +377,8 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
     .insert({ ...input, patient_id: patientId, created_by_seller_id: user.id });
   if (error) throw new Error(error.message);
 
+  await logActivity(supabase, user.id, "visit_added", "patient", patientId, input.label);
+
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/projections");
@@ -312,11 +386,27 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
 
 export async function updateExtraVisit(id: string, formData: FormData) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const input = parseExtraVisitInput(formData);
   if (!input.label) throw new Error("Reason is required");
 
+  const { data: before } = await supabase
+    .from("patient_visits")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle<PatientExtraVisit>();
+
   const { error } = await supabase.from("patient_visits").update(input).eq("id", id);
   if (error) throw new Error(error.message);
+
+  if (before) {
+    const changes = diffFields(before, input, EXTRA_VISIT_AUDIT_FIELDS);
+    if (changes) await logActivity(supabase, user.id, "visit_updated", "patient", before.patient_id, changes);
+  }
 
   revalidatePath("/patients");
   revalidatePath("/");
@@ -325,8 +415,23 @@ export async function updateExtraVisit(id: string, formData: FormData) {
 
 export async function deleteExtraVisit(id: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: before } = await supabase
+    .from("patient_visits")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle<PatientExtraVisit>();
+
   const { error } = await supabase.from("patient_visits").delete().eq("id", id);
   if (error) throw new Error(error.message);
+
+  if (before) {
+    await logActivity(supabase, user.id, "visit_deleted", "patient", before.patient_id, before.label);
+  }
 
   revalidatePath("/patients");
   revalidatePath("/");

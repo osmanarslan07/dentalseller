@@ -158,7 +158,10 @@ export default async function DashboardPage() {
   // leak another seller's numbers. The shared roster lives on /patients and /calendar.
   const patients = allPatients.filter((p) => p.responsible_seller_id === user?.id);
 
-  const aggregates = computeMonthlyAggregates(patients, settings);
+  // Money figures are computed from ALL patients (not the filtered list above) so a seller
+  // keeps credit for commission already earned on a patient that's since been reassigned
+  // away — reassignment only affects who owns still-unpaid visits going forward.
+  const aggregates = computeMonthlyAggregates(allPatients, settings, user?.id ?? "");
   const aggregateMap = new Map(aggregates.map((a) => [a.month, a]));
 
   const totalActualCommission = aggregates.reduce((sum, a) => sum + a.actualCommission, 0);
@@ -319,7 +322,7 @@ export default async function DashboardPage() {
   // Visits with no date yet (e.g. visit2 not booked) are excluded from the per-month
   // aggregates/chart so they don't skew a specific month's bar — add them back in here,
   // valued at the current month's rate, so dashboard totals still reflect all confirmed work.
-  const unscheduledExpectedTotal = computeUnscheduledExpectedTotal(patients);
+  const unscheduledExpectedTotal = computeUnscheduledExpectedTotal(allPatients, user?.id ?? "");
   const unscheduledExpectedCommission = unscheduledExpectedTotal * (thisMonthAgg?.expectedRate ?? 0);
 
   const totalExpectedCommission =

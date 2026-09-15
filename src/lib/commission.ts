@@ -61,6 +61,10 @@ interface Visit {
   expected: number | null;
   actual: number | null;
   status: "upcoming" | "completed";
+  /** Who gets commission credit for this specific visit: the seller who earned it if it's
+   * already been paid (locked in by a DB trigger, immune to later reassignment), otherwise
+   * whoever currently owns the patient (since that's who'll actually close it). */
+  ownerId: string;
 }
 
 function patientVisits(p: Patient): Visit[] {
@@ -70,28 +74,43 @@ function patientVisits(p: Patient): Visit[] {
       expected: p.visit1_expected,
       actual: p.visit1_actual,
       status: p.visit1_status,
+      ownerId: p.visit1_actual != null ? p.visit1_earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,
     },
     {
       date: p.visit2_date,
       expected: p.visit2_expected,
       actual: p.visit2_actual,
       status: p.visit2_status,
+      ownerId: p.visit2_actual != null ? p.visit2_earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,
     },
     ...p.extra_visits.map((v) => ({
       date: v.visit_date,
       expected: v.expected,
       actual: v.actual,
       status: v.status,
+      ownerId: v.actual != null ? v.earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,
     })),
   ];
 }
 
+/** All of a patient's visits, optionally narrowed to just the ones a given seller gets
+ * commission credit for. Pass no sellerId to get every visit regardless of owner. */
+function visitsForSeller(p: Patient, sellerId?: string): Visit[] {
+  const visits = patientVisits(p);
+  return sellerId == null ? visits : visits.filter((v) => v.ownerId === sellerId);
+}
+
 /** Distinct patients with at least one completed visit dated in the given month — "how many
- * patients actually came in" as opposed to how many were sold/confirmed. */
-export function countPatientsWithCompletedVisitInMonth(patients: Patient[], month: string): number {
+ * patients actually came in" as opposed to how many were sold/confirmed. Pass sellerId to
+ * count only visits that seller gets commission credit for. */
+export function countPatientsWithCompletedVisitInMonth(
+  patients: Patient[],
+  month: string,
+  sellerId?: string
+): number {
   let count = 0;
   for (const p of patients) {
-    const came = patientVisits(p).some(
+    const came = visitsForSeller(p, sellerId).some(
       (v) => v.status === "completed" && v.date && monthKey(v.date) === month
     );
     if (came) count++;
@@ -99,8 +118,10 @@ export function countPatientsWithCompletedVisitInMonth(patients: Patient[], mont
   return count;
 }
 
-/** Raw actual/expected totals per calendar month across all patients. */
-export function computeMonthTotals(patients: Patient[]): Map<string, MonthTotals> {
+/** Raw actual/expected totals per calendar month, optionally narrowed to one seller's
+ * commission-earning visits (a patient can straddle two sellers if it was reassigned
+ * after some visits were already paid — see visitsForSeller). */
+export function computeMonthTotals(patients: Patient[], sellerId?: string): Map<string, MonthTotals> {
   const map = new Map<string, MonthTotals>();
 
   const bump = (month: string, key: "actualTotal" | "expectedTotal", amount: number) => {
@@ -110,7 +131,7 @@ export function computeMonthTotals(patients: Patient[]): Map<string, MonthTotals
   };
 
   for (const p of patients) {
-    for (const visit of patientVisits(p)) {
+    for (const visit of visitsForSeller(p, sellerId)) {
       if (!visit.date) continue;
       const month = monthKey(visit.date);
       if (visit.actual != null) bump(month, "actualTotal", visit.actual);
@@ -123,10 +144,10 @@ export function computeMonthTotals(patients: Patient[]): Map<string, MonthTotals
 
 /** Expected total for visits with no date yet (e.g. visit2 not booked) —
  * kept out of the per-month map so they don't skew a specific month's bar. */
-export function computeUnscheduledExpectedTotal(patients: Patient[]): number {
+export function computeUnscheduledExpectedTotal(patients: Patient[], sellerId?: string): number {
   let total = 0;
   for (const p of patients) {
-    for (const visit of patientVisits(p)) {
+    for (const visit of visitsForSeller(p, sellerId)) {
       if (visit.date || visit.actual != null || visit.expected == null) continue;
       total += visit.expected;
     }
@@ -134,15 +155,20 @@ export function computeUnscheduledExpectedTotal(patients: Patient[]): number {
   return total;
 }
 
-/** Month totals + tier/commission, sorted ascending by month. Confirmation-date patient counts included. */
+/** Month totals + tier/commission, sorted ascending by month. Confirmation-date patient counts
+ * included. Pass sellerId to scope both to one seller — money follows visit-level attribution
+ * (see visitsForSeller), while "patients confirmed" still follows current ownership since
+ * that's a whole-patient pipeline event, not a per-visit one. */
 export function computeMonthlyAggregates(
   patients: Patient[],
-  settings: CommissionSettings
+  settings: CommissionSettings,
+  sellerId?: string
 ): MonthAggregate[] {
-  const totals = computeMonthTotals(patients);
+  const totals = computeMonthTotals(patients, sellerId);
 
   const patientCounts = new Map<string, number>();
   for (const p of patients) {
+    if (sellerId != null && p.responsible_seller_id !== sellerId) continue;
     if (!p.confirmation_date) continue;
     const month = monthKey(p.confirmation_date);
     patientCounts.set(month, (patientCounts.get(month) ?? 0) + 1);
@@ -172,15 +198,18 @@ export function computeMonthlyAggregates(
 }
 
 /** Each pound in a month is taxed at that month's flat rate, so a patient's
- * share of the month's commission is simply their payment × that month's rate. */
+ * share of the month's commission is simply their payment × that month's rate.
+ * Pass sellerId to get only the slice of this patient that seller gets credit for
+ * (relevant once a patient has been reassigned partway through treatment). */
 export function patientCommissionContribution(
   p: Patient,
-  monthlyRates: Map<string, { actualRate: number; expectedRate: number }>
+  monthlyRates: Map<string, { actualRate: number; expectedRate: number }>,
+  sellerId?: string
 ): { actual: number; expected: number } {
   let actual = 0;
   let expected = 0;
 
-  for (const visit of patientVisits(p)) {
+  for (const visit of visitsForSeller(p, sellerId)) {
     if (visit.actual != null) {
       if (!visit.date) continue;
       const rates = monthlyRates.get(monthKey(visit.date));

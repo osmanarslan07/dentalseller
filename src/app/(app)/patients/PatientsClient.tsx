@@ -182,14 +182,16 @@ export function PatientsClient({
     return () => document.removeEventListener("click", close);
   }, [openDocsId]);
 
-  // Commission tiers are computed from the viewer's OWN patients only — this list is the
-  // shared clinic roster, so mixing in colleagues' totals would both misreport the tier
-  // (wrong monthly total) and, worse, expose derived commission on patients that aren't theirs.
-  const ownPatients = useMemo(
-    () => patients.filter((p) => p.responsible_seller_id === currentUserId),
-    [patients, currentUserId]
+  // Commission tiers are computed from the viewer's own commission-earning visits only — this
+  // list is the shared clinic roster, so mixing in colleagues' totals would both misreport the
+  // tier (wrong monthly total) and, worse, expose derived commission on patients that aren't
+  // theirs. Scoped by sellerId (not a pre-filtered patient list) so a patient reassigned away
+  // still contributes whatever commission the viewer already earned on it — see
+  // patientCommissionContribution in lib/commission.
+  const aggregates = useMemo(
+    () => computeMonthlyAggregates(patients, settings, currentUserId),
+    [patients, settings, currentUserId]
   );
-  const aggregates = useMemo(() => computeMonthlyAggregates(ownPatients, settings), [ownPatients, settings]);
   const ratesMap = useMemo(() => ratesMapFromAggregates(aggregates), [aggregates]);
 
   const months = useMemo(() => {
@@ -228,7 +230,9 @@ export function PatientsClient({
       return {
         patient: p,
         isMine,
-        commission: isMine ? patientCommissionContribution(p, ratesMap) : { actual: 0, expected: 0 },
+        // Zeroes out on its own for visits the viewer doesn't get credit for, so a patient
+        // that's since been reassigned away still shows whatever was earned before the handoff.
+        commission: patientCommissionContribution(p, ratesMap, currentUserId),
         stage: patientStage(p),
       };
     });

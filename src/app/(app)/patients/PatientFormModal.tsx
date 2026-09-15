@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
+import { formatDate } from "@/lib/format";
 import { Patient, PatientExtraVisit, Profile } from "@/types";
 import {
   createPatient,
@@ -26,6 +27,7 @@ export function PatientFormModal({
   profiles = [],
   currentUserId = "",
   isAdmin = false,
+  existingPatients = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -38,6 +40,9 @@ export function PatientFormModal({
   profiles?: Profile[];
   currentUserId?: string;
   isAdmin?: boolean;
+  /** The shared roster, used to warn on create if the name matches someone already entered
+   * (easy to do by accident now that multiple sellers add into the same pool). */
+  existingPatients?: Patient[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -136,6 +141,23 @@ export function PatientFormModal({
 
   function handleSubmit(formData: FormData) {
     setError(null);
+
+    if (!isEdit) {
+      const name = String(formData.get("name") ?? "").trim();
+      const nameKey = name.toLowerCase();
+      const dupes = existingPatients.filter((p) => p.name.trim().toLowerCase() === nameKey);
+      if (dupes.length > 0) {
+        const sellerNameFor = (id: string) => profiles.find((p) => p.id === id)?.display_name || "Unknown seller";
+        const details = dupes
+          .map((p) => `• Confirmed ${formatDate(p.confirmation_date)} — responsible: ${sellerNameFor(p.responsible_seller_id)}`)
+          .join("\n");
+        const proceed = confirm(
+          `A patient named "${name}" already exists:\n\n${details}\n\nAdd another with the same name anyway?`
+        );
+        if (!proceed) return;
+      }
+    }
+
     startTransition(async () => {
       try {
         if (isEdit && patient) {

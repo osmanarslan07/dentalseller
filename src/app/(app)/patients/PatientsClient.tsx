@@ -47,6 +47,22 @@ function patientStage(p: Patient): Stage {
   return "visit1_completed";
 }
 
+/** Search matches more than just the exact name spelling — a seller is just as likely to
+ * remember the Komo reference, the hotel, or the treatment they typed in. `q` is already
+ * lowercased and trimmed. */
+function matchesSearch(p: Patient, q: string): boolean {
+  const haystacks = [
+    p.name,
+    p.treatment,
+    p.komo_reference,
+    p.notes,
+    p.visit1_hotel_name,
+    p.visit2_hotel_name,
+    ...p.extra_visits.map((v) => v.label),
+  ];
+  return haystacks.some((h) => h?.toLowerCase().includes(q));
+}
+
 function SortHeader({
   label,
   sortKeyValue,
@@ -328,7 +344,7 @@ export function PatientsClient({
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      list = list.filter((r) => r.patient.name.toLowerCase().includes(q));
+      list = list.filter((r) => matchesSearch(r.patient, q));
     }
     if (stageFilter !== "all") {
       list = list.filter((r) => r.stage === stageFilter);
@@ -425,7 +441,7 @@ export function PatientsClient({
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
-            placeholder="Search by name…"
+            placeholder="Search name, treatment, Komo ref, hotel…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="sm:max-w-xs"
@@ -779,6 +795,7 @@ export function PatientsClient({
         profiles={profiles}
         currentUserId={currentUserId}
         isAdmin={isAdmin}
+        existingPatients={patients}
       />
     </div>
   );

@@ -14,6 +14,14 @@ import { deleteQuote, convertQuoteToPatient, duplicateQuote } from "./actions";
 
 const groupKey = (quote: Quote) => quote.name.trim().toLowerCase();
 
+/** Search matches more than just the exact name spelling — a seller is just as likely to
+ * remember the label, the Komo reference, or a note they typed in. `q` is already
+ * lowercased and trimmed. */
+function matchesSearch(quote: Quote, q: string): boolean {
+  const haystacks = [quote.name, quote.label, quote.komo_reference, quote.notes];
+  return haystacks.some((h) => h?.toLowerCase().includes(q));
+}
+
 const STATUS_TONES: Record<QuoteStatus, "slate" | "green" | "amber" | "blue"> = {
   draft: "slate",
   sent: "amber",
@@ -45,7 +53,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
     let list = quotes;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      list = list.filter((quote) => quote.name.toLowerCase().includes(q));
+      list = list.filter((quote) => matchesSearch(quote, q));
     }
     if (statusFilter !== "all") {
       list = list.filter((quote) => quote.status === statusFilter);
@@ -140,7 +148,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
-            placeholder="Search by name…"
+            placeholder="Search name, label, Komo ref…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="sm:max-w-xs"

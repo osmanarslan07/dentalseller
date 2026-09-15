@@ -671,6 +671,12 @@ alter table public.patient_visits add column if not exists arrival_transfer_arra
 alter table public.patient_visits add column if not exists departure_transfer_arranged boolean not null default false;
 alter table public.patient_visits add column if not exists hotel_arranged boolean not null default false;
 
+-- ---------- visit 2 recall period (drives the auto-created follow-up task) ----------
+-- How many months after visit 1 the patient should come back for visit 2 — varies by
+-- treatment (implant healing time etc.), so it's editable per patient rather than a fixed
+-- global assumption. Defaults to 3, the common case.
+alter table public.patients add column if not exists visit2_recall_months integer not null default 3 check (visit2_recall_months > 0);
+
 -- ---------- storage: clinic-assets (confirmation-letter logo) ----------
 -- public read, uploads go through the server action using the service-role client
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

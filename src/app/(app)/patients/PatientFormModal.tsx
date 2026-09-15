@@ -321,6 +321,22 @@ export function PatientFormModal({
                 Needs a second visit
               </label>
             </div>
+            {needsVisit2 && (
+              <div>
+                <Label>Recall period before visit 2 (months)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  name="visit2_recall_months"
+                  defaultValue={initial?.visit2_recall_months ?? 3}
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Once visit 1 is marked completed, a &quot;Book visit 2&quot; task is created automatically,
+                  due this many months later.
+                </p>
+              </div>
+            )}
             <div className="sm:col-span-2">
               <Label>Komo reference</Label>
               <Input

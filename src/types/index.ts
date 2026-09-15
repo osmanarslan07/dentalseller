@@ -62,6 +62,9 @@ export interface Patient {
   letter_treatment_items: string | null;
   confirmation_date: string | null; // ISO date
   needs_visit2: boolean;
+  /** Months after visit 1 before visit 2 should happen — drives the due date of the
+   * follow-up task auto-created when visit 1 is marked completed. */
+  visit2_recall_months: number;
 
   visit1_date: string | null;
   visit1_expected: number | null;

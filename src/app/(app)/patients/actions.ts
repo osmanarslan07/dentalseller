@@ -2,11 +2,54 @@
 
 import { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import { addMonths, format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getPatient } from "@/lib/data";
 import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { logActivity } from "@/lib/activity-log";
 import { Patient, PatientExtraVisit, PatientInput } from "@/types";
+
+/** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
+ * parses as UTC) so this can't drift a day depending on the server's timezone offset. */
+function addMonthsToDateString(dateStr: string, months: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return format(addMonths(new Date(y, m - 1, d), months), "yyyy-MM-dd");
+}
+
+/** Auto-creates the "book visit 2" reminder the moment visit 1 is marked completed — no
+ * button, no manual step. Runs with the service-role client since the task has to belong to
+ * the patient's responsible seller, who may not be whoever's saving this particular edit
+ * (any active seller can update a shared patient record). Best-effort: a failure here
+ * should never break the patient save it's attached to. */
+async function maybeCreateFollowUpTask(patientId: string, responsibleSellerId: string, input: PatientInput) {
+  if (!(input.visit1_status === "completed" && input.needs_visit2 && input.visit1_date)) return;
+  try {
+    const admin = createAdminClient();
+    const title = `Book visit 2 — ${input.name}`;
+    const { data: existing } = await admin
+      .from("tasks")
+      .select("id")
+      .eq("patient_id", patientId)
+      .eq("user_id", responsibleSellerId)
+      .eq("status", "pending")
+      .eq("title", title)
+      .maybeSingle();
+    if (existing) return;
+
+    const dueDate = addMonthsToDateString(input.visit1_date, input.visit2_recall_months);
+    await admin.from("tasks").insert({
+      user_id: responsibleSellerId,
+      title,
+      due_date: dueDate,
+      patient_id: patientId,
+      patient_name: input.name,
+      status: "pending",
+    });
+  } catch (err) {
+    console.error("Auto follow-up task creation failed:", err);
+  }
+}
 
 /** The responsible seller's own chat plus the clinic-wide fallback (deduped) — so a
  * notification never silently disappears just because a seller hasn't linked Telegram yet. */
@@ -215,6 +258,10 @@ function parseInput(formData: FormData): PatientInput {
     letter_treatment_items: str("letter_treatment_items"),
     confirmation_date: str("confirmation_date"),
     needs_visit2: formData.get("needs_visit2") === "on",
+    visit2_recall_months: (() => {
+      const n = Math.round(Number(formData.get("visit2_recall_months")));
+      return Number.isFinite(n) && n > 0 ? n : 3;
+    })(),
     visit1_date: str("visit1_date"),
     visit1_expected: num("visit1_expected"),
     visit1_actual: num("visit1_actual"),
@@ -269,6 +316,8 @@ export async function createPatient(formData: FormData) {
 
   await logActivity(supabase, user.id, "patient_created", "patient", created?.id ?? null, input.name);
 
+  if (created?.id) await maybeCreateFollowUpTask(created.id, user.id, input);
+
   try {
     const chatIds = await getRecipientChatIds(supabase, user.id);
     if (chatIds.length > 0) await sendTelegramMessageToMany(chatIds, buildNewPatientMessage(input));
@@ -279,6 +328,7 @@ export async function createPatient(formData: FormData) {
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/projections");
+  revalidatePath("/tasks");
 }
 
 export async function updatePatient(id: string, formData: FormData) {
@@ -301,10 +351,17 @@ export async function updatePatient(id: string, formData: FormData) {
   if (before) {
     const changes = diffFields(before, input, PATIENT_AUDIT_FIELDS);
     if (changes) await logActivity(supabase, user.id, "patient_updated", "patient", id, changes);
+
+    // Only on the actual upcoming → completed transition — not on every subsequent save of
+    // an already-completed visit 1, which would otherwise re-check (and re-skip) every time.
+    if (before.visit1_status !== "completed" && input.visit1_status === "completed") {
+      await maybeCreateFollowUpTask(id, before.responsible_seller_id, input);
+    }
   }
 
   revalidatePath("/patients");
   revalidatePath("/");
+  revalidatePath("/tasks");
   revalidatePath("/projections");
 }
 

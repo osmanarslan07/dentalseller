@@ -16,22 +16,46 @@ import {
   subMonths,
 } from "date-fns";
 import { Patient, Profile } from "@/types";
-import { Button, Card } from "@/components/ui";
+import { Button, Card, Select } from "@/components/ui";
 import { CalendarEvent, KIND_STYLES, flattenCalendarEvents, groupEventsByDate } from "@/lib/calendar-events";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE = 3;
 
-export function CalendarClient({ patients, profiles }: { patients: Patient[]; profiles: Profile[] }) {
+export function CalendarClient({
+  patients,
+  profiles,
+  currentUserId,
+}: {
+  patients: Patient[];
+  profiles: Profile[];
+  currentUserId: string;
+}) {
   const sellerName = useMemo(() => {
     const map = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
     return (id: string) => map.get(id) ?? "Unknown";
   }, [profiles]);
 
+  // Only sellers who actually have a patient here — no point listing an empty roster.
+  const sellerOptions = useMemo(() => {
+    const ids = new Set(patients.map((p) => p.responsible_seller_id));
+    return profiles
+      .filter((p) => ids.has(p.id))
+      .map((p) => ({ id: p.id, name: p.display_name || "Unnamed seller" }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [patients, profiles]);
+
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [sellerFilter, setSellerFilter] = useState<string>("all");
 
-  const events = useMemo(() => flattenCalendarEvents(patients), [patients]);
+  const filteredPatients = useMemo(() => {
+    if (sellerFilter === "all") return patients;
+    const wanted = sellerFilter === "mine" ? currentUserId : sellerFilter;
+    return patients.filter((p) => p.responsible_seller_id === wanted);
+  }, [patients, sellerFilter, currentUserId]);
+
+  const events = useMemo(() => flattenCalendarEvents(filteredPatients), [filteredPatients]);
   const eventsByDate = useMemo(() => groupEventsByDate(events), [events]);
 
   const days = useMemo(() => {
@@ -77,12 +101,29 @@ export function CalendarClient({ patients, profiles }: { patients: Patient[]; pr
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-        <LegendDot className="bg-emerald-100" label="Arrival (V1)" />
-        <LegendDot className="bg-amber-100" label="Departure (V1)" />
-        <LegendDot className="bg-blue-100" label="Arrival (V2)" />
-        <LegendDot className="bg-purple-100" label="Departure (V2)" />
-        <LegendDot className="bg-slate-200" label="Visit (self-arranged)" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+          <LegendDot className="bg-emerald-100" label="Arrival (V1)" />
+          <LegendDot className="bg-amber-100" label="Departure (V1)" />
+          <LegendDot className="bg-blue-100" label="Arrival (V2)" />
+          <LegendDot className="bg-purple-100" label="Departure (V2)" />
+          <LegendDot className="bg-slate-200" label="Visit (self-arranged)" />
+        </div>
+        <Select
+          value={sellerFilter}
+          onChange={(e) => setSellerFilter(e.target.value)}
+          className="max-w-[180px]"
+        >
+          <option value="all">All sellers</option>
+          <option value="mine">Mine only</option>
+          {sellerOptions
+            .filter((s) => s.id !== currentUserId)
+            .map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+        </Select>
       </div>
 
       <div className="space-y-3 md:hidden">

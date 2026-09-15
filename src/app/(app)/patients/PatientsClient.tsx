@@ -15,7 +15,7 @@ import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
 import { PatientFormModal } from "./PatientFormModal";
-import { deletePatient } from "./actions";
+import { deletePatient, sendPatientTelegramMessage } from "./actions";
 
 type SortKey = "name" | "confirmation_date" | "visit1_date" | "visit2_date" | "commission";
 type ViewMode = "list" | "kanban";
@@ -140,6 +140,76 @@ function DocumentsMenu({
   );
 }
 
+/** One-click resend from the list — no need to open the full edit modal just to notify a
+ * seller's Telegram about a visit. Picks the same visit options the modal's send control
+ * offers (visit1/visit2/extra visits); each is sent immediately on click. */
+function TelegramMenu({
+  patient: p,
+  open,
+  onToggle,
+  onClose,
+}: {
+  patient: Patient;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
+  const { showToast } = useToast();
+  const [sendingKey, setSendingKey] = useState<string | null>(null);
+
+  const visitOptions = [
+    { value: "visit1", label: "Visit 1" },
+    ...(p.needs_visit2 ? [{ value: "visit2", label: "Visit 2" }] : []),
+    ...p.extra_visits.map((v) => ({ value: v.id, label: v.label })),
+  ];
+
+  async function send(visitKey: string) {
+    setSendingKey(visitKey);
+    try {
+      await sendPatientTelegramMessage(p.id, visitKey);
+      showToast("Sent to Telegram ✓");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to send to Telegram", "error");
+    } finally {
+      setSendingKey(null);
+      onClose();
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        title="Send to Telegram"
+        className={`rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 ${
+          open ? "bg-slate-100 text-slate-700" : ""
+        }`}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+          <path d="M22 2 11 13" />
+          <path d="M22 2 15 22 11 13 2 9 22 2Z" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          {visitOptions.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              disabled={sendingKey !== null}
+              onClick={() => send(o.value)}
+              className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-600 disabled:opacity-50"
+            >
+              {sendingKey === o.value ? "Sending…" : `Send ${o.label}`}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PatientsClient({
   patients,
   settings,
@@ -165,6 +235,7 @@ export function PatientsClient({
   const [stageFilter, setStageFilter] = useState<Stage | "all">("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [treatmentFilter, setTreatmentFilter] = useState<string>("all");
+  const [sellerFilter, setSellerFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("confirmation_date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [modalOpen, setModalOpen] = useState(false);
@@ -173,6 +244,7 @@ export function PatientsClient({
   const [, startTransition] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openDocsId, setOpenDocsId] = useState<string | null>(null);
+  const [openTelegramId, setOpenTelegramId] = useState<string | null>(null);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -181,6 +253,13 @@ export function PatientsClient({
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, [openDocsId]);
+
+  useEffect(() => {
+    if (!openTelegramId) return;
+    const close = () => setOpenTelegramId(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [openTelegramId]);
 
   // Commission tiers are computed from the viewer's own commission-earning visits only — this
   // list is the shared clinic roster, so mixing in colleagues' totals would both misreport the
@@ -205,6 +284,16 @@ export function PatientsClient({
     for (const p of patients) if (p.treatment) set.add(p.treatment);
     return [...set].sort();
   }, [patients]);
+
+  // Only sellers who actually show up as "responsible" on a patient here — no point
+  // listing a colleague with an empty roster.
+  const sellerOptions = useMemo(() => {
+    const ids = new Set(patients.map((p) => p.responsible_seller_id));
+    return profiles
+      .filter((p) => ids.has(p.id))
+      .map((p) => ({ id: p.id, name: p.display_name || "Unnamed seller" }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [patients, profiles]);
 
   const hotelOptions = useMemo(() => {
     const set = new Set<string>();
@@ -250,6 +339,11 @@ export function PatientsClient({
     if (treatmentFilter !== "all") {
       list = list.filter((r) => r.patient.treatment === treatmentFilter);
     }
+    if (sellerFilter === "mine") {
+      list = list.filter((r) => r.isMine);
+    } else if (sellerFilter !== "all") {
+      list = list.filter((r) => r.patient.responsible_seller_id === sellerFilter);
+    }
 
     list.sort((a, b) => {
       let cmp = 0;
@@ -265,7 +359,7 @@ export function PatientsClient({
     });
 
     return list;
-  }, [patients, search, stageFilter, monthFilter, treatmentFilter, sortKey, sortDir, ratesMap, currentUserId]);
+  }, [patients, search, stageFilter, monthFilter, treatmentFilter, sellerFilter, sortKey, sortDir, ratesMap, currentUserId]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -372,6 +466,21 @@ export function PatientsClient({
               </option>
             ))}
           </Select>
+          <Select
+            value={sellerFilter}
+            onChange={(e) => setSellerFilter(e.target.value)}
+            className="sm:max-w-[180px]"
+          >
+            <option value="all">All sellers</option>
+            <option value="mine">Mine only</option>
+            {sellerOptions
+              .filter((s) => s.id !== currentUserId)
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+          </Select>
         </div>
       </Card>
 
@@ -427,7 +536,7 @@ export function PatientsClient({
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-400">Commission</div>
-                {isMine ? (
+                {commission.actual > 0 || commission.expected > 0 ? (
                   <div className="font-medium text-slate-700">
                     <Money value={commission.actual} currency={settings.currency} showConversion={false} />
                     {commission.expected > 0 && (
@@ -482,6 +591,12 @@ export function PatientsClient({
                 patient={p}
                 open={openDocsId === p.id}
                 onToggle={() => setOpenDocsId((cur) => (cur === p.id ? null : p.id))}
+              />
+              <TelegramMenu
+                patient={p}
+                open={openTelegramId === p.id}
+                onToggle={() => setOpenTelegramId((cur) => (cur === p.id ? null : p.id))}
+                onClose={() => setOpenTelegramId(null)}
               />
               <button
                 title="Duplicate — prefill a new patient from this one"
@@ -579,7 +694,7 @@ export function PatientsClient({
                     <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
                   </td>
                   <td className="py-3 pr-4 font-medium text-slate-700">
-                    {isMine ? (
+                    {commission.actual > 0 || commission.expected > 0 ? (
                       <>
                         <Money value={commission.actual} currency={settings.currency} showConversion={false} />
                         {commission.expected > 0 && (
@@ -608,6 +723,12 @@ export function PatientsClient({
                         patient={p}
                         open={openDocsId === p.id}
                         onToggle={() => setOpenDocsId((cur) => (cur === p.id ? null : p.id))}
+                      />
+                      <TelegramMenu
+                        patient={p}
+                        open={openTelegramId === p.id}
+                        onToggle={() => setOpenTelegramId((cur) => (cur === p.id ? null : p.id))}
+                        onClose={() => setOpenTelegramId(null)}
                       />
                       <button
                         title="Duplicate — prefill a new patient from this one"
@@ -688,7 +809,7 @@ function KanbanBoard({
             <span className="text-xs text-slate-400">{col.items.length}</span>
           </div>
           <div className="space-y-2">
-            {col.items.map(({ patient: p, commission, isMine }) => (
+            {col.items.map(({ patient: p, commission }) => (
               <Card
                 key={p.id}
                 className="cursor-pointer p-3 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-2 hover:ring-teal-500/30"
@@ -703,7 +824,7 @@ function KanbanBoard({
                   {col.id === "visit2_scheduled" && `Visit 2 · ${formatDate(p.visit2_date)}`}
                   {col.id === "done" && `Last visit · ${formatDate(p.visit2_date ?? p.visit1_date)}`}
                 </p>
-                {isMine ? (
+                {commission.actual > 0 || commission.expected > 0 ? (
                   <p className="mt-2 text-sm font-medium text-slate-700">
                     <Money value={commission.actual + commission.expected} currency={settings.currency} showConversion={false} />
                   </p>

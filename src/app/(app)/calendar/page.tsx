@@ -4,7 +4,10 @@ import { CalendarClient } from "./CalendarClient";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const [patients, profiles] = await Promise.all([getPatients(supabase), getProfiles(supabase)]);
 
-  return <CalendarClient patients={patients} profiles={profiles} />;
+  return <CalendarClient patients={patients} profiles={profiles} currentUserId={user?.id ?? ""} />;
 }

@@ -38,6 +38,9 @@ export interface PatientExtraVisit {
   departure_flight_no: string | null;
   hotel_name: string | null;
   room_type: string | null;
+  arrival_transfer_arranged: boolean;
+  departure_transfer_arranged: boolean;
+  hotel_arranged: boolean;
 
   created_at: string;
   updated_at: string;
@@ -85,6 +88,9 @@ export interface Patient {
   visit1_departure_flight_no: string | null;
   visit1_hotel_name: string | null;
   visit1_room_type: string | null;
+  visit1_arrival_transfer_arranged: boolean;
+  visit1_departure_transfer_arranged: boolean;
+  visit1_hotel_arranged: boolean;
 
   visit2_arrival_date: string | null;
   visit2_arrival_time: string | null;
@@ -94,6 +100,9 @@ export interface Patient {
   visit2_departure_flight_no: string | null;
   visit2_hotel_name: string | null;
   visit2_room_type: string | null;
+  visit2_arrival_transfer_arranged: boolean;
+  visit2_departure_transfer_arranged: boolean;
+  visit2_hotel_arranged: boolean;
 
   extra_visits: PatientExtraVisit[];
 

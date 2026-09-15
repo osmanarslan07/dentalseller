@@ -11,7 +11,7 @@ import {
   monthLabel,
 } from "@/lib/commission";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Card, StatCard } from "@/components/ui";
+import { Badge, Card, StatCard } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Money, PrivateEarningsChart } from "@/components/privacy";
 import { CountUp } from "@/components/CountUp";
@@ -305,6 +305,58 @@ export default async function DashboardPage() {
   const remindedPatientIds = tasks
     .filter((t) => t.status === "pending" && t.patient_id)
     .map((t) => t.patient_id as string);
+
+  // Arrival transfer + hotel are one line item (both need sorting before the same date);
+  // departure transfer is its own line since it's arranged separately, often much later.
+  // Only flags dates that are today or in the future and actually set — nothing to arrange
+  // for a trip that's already happened or flights that haven't been booked yet.
+  type LogisticsItem = {
+    patientId: string;
+    patientName: string;
+    label: string;
+    date: string;
+    badges: { label: string; ok: boolean }[];
+  };
+  const logisticsNotArranged: LogisticsItem[] = [];
+  const pushLogisticsItem = (
+    patientId: string,
+    patientName: string,
+    label: string,
+    date: string | null,
+    badges: { label: string; ok: boolean }[]
+  ) => {
+    if (!date || date < todayIso) return;
+    if (badges.every((b) => b.ok)) return;
+    logisticsNotArranged.push({ patientId, patientName, label, date, badges });
+  };
+  for (const p of patients) {
+    pushLogisticsItem(p.id, p.name, "Visit 1 · arrival", p.visit1_arrival_date, [
+      { label: "Transfer", ok: p.visit1_arrival_transfer_arranged },
+      { label: "Hotel", ok: p.visit1_hotel_arranged },
+    ]);
+    pushLogisticsItem(p.id, p.name, "Visit 1 · departure", p.visit1_departure_date, [
+      { label: "Transfer", ok: p.visit1_departure_transfer_arranged },
+    ]);
+    if (p.needs_visit2) {
+      pushLogisticsItem(p.id, p.name, "Visit 2 · arrival", p.visit2_arrival_date, [
+        { label: "Transfer", ok: p.visit2_arrival_transfer_arranged },
+        { label: "Hotel", ok: p.visit2_hotel_arranged },
+      ]);
+      pushLogisticsItem(p.id, p.name, "Visit 2 · departure", p.visit2_departure_date, [
+        { label: "Transfer", ok: p.visit2_departure_transfer_arranged },
+      ]);
+    }
+    for (const v of p.extra_visits) {
+      pushLogisticsItem(p.id, p.name, `${v.label} · arrival`, v.arrival_date, [
+        { label: "Transfer", ok: v.arrival_transfer_arranged },
+        { label: "Hotel", ok: v.hotel_arranged },
+      ]);
+      pushLogisticsItem(p.id, p.name, `${v.label} · departure`, v.departure_date, [
+        { label: "Transfer", ok: v.departure_transfer_arranged },
+      ]);
+    }
+  }
+  logisticsNotArranged.sort((a, b) => a.date.localeCompare(b.date));
 
   type PaymentMismatch = { patient: Patient; visitLabel: string; visitDate: string; expected: number; daysSince: number };
   const paymentMismatches: PaymentMismatch[] = [];
@@ -610,6 +662,52 @@ export default async function DashboardPage() {
           )}
         </Card>
       </div>
+
+      <Card className="p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Logistics not arranged</h2>
+            <p className="text-xs text-slate-500">Upcoming arrivals missing a transfer or hotel booking</p>
+          </div>
+          {logisticsNotArranged.length > 0 && (
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+              {logisticsNotArranged.length}
+            </span>
+          )}
+        </div>
+        {logisticsNotArranged.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-400">Nothing outstanding ✓</p>
+        ) : (
+          <ul className="space-y-1">
+            {logisticsNotArranged.map((item, i) => (
+              <li
+                key={`${item.patientId}-${item.label}`}
+                className="animate-fade-in-up"
+                style={{ animationDelay: `${i * 40}ms` }}
+              >
+                <Link
+                  href={`/patients?q=${encodeURIComponent(item.patientName)}`}
+                  className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{item.patientName}</p>
+                    <p className="text-xs text-slate-500">
+                      {item.label} · {formatDate(item.date)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    {item.badges.map((b) => (
+                      <Badge key={b.label} tone={b.ok ? "green" : "amber"}>
+                        {b.label} {b.ok ? "✓" : "—"}
+                      </Badge>
+                    ))}
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card className="p-5">
         <div className="mb-4 flex items-center justify-between">

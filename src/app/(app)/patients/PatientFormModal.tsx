@@ -17,6 +17,24 @@ import {
   deleteExtraVisit,
 } from "./actions";
 
+/** ExtraVisitFields' add/edit forms aren't real <form> elements (they're built inline so
+ * they can share one field set for both add and save), so FormData has to be collected by
+ * hand. Checkboxes need special handling here — `.value` is always "on" regardless of
+ * `.checked`, so a blind `.value` read would treat every unchecked box as checked. */
+function collectFormData(container: HTMLElement): FormData {
+  const formData = new FormData();
+  for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+    "[name]"
+  )) {
+    if (el instanceof HTMLInputElement && el.type === "checkbox") {
+      if (el.checked) formData.set(el.name, "on");
+    } else {
+      formData.set(el.name, el.value);
+    }
+  }
+  return formData;
+}
+
 export function PatientFormModal({
   open,
   onClose,
@@ -310,6 +328,9 @@ export function PatientFormModal({
           departureFlightNo={initial?.visit1_departure_flight_no}
           hotelName={initial?.visit1_hotel_name}
           roomType={initial?.visit1_room_type}
+          arrivalTransferArranged={initial?.visit1_arrival_transfer_arranged}
+          departureTransferArranged={initial?.visit1_departure_transfer_arranged}
+          hotelArranged={initial?.visit1_hotel_arranged}
           hotelOptions={hotelOptions}
           roomTypeOptions={roomTypeOptions}
         />
@@ -324,6 +345,9 @@ export function PatientFormModal({
             departureFlightNo={initial?.visit2_departure_flight_no}
             hotelName={initial?.visit2_hotel_name}
             roomType={initial?.visit2_room_type}
+            arrivalTransferArranged={initial?.visit2_arrival_transfer_arranged}
+            departureTransferArranged={initial?.visit2_departure_transfer_arranged}
+            hotelArranged={initial?.visit2_hotel_arranged}
             hotelOptions={hotelOptions}
             roomTypeOptions={roomTypeOptions}
           />
@@ -385,6 +409,9 @@ function TravelFields({
   departureFlightNo,
   hotelName,
   roomType,
+  arrivalTransferArranged,
+  departureTransferArranged,
+  hotelArranged,
   hotelOptions = [],
   roomTypeOptions = [],
 }: {
@@ -397,6 +424,9 @@ function TravelFields({
   departureFlightNo?: string | null;
   hotelName?: string | null;
   roomType?: string | null;
+  arrivalTransferArranged?: boolean;
+  departureTransferArranged?: boolean;
+  hotelArranged?: boolean;
   hotelOptions?: string[];
   roomTypeOptions?: string[];
 }) {
@@ -456,6 +486,35 @@ function TravelFields({
           </datalist>
         </div>
       </div>
+      <div className="mt-3 flex flex-wrap gap-4">
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            name={`visit${index}_arrival_transfer_arranged`}
+            defaultChecked={arrivalTransferArranged ?? false}
+            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+          />
+          Arrival transfer arranged
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            name={`visit${index}_departure_transfer_arranged`}
+            defaultChecked={departureTransferArranged ?? false}
+            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+          />
+          Departure transfer arranged
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            name={`visit${index}_hotel_arranged`}
+            defaultChecked={hotelArranged ?? false}
+            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+          />
+          Hotel arranged
+        </label>
+      </div>
     </fieldset>
   );
 }
@@ -494,12 +553,7 @@ function ExtraVisitsSection({ patient }: { patient: Patient }) {
   function handleAdd() {
     const container = fieldsRef.current;
     if (!container) return;
-    const formData = new FormData();
-    for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-      "[name]"
-    )) {
-      formData.set(el.name, el.value);
-    }
+    const formData = collectFormData(container);
     if (!String(formData.get("label") ?? "").trim()) {
       showToast("Reason is required");
       return;
@@ -630,6 +684,35 @@ function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
             <Input name="room_type" defaultValue={visit?.room_type ?? ""} placeholder="Double room" />
           </div>
         </div>
+        <div className="mt-3 flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              name="arrival_transfer_arranged"
+              defaultChecked={visit?.arrival_transfer_arranged ?? false}
+              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+            />
+            Arrival transfer arranged
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              name="departure_transfer_arranged"
+              defaultChecked={visit?.departure_transfer_arranged ?? false}
+              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+            />
+            Departure transfer arranged
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              name="hotel_arranged"
+              defaultChecked={visit?.hotel_arranged ?? false}
+              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+            />
+            Hotel arranged
+          </label>
+        </div>
       </fieldset>
     </div>
   );
@@ -645,12 +728,7 @@ function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
   function handleSave() {
     const container = fieldsRef.current;
     if (!container) return;
-    const formData = new FormData();
-    for (const el of container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-      "[name]"
-    )) {
-      formData.set(el.name, el.value);
-    }
+    const formData = collectFormData(container);
     if (!String(formData.get("label") ?? "").trim()) {
       showToast("Reason is required");
       return;
@@ -721,6 +799,25 @@ function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
           {visit.hotel_name ? ` · ${visit.hotel_name}` : ""}
           {flight ? ` · ${flight}` : ""}
         </div>
+        {(visit.arrival_date || visit.departure_date) && (
+          <div className="mt-0.5 flex flex-wrap gap-1.5 text-xs">
+            {visit.arrival_date && (
+              <span className={visit.arrival_transfer_arranged ? "text-emerald-600" : "text-amber-600"}>
+                {visit.arrival_transfer_arranged ? "✓ Arrival transfer" : "⚠ Arrival transfer"}
+              </span>
+            )}
+            {visit.departure_date && (
+              <span className={visit.departure_transfer_arranged ? "text-emerald-600" : "text-amber-600"}>
+                {visit.departure_transfer_arranged ? "✓ Departure transfer" : "⚠ Departure transfer"}
+              </span>
+            )}
+            {visit.arrival_date && (
+              <span className={visit.hotel_arranged ? "text-emerald-600" : "text-amber-600"}>
+                {visit.hotel_arranged ? "✓ Hotel" : "⚠ Hotel"}
+              </span>
+            )}
+          </div>
+        )}
         {visit.treatment && <div className="mt-0.5 text-xs text-slate-500">{visit.treatment}</div>}
       </div>
       <div className="flex shrink-0 items-center gap-2">

@@ -650,6 +650,27 @@ set earned_by_seller_id = p.responsible_seller_id
 from public.patients p
 where pv.patient_id = p.id and pv.actual is not null and pv.earned_by_seller_id is null;
 
+-- ---------- operations checklist: arrival/departure transfer + hotel arranged per visit ----------
+-- Plain editable flags (any active seller can tick them, same as the hotel/flight fields they
+-- sit next to) — not tracked historically, unlike the earned_by columns above. Arrival and
+-- departure transfers are split since they're arranged separately, often at very different
+-- times; hotel stays a single flag since booking a room is one action, not two.
+alter table public.patients drop column if exists visit1_transfer_arranged;
+alter table public.patients drop column if exists visit2_transfer_arranged;
+
+alter table public.patients add column if not exists visit1_arrival_transfer_arranged boolean not null default false;
+alter table public.patients add column if not exists visit1_departure_transfer_arranged boolean not null default false;
+alter table public.patients add column if not exists visit1_hotel_arranged boolean not null default false;
+alter table public.patients add column if not exists visit2_arrival_transfer_arranged boolean not null default false;
+alter table public.patients add column if not exists visit2_departure_transfer_arranged boolean not null default false;
+alter table public.patients add column if not exists visit2_hotel_arranged boolean not null default false;
+
+alter table public.patient_visits drop column if exists transfer_arranged;
+
+alter table public.patient_visits add column if not exists arrival_transfer_arranged boolean not null default false;
+alter table public.patient_visits add column if not exists departure_transfer_arranged boolean not null default false;
+alter table public.patient_visits add column if not exists hotel_arranged boolean not null default false;
+
 -- ---------- storage: clinic-assets (confirmation-letter logo) ----------
 -- public read, uploads go through the server action using the service-role client
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

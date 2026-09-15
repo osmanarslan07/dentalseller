@@ -233,6 +233,9 @@ function parseInput(formData: FormData): PatientInput {
     visit1_departure_flight_no: str("visit1_departure_flight_no"),
     visit1_hotel_name: str("visit1_hotel_name"),
     visit1_room_type: str("visit1_room_type"),
+    visit1_arrival_transfer_arranged: formData.get("visit1_arrival_transfer_arranged") === "on",
+    visit1_departure_transfer_arranged: formData.get("visit1_departure_transfer_arranged") === "on",
+    visit1_hotel_arranged: formData.get("visit1_hotel_arranged") === "on",
     visit2_arrival_date: str("visit2_arrival_date"),
     visit2_arrival_time: str("visit2_arrival_time"),
     visit2_arrival_flight_no: str("visit2_arrival_flight_no"),
@@ -241,6 +244,9 @@ function parseInput(formData: FormData): PatientInput {
     visit2_departure_flight_no: str("visit2_departure_flight_no"),
     visit2_hotel_name: str("visit2_hotel_name"),
     visit2_room_type: str("visit2_room_type"),
+    visit2_arrival_transfer_arranged: formData.get("visit2_arrival_transfer_arranged") === "on",
+    visit2_departure_transfer_arranged: formData.get("visit2_departure_transfer_arranged") === "on",
+    visit2_hotel_arranged: formData.get("visit2_hotel_arranged") === "on",
   };
 }
 
@@ -386,6 +392,9 @@ function parseExtraVisitInput(formData: FormData) {
     departure_flight_no: str("departure_flight_no"),
     hotel_name: str("hotel_name"),
     room_type: str("room_type"),
+    arrival_transfer_arranged: formData.get("arrival_transfer_arranged") === "on",
+    departure_transfer_arranged: formData.get("departure_transfer_arranged") === "on",
+    hotel_arranged: formData.get("hotel_arranged") === "on",
   };
 }
 

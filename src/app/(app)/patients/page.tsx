@@ -5,7 +5,7 @@ import { PatientsClient } from "./PatientsClient";
 export default async function PatientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; open?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -25,6 +25,7 @@ export default async function PatientsPage({
       patients={patients}
       settings={settings}
       initialQuery={params.q ?? ""}
+      initialOpenId={params.open ?? null}
       profiles={profiles}
       currentUserId={currentUserId}
       isAdmin={isAdmin}

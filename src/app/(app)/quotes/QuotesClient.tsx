@@ -117,9 +117,9 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
     setConvertingId(id);
     startTransition(async () => {
       try {
-        await convertQuoteToPatient(id);
-        showToast("Converted to patient ✓ — fill in travel details on the Patients page");
-        router.push(`/patients`);
+        const patientId = await convertQuoteToPatient(id);
+        showToast("Converted to patient ✓ — fill in travel details");
+        router.push(`/patients?open=${patientId}`);
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to convert quote", "error");
       } finally {

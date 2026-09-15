@@ -17,6 +17,8 @@ import {
   deleteExtraVisit,
 } from "./actions";
 
+type TabId = "details" | "visit1" | "visit2" | "extra";
+
 /** ExtraVisitFields' add/edit forms aren't real <form> elements (they're built inline so
  * they can share one field set for both add and save), so FormData has to be collected by
  * hand. Checkboxes need special handling here — `.value` is always "on" regardless of
@@ -87,6 +89,9 @@ export function PatientFormModal({
 
   const [needsVisit2, setNeedsVisit2] = useState(initial ? initial.needs_visit2 : true);
   const [isDirty, setIsDirty] = useState(false);
+  // The modal remounts (via a `key` prop keyed on which patient is open) every time it opens,
+  // so a plain default here is enough to always start back on Details — no effect needed.
+  const [activeTab, setActiveTab] = useState<TabId>("details");
   const { showToast } = useToast();
 
   const [responsibleId, setResponsibleId] = useState(patient?.responsible_seller_id ?? "");
@@ -193,6 +198,20 @@ export function PatientFormModal({
     });
   }
 
+  const tabs: { id: TabId; label: string }[] = [
+    { id: "details", label: "Details" },
+    { id: "visit1", label: "Visit 1" },
+    ...(needsVisit2 ? [{ id: "visit2" as TabId, label: "Visit 2" }] : []),
+    ...(isEdit && patient
+      ? [
+          {
+            id: "extra" as TabId,
+            label: patient.extra_visits.length ? `Extra visits (${patient.extra_visits.length})` : "Extra visits",
+          },
+        ]
+      : []),
+  ];
+
   return (
     <Modal
       open={open}
@@ -207,158 +226,186 @@ export function PatientFormModal({
           </p>
         )}
 
-        {isEdit && (
-          <div className="rounded-lg bg-slate-50 px-3 py-2.5">
-            <Label className="mb-1">Responsible seller</Label>
-            {canReassign ? (
-              <Select
-                value={responsibleId}
-                disabled={reassignPending}
-                onChange={(e) => handleReassign(e.target.value)}
-              >
-                {profiles
-                  .filter((p) => p.is_active || p.id === responsibleId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.display_name || "Unnamed seller"}
-                      {p.id === currentUserId ? " (you)" : ""}
-                    </option>
-                  ))}
-              </Select>
-            ) : (
-              <p className="text-sm font-medium text-slate-700">
-                {profiles.find((p) => p.id === responsibleId)?.display_name || "Unknown"}
-              </p>
-            )}
-            <p className="mt-1 text-xs text-slate-400">
-              Earns the commission on this patient. Only they or an admin can hand it to someone else.
-            </p>
-          </div>
-        )}
+        <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition ${
+                activeTab === t.id
+                  ? "border-teal-600 text-teal-700"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Label>Name</Label>
-            <Input name="name" required defaultValue={initial?.name} placeholder="Jane Smith" />
-          </div>
-          <div className="sm:col-span-2">
-            <Label>Treatment</Label>
-            <Input
-              name="treatment"
-              defaultValue={initial?.treatment ?? ""}
-              placeholder="Full mouth veneers"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Short label — shown on the dashboard, calendar and upcoming visits.
-            </p>
-          </div>
-          <div className="sm:col-span-2">
-            <Label>Confirmation letter treatments</Label>
-            <Textarea
-              name="letter_treatment_items"
-              rows={2}
-              defaultValue={initial?.letter_treatment_items ?? ""}
-              placeholder="12x Nucleoss T6 Dental Implants, 24x Dental Direkt Zirconium Crowns"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Comma-separated — each item becomes a bullet on the confirmation letter. Leave blank to fall
-              back to the Treatment field above.
-            </p>
-          </div>
-          <div>
-            <Label>Confirmation date</Label>
-            <Input type="date" name="confirmation_date" defaultValue={initial?.confirmation_date ?? ""} />
-          </div>
-          <div className="flex items-end pb-2.5">
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                name="needs_visit2"
-                checked={needsVisit2}
-                onChange={(e) => setNeedsVisit2(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+        <div hidden={activeTab !== "details"} className="space-y-5">
+          {isEdit && (
+            <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+              <Label className="mb-1">Responsible seller</Label>
+              {canReassign ? (
+                <Select
+                  value={responsibleId}
+                  disabled={reassignPending}
+                  onChange={(e) => handleReassign(e.target.value)}
+                >
+                  {profiles
+                    .filter((p) => p.is_active || p.id === responsibleId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.display_name || "Unnamed seller"}
+                        {p.id === currentUserId ? " (you)" : ""}
+                      </option>
+                    ))}
+                </Select>
+              ) : (
+                <p className="text-sm font-medium text-slate-700">
+                  {profiles.find((p) => p.id === responsibleId)?.display_name || "Unknown"}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-slate-400">
+                Earns the commission on this patient. Only they or an admin can hand it to someone else.
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label>Name</Label>
+              <Input name="name" required defaultValue={initial?.name} placeholder="Jane Smith" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Treatment</Label>
+              <Input
+                name="treatment"
+                defaultValue={initial?.treatment ?? ""}
+                placeholder="Full mouth veneers"
               />
-              Needs a second visit
-            </label>
+              <p className="mt-1 text-xs text-slate-400">
+                Short label — shown on the dashboard, calendar and upcoming visits.
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Confirmation letter treatments</Label>
+              <Textarea
+                name="letter_treatment_items"
+                rows={2}
+                defaultValue={initial?.letter_treatment_items ?? ""}
+                placeholder="12x Nucleoss T6 Dental Implants, 24x Dental Direkt Zirconium Crowns"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Comma-separated — each item becomes a bullet on the confirmation letter. Leave blank to fall
+                back to the Treatment field above.
+              </p>
+            </div>
+            <div>
+              <Label>Confirmation date</Label>
+              <Input type="date" name="confirmation_date" defaultValue={initial?.confirmation_date ?? ""} />
+            </div>
+            <div className="flex items-end pb-2.5">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  name="needs_visit2"
+                  checked={needsVisit2}
+                  onChange={(e) => {
+                    setNeedsVisit2(e.target.checked);
+                    if (!e.target.checked && activeTab === "visit2") setActiveTab("details");
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+                />
+                Needs a second visit
+              </label>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Komo reference</Label>
+              <Input
+                name="komo_reference"
+                defaultValue={initial?.komo_reference ?? ""}
+                placeholder="Komo lead link or ID"
+              />
+              {initial?.komo_reference && /^https?:\/\//i.test(initial.komo_reference) && (
+                <a
+                  href={initial.komo_reference}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block text-xs font-medium text-teal-600 hover:underline"
+                >
+                  Open in Komo ↗
+                </a>
+              )}
+            </div>
           </div>
-          <div className="sm:col-span-2">
-            <Label>Komo reference</Label>
-            <Input
-              name="komo_reference"
-              defaultValue={initial?.komo_reference ?? ""}
-              placeholder="Komo lead link or ID"
-            />
-            {initial?.komo_reference && /^https?:\/\//i.test(initial.komo_reference) && (
-              <a
-                href={initial.komo_reference}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-block text-xs font-medium text-teal-600 hover:underline"
-              >
-                Open in Komo ↗
-              </a>
-            )}
+
+          <div>
+            <Label>Notes</Label>
+            <Textarea name="notes" rows={3} defaultValue={initial?.notes ?? ""} placeholder="Optional notes…" />
           </div>
         </div>
 
-        <VisitFields
-          index={1}
-          date={initial?.visit1_date}
-          expected={initial?.visit1_expected}
-          actual={initial?.visit1_actual}
-          status={initial?.visit1_status}
-        />
-        {needsVisit2 && (
+        <div hidden={activeTab !== "visit1"} className="space-y-5">
           <VisitFields
-            index={2}
-            date={initial?.visit2_date}
-            expected={initial?.visit2_expected}
-            actual={initial?.visit2_actual}
-            status={initial?.visit2_status}
+            index={1}
+            date={initial?.visit1_date}
+            expected={initial?.visit1_expected}
+            actual={initial?.visit1_actual}
+            status={initial?.visit1_status}
           />
-        )}
-
-        <TravelFields
-          index={1}
-          arrivalDate={initial?.visit1_arrival_date}
-          arrivalTime={initial?.visit1_arrival_time}
-          arrivalFlightNo={initial?.visit1_arrival_flight_no}
-          departureDate={initial?.visit1_departure_date}
-          departureTime={initial?.visit1_departure_time}
-          departureFlightNo={initial?.visit1_departure_flight_no}
-          hotelName={initial?.visit1_hotel_name}
-          roomType={initial?.visit1_room_type}
-          arrivalTransferArranged={initial?.visit1_arrival_transfer_arranged}
-          departureTransferArranged={initial?.visit1_departure_transfer_arranged}
-          hotelArranged={initial?.visit1_hotel_arranged}
-          hotelOptions={hotelOptions}
-          roomTypeOptions={roomTypeOptions}
-        />
-        {needsVisit2 && (
           <TravelFields
-            index={2}
-            arrivalDate={initial?.visit2_arrival_date}
-            arrivalTime={initial?.visit2_arrival_time}
-            arrivalFlightNo={initial?.visit2_arrival_flight_no}
-            departureDate={initial?.visit2_departure_date}
-            departureTime={initial?.visit2_departure_time}
-            departureFlightNo={initial?.visit2_departure_flight_no}
-            hotelName={initial?.visit2_hotel_name}
-            roomType={initial?.visit2_room_type}
-            arrivalTransferArranged={initial?.visit2_arrival_transfer_arranged}
-            departureTransferArranged={initial?.visit2_departure_transfer_arranged}
-            hotelArranged={initial?.visit2_hotel_arranged}
+            index={1}
+            arrivalDate={initial?.visit1_arrival_date}
+            arrivalTime={initial?.visit1_arrival_time}
+            arrivalFlightNo={initial?.visit1_arrival_flight_no}
+            departureDate={initial?.visit1_departure_date}
+            departureTime={initial?.visit1_departure_time}
+            departureFlightNo={initial?.visit1_departure_flight_no}
+            hotelName={initial?.visit1_hotel_name}
+            roomType={initial?.visit1_room_type}
+            arrivalTransferArranged={initial?.visit1_arrival_transfer_arranged}
+            departureTransferArranged={initial?.visit1_departure_transfer_arranged}
+            hotelArranged={initial?.visit1_hotel_arranged}
             hotelOptions={hotelOptions}
             roomTypeOptions={roomTypeOptions}
           />
+        </div>
+
+        {needsVisit2 && (
+          <div hidden={activeTab !== "visit2"} className="space-y-5">
+            <VisitFields
+              index={2}
+              date={initial?.visit2_date}
+              expected={initial?.visit2_expected}
+              actual={initial?.visit2_actual}
+              status={initial?.visit2_status}
+            />
+            <TravelFields
+              index={2}
+              arrivalDate={initial?.visit2_arrival_date}
+              arrivalTime={initial?.visit2_arrival_time}
+              arrivalFlightNo={initial?.visit2_arrival_flight_no}
+              departureDate={initial?.visit2_departure_date}
+              departureTime={initial?.visit2_departure_time}
+              departureFlightNo={initial?.visit2_departure_flight_no}
+              hotelName={initial?.visit2_hotel_name}
+              roomType={initial?.visit2_room_type}
+              arrivalTransferArranged={initial?.visit2_arrival_transfer_arranged}
+              departureTransferArranged={initial?.visit2_departure_transfer_arranged}
+              hotelArranged={initial?.visit2_hotel_arranged}
+              hotelOptions={hotelOptions}
+              roomTypeOptions={roomTypeOptions}
+            />
+          </div>
         )}
 
-        {isEdit && patient && <ExtraVisitsSection patient={patient} />}
-
-        <div>
-          <Label>Notes</Label>
-          <Textarea name="notes" rows={3} defaultValue={initial?.notes ?? ""} placeholder="Optional notes…" />
-        </div>
+        {isEdit && patient && (
+          <div hidden={activeTab !== "extra"}>
+            <ExtraVisitsSection patient={patient} />
+          </div>
+        )}
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 

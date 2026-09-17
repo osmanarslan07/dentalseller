@@ -1,11 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Badge, Card } from "@/components/ui";
+import { Card } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
+import { useToast } from "@/components/Toast";
 import { CalendarEventKind, KIND_STYLES, flattenCalendarEvents } from "@/lib/calendar-events";
+import {
+  ExtraVisitLogisticsField,
+  PatientLogisticsField,
+  setExtraVisitLogisticsFlag,
+  setPatientLogisticsFlag,
+} from "./patients/actions";
 import { Patient, Profile } from "@/types";
 
 const EVENT_ICONS: Record<CalendarEventKind, string> = {
@@ -34,13 +41,23 @@ type UpcomingEvent = {
   expected: number | null;
 };
 
+type LogisticsTarget =
+  | { scope: "patient"; id: string; field: PatientLogisticsField }
+  | { scope: "extra"; id: string; field: ExtraVisitLogisticsField };
+
+type LogisticsBadge = { label: string; ok: boolean; target: LogisticsTarget };
+
+function logisticsTargetKey(t: LogisticsTarget): string {
+  return `${t.scope}:${t.id}:${t.field}`;
+}
+
 type LogisticsItem = {
   patientId: string;
   patientName: string;
   responsibleSellerId: string;
   label: string;
   date: string;
-  badges: { label: string; ok: boolean }[];
+  badges: LogisticsBadge[];
 };
 
 type PaymentMismatch = {
@@ -72,6 +89,24 @@ export function TeamOperationsPanel({
   monthAheadIso: string;
 }) {
   const [scope, setScope] = useState<Scope>("mine");
+  const [busyTargetKey, setBusyTargetKey] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+  const { showToast } = useToast();
+
+  function handleToggleLogistics(target: LogisticsTarget, value: boolean) {
+    const key = logisticsTargetKey(target);
+    setBusyTargetKey(key);
+    startTransition(async () => {
+      try {
+        if (target.scope === "patient") await setPatientLogisticsFlag(target.id, target.field, value);
+        else await setExtraVisitLogisticsFlag(target.id, target.field, value);
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Failed to update", "error");
+      } finally {
+        setBusyTargetKey(null);
+      }
+    });
+  }
 
   const sellerName = useMemo(() => {
     const map = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
@@ -149,7 +184,8 @@ export function TeamOperationsPanel({
         ...p.extra_visits.map((v) => [v.label, v.visit_date, v.expected, v.actual, true] as const),
       ];
       for (const [visitLabel, date, expected, actual, applies] of mismatchEntries) {
-        if (!applies || !date || expected == null || actual != null || date >= todayIso) continue;
+        // A zero-expected visit (e.g. a comped extra visit) isn't unpaid — it was never owed.
+        if (!applies || !date || !expected || actual != null || date >= todayIso) continue;
         const daysSince = Math.round((new Date(todayIso).getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24));
         list.push({ patient: p, visitLabel, visitDate: date, expected, daysSince });
       }
@@ -166,36 +202,70 @@ export function TeamOperationsPanel({
       responsibleSellerId: string,
       label: string,
       date: string | null,
-      badges: { label: string; ok: boolean }[]
+      badges: LogisticsBadge[]
     ) => {
       if (!date || date < todayIso) return;
       if (badges.every((b) => b.ok)) return;
       list.push({ patientId, patientName, responsibleSellerId, label, date, badges });
     };
+    const patientField = (id: string, field: PatientLogisticsField): LogisticsTarget => ({
+      scope: "patient",
+      id,
+      field,
+    });
+    const extraField = (id: string, field: ExtraVisitLogisticsField): LogisticsTarget => ({
+      scope: "extra",
+      id,
+      field,
+    });
     for (const p of patients) {
       push(p.id, p.name, p.responsible_seller_id, "Visit 1 · arrival", p.visit1_arrival_date, [
-        { label: "Transfer", ok: p.visit1_arrival_transfer_arranged },
-        { label: "Hotel", ok: p.visit1_hotel_arranged },
+        {
+          label: "Arrival transfer",
+          ok: p.visit1_arrival_transfer_arranged,
+          target: patientField(p.id, "visit1_arrival_transfer_arranged"),
+        },
+        { label: "Hotel", ok: p.visit1_hotel_arranged, target: patientField(p.id, "visit1_hotel_arranged") },
       ]);
       push(p.id, p.name, p.responsible_seller_id, "Visit 1 · departure", p.visit1_departure_date, [
-        { label: "Transfer", ok: p.visit1_departure_transfer_arranged },
+        {
+          label: "Departure transfer",
+          ok: p.visit1_departure_transfer_arranged,
+          target: patientField(p.id, "visit1_departure_transfer_arranged"),
+        },
       ]);
       if (p.needs_visit2) {
         push(p.id, p.name, p.responsible_seller_id, "Visit 2 · arrival", p.visit2_arrival_date, [
-          { label: "Transfer", ok: p.visit2_arrival_transfer_arranged },
-          { label: "Hotel", ok: p.visit2_hotel_arranged },
+          {
+            label: "Arrival transfer",
+            ok: p.visit2_arrival_transfer_arranged,
+            target: patientField(p.id, "visit2_arrival_transfer_arranged"),
+          },
+          { label: "Hotel", ok: p.visit2_hotel_arranged, target: patientField(p.id, "visit2_hotel_arranged") },
         ]);
         push(p.id, p.name, p.responsible_seller_id, "Visit 2 · departure", p.visit2_departure_date, [
-          { label: "Transfer", ok: p.visit2_departure_transfer_arranged },
+          {
+            label: "Departure transfer",
+            ok: p.visit2_departure_transfer_arranged,
+            target: patientField(p.id, "visit2_departure_transfer_arranged"),
+          },
         ]);
       }
       for (const v of p.extra_visits) {
         push(p.id, p.name, p.responsible_seller_id, `${v.label} · arrival`, v.arrival_date, [
-          { label: "Transfer", ok: v.arrival_transfer_arranged },
-          { label: "Hotel", ok: v.hotel_arranged },
+          {
+            label: "Arrival transfer",
+            ok: v.arrival_transfer_arranged,
+            target: extraField(v.id, "arrival_transfer_arranged"),
+          },
+          { label: "Hotel", ok: v.hotel_arranged, target: extraField(v.id, "hotel_arranged") },
         ]);
         push(p.id, p.name, p.responsible_seller_id, `${v.label} · departure`, v.departure_date, [
-          { label: "Transfer", ok: v.departure_transfer_arranged },
+          {
+            label: "Departure transfer",
+            ok: v.departure_transfer_arranged,
+            target: extraField(v.id, "departure_transfer_arranged"),
+          },
         ]);
       }
     }
@@ -225,13 +295,18 @@ export function TeamOperationsPanel({
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Team operations</h2>
+          <p className="text-xs text-slate-500">Arrivals, follow-ups, logistics and payments — applies to every card below.</p>
+        </div>
+        {ScopeToggle}
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-slate-900">Upcoming events this month</h2>
-              {ScopeToggle}
-            </div>
+            <h2 className="text-base font-semibold text-slate-900">Upcoming events this month</h2>
             <Link href="/calendar" className="shrink-0 text-sm font-medium text-teal-600 hover:text-teal-700">
               View calendar →
             </Link>
@@ -423,30 +498,45 @@ export function TeamOperationsPanel({
               {logisticsNotArranged.map((item, i) => (
                 <li
                   key={`${item.patientId}-${item.label}`}
-                  className="animate-fade-in-up"
+                  className="flex animate-fade-in-up items-center justify-between gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 hover:shadow-sm"
                   style={{ animationDelay: `${i * 40}ms` }}
                 >
                   <Link
                     href={`/patients?q=${encodeURIComponent(item.patientName)}`}
-                    className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
+                    className="min-w-0 flex-1"
                   >
-                    <div>
-                      <p className="text-sm font-medium text-slate-800">{item.patientName}</p>
-                      <p className="text-xs text-slate-500">
-                        {item.label} · {formatDate(item.date)}
-                      </p>
-                      {scope === "team" && (
-                        <p className="text-xs text-slate-400">Responsible: {sellerName(item.responsibleSellerId)}</p>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 gap-1.5">
-                      {item.badges.map((b) => (
-                        <Badge key={b.label} tone={b.ok ? "green" : "amber"}>
-                          {b.label} {b.ok ? "✓" : "—"}
-                        </Badge>
-                      ))}
-                    </div>
+                    <p className="text-sm font-medium text-slate-800">{item.patientName}</p>
+                    <p className="text-xs text-slate-500">
+                      {item.label} · {formatDate(item.date)}
+                    </p>
+                    {scope === "team" && (
+                      <p className="text-xs text-slate-400">Responsible: {sellerName(item.responsibleSellerId)}</p>
+                    )}
                   </Link>
+                  <div className="flex shrink-0 items-center gap-3">
+                    {item.badges.map((b) => {
+                      const key = logisticsTargetKey(b.target);
+                      const busy = busyTargetKey === key;
+                      return (
+                        <label
+                          key={b.label}
+                          title={`Mark ${b.label.toLowerCase()} as ${b.ok ? "not arranged" : "arranged"}`}
+                          className={`flex select-none items-center gap-1.5 rounded-md px-1 py-0.5 text-xs font-medium ${
+                            busy ? "cursor-wait opacity-50" : "cursor-pointer hover:bg-slate-100"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={b.ok}
+                            disabled={busy}
+                            onChange={() => handleToggleLogistics(b.target, !b.ok)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+                          />
+                          <span className={b.ok ? "text-emerald-700" : "text-amber-700"}>{b.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </li>
               ))}
             </ul>

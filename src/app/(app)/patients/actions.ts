@@ -23,7 +23,7 @@ function addMonthsToDateString(dateStr: string, months: number): string {
  * (any active seller can update a shared patient record). Best-effort: a failure here
  * should never break the patient save it's attached to. */
 async function maybeCreateFollowUpTask(patientId: string, responsibleSellerId: string, input: PatientInput) {
-  if (!(input.visit1_status === "completed" && input.needs_visit2 && input.visit1_date)) return;
+  if (!(input.visit1_status === "completed" && input.needs_visit2 && input.visit1_date && !input.visit2_date)) return;
   try {
     const admin = createAdminClient();
     const title = `Book visit 2 — ${input.name}`;
@@ -504,6 +504,62 @@ export async function updateExtraVisit(id: string, formData: FormData) {
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/projections");
+}
+
+const PATIENT_LOGISTICS_FIELDS = [
+  "visit1_arrival_transfer_arranged",
+  "visit1_departure_transfer_arranged",
+  "visit1_hotel_arranged",
+  "visit2_arrival_transfer_arranged",
+  "visit2_departure_transfer_arranged",
+  "visit2_hotel_arranged",
+] as const;
+export type PatientLogisticsField = (typeof PATIENT_LOGISTICS_FIELDS)[number];
+
+const EXTRA_VISIT_LOGISTICS_FIELDS = [
+  "arrival_transfer_arranged",
+  "departure_transfer_arranged",
+  "hotel_arranged",
+] as const;
+export type ExtraVisitLogisticsField = (typeof EXTRA_VISIT_LOGISTICS_FIELDS)[number];
+
+/** Single-checkbox toggle for the dashboard's "Logistics not arranged" card — a full
+ * updatePatient() round trip would require resubmitting every field on the patient, which the
+ * dashboard doesn't have loaded. `field` is validated against an allowlist since it crosses
+ * the server-action boundary as a plain string, not a type the client can be trusted to respect. */
+export async function setPatientLogisticsFlag(patientId: string, field: PatientLogisticsField, value: boolean) {
+  if (!PATIENT_LOGISTICS_FIELDS.includes(field)) throw new Error("Invalid field");
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase.from("patients").update({ [field]: value }).eq("id", patientId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/patients");
+  revalidatePath("/");
+}
+
+/** Same as setPatientLogisticsFlag but for an extra visit's own logistics checkboxes. */
+export async function setExtraVisitLogisticsFlag(
+  extraVisitId: string,
+  field: ExtraVisitLogisticsField,
+  value: boolean
+) {
+  if (!EXTRA_VISIT_LOGISTICS_FIELDS.includes(field)) throw new Error("Invalid field");
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase.from("patient_visits").update({ [field]: value }).eq("id", extraVisitId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/patients");
+  revalidatePath("/");
 }
 
 export async function deleteExtraVisit(id: string) {

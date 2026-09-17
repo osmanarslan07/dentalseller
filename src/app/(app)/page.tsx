@@ -375,25 +375,34 @@ export default async function DashboardPage() {
             <span className="text-xs font-medium text-emerald-600">Live</span>
           </span>
         </div>
-        <p className="mt-1 text-sm text-slate-500">Your commission overview at a glance.</p>
+        <p className="mt-1 text-sm text-slate-500">Your commission and the team&apos;s day-to-day, in one place.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {visibleCards.map((card) => (
-          <div key={card.id}>{cardsById[card.id]}</div>
-        ))}
-      </div>
-
-      <Card className="p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Earnings by month</h2>
-          <span className="text-xs text-slate-400">Last 12 months</span>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Your earnings</h2>
+          <p className="text-xs text-slate-500">Private to you — commission, rates and totals no one else on the team sees.</p>
         </div>
-        <PrivateEarningsChart data={chartData} currency={settings.currency} />
-        <p className="mt-3 text-xs text-slate-400">
-          Updated <RelativeTime timestamp={updatedAt} />
-        </p>
-      </Card>
+
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {visibleCards.map((card) => (
+            <div key={card.id}>{cardsById[card.id]}</div>
+          ))}
+        </div>
+
+        <Card className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">Earnings by month</h2>
+            <span className="text-xs text-slate-400">Last 12 months</span>
+          </div>
+          <PrivateEarningsChart data={chartData} currency={settings.currency} />
+          <p className="mt-3 text-xs text-slate-400">
+            Updated <RelativeTime timestamp={updatedAt} />
+          </p>
+        </Card>
+      </div>
+
+      <hr className="border-slate-200" />
 
       <TeamOperationsPanel
         allPatients={allPatients}

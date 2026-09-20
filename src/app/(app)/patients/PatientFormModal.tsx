@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
+import { RelativeTime } from "@/components/RelativeTime";
 import { formatDate } from "@/lib/format";
+import { describeActivity, ActivityLogRow } from "@/lib/activity-log";
 import { Patient, PatientExtraVisit, Profile } from "@/types";
 import {
   createPatient,
@@ -15,9 +17,10 @@ import {
   addExtraVisit,
   updateExtraVisit,
   deleteExtraVisit,
+  getPatientActivity,
 } from "./actions";
 
-type TabId = "details" | "visit1" | "visit2" | "extra";
+type TabId = "details" | "visit1" | "visit2" | "extra" | "history";
 
 /** ExtraVisitFields' add/edit forms aren't real <form> elements (they're built inline so
  * they can share one field set for both add and save), so FormData has to be collected by
@@ -208,6 +211,7 @@ export function PatientFormModal({
             id: "extra" as TabId,
             label: patient.extra_visits.length ? `Extra visits (${patient.extra_visits.length})` : "Extra visits",
           },
+          { id: "history" as TabId, label: "History" },
         ]
       : []),
   ];
@@ -420,6 +424,12 @@ export function PatientFormModal({
         {isEdit && patient && (
           <div hidden={activeTab !== "extra"}>
             <ExtraVisitsSection patient={patient} />
+          </div>
+        )}
+
+        {isEdit && patient && (
+          <div hidden={activeTab !== "history"}>
+            <HistorySection patient={patient} profiles={profiles} active={activeTab === "history"} />
           </div>
         )}
 
@@ -663,6 +673,67 @@ function ExtraVisitsSection({ patient }: { patient: Patient }) {
         <Button type="button" variant="secondary" className="mt-3" onClick={() => setAdding(true)}>
           + Add extra visit
         </Button>
+      )}
+    </fieldset>
+  );
+}
+
+/** Fetched lazily — only once the tab is actually opened, and cached per patient for the
+ * rest of the modal's lifetime so flipping tabs back and forth doesn't refetch. */
+function HistorySection({
+  patient,
+  profiles,
+  active,
+}: {
+  patient: Patient;
+  profiles: Profile[];
+  active: boolean;
+}) {
+  // No reset-on-patient-change effect needed: the modal is keyed by patient id at the call
+  // site (see PatientsClient), so this component remounts — with fresh state — whenever the
+  // patient being edited changes.
+  const [entries, setEntries] = useState<ActivityLogRow[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!active || entries !== null || loadError) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await getPatientActivity(patient.id);
+        if (!cancelled) setEntries(rows);
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Failed to load history");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, entries, loadError, patient.id]);
+
+  const nameById = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
+  const patientNameById = new Map([[patient.id, patient.name]]);
+
+  return (
+    <fieldset className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+      <legend className="px-1 text-sm font-semibold text-slate-700">History</legend>
+      {loadError ? (
+        <p className="py-4 text-center text-sm text-red-600">{loadError}</p>
+      ) : entries === null ? (
+        <p className="py-4 text-center text-sm text-slate-400">Loading…</p>
+      ) : entries.length === 0 ? (
+        <p className="py-4 text-center text-sm text-slate-400">Nothing logged yet.</p>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {entries.map((entry) => (
+            <li key={entry.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+              <span className="text-slate-700">{describeActivity(entry, nameById, patientNameById)}</span>
+              <span className="shrink-0 text-xs text-slate-400">
+                <RelativeTime timestamp={new Date(entry.created_at).getTime()} />
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </fieldset>
   );

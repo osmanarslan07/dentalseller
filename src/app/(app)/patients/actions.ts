@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPatient } from "@/lib/data";
 import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
-import { logActivity } from "@/lib/activity-log";
+import { ActivityLogRow, logActivity } from "@/lib/activity-log";
 import { Patient, PatientExtraVisit, PatientInput } from "@/types";
 
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
@@ -523,12 +523,27 @@ const PATIENT_LOGISTICS_FIELDS = [
 ] as const;
 export type PatientLogisticsField = (typeof PATIENT_LOGISTICS_FIELDS)[number];
 
+const PATIENT_LOGISTICS_FIELD_LABELS: Record<PatientLogisticsField, string> = {
+  visit1_arrival_transfer_arranged: "visit 1 arrival transfer",
+  visit1_departure_transfer_arranged: "visit 1 departure transfer",
+  visit1_hotel_arranged: "visit 1 hotel",
+  visit2_arrival_transfer_arranged: "visit 2 arrival transfer",
+  visit2_departure_transfer_arranged: "visit 2 departure transfer",
+  visit2_hotel_arranged: "visit 2 hotel",
+};
+
 const EXTRA_VISIT_LOGISTICS_FIELDS = [
   "arrival_transfer_arranged",
   "departure_transfer_arranged",
   "hotel_arranged",
 ] as const;
 export type ExtraVisitLogisticsField = (typeof EXTRA_VISIT_LOGISTICS_FIELDS)[number];
+
+const EXTRA_VISIT_LOGISTICS_FIELD_LABELS: Record<ExtraVisitLogisticsField, string> = {
+  arrival_transfer_arranged: "arrival transfer",
+  departure_transfer_arranged: "departure transfer",
+  hotel_arranged: "hotel",
+};
 
 /** Single-checkbox toggle for the dashboard's "Logistics not arranged" card — a full
  * updatePatient() round trip would require resubmitting every field on the patient, which the
@@ -545,7 +560,14 @@ export async function setPatientLogisticsFlag(patientId: string, field: PatientL
   const { error } = await supabase.from("patients").update({ [field]: value }).eq("id", patientId);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "patient_logistics_toggled", "patient", patientId, `${field} ${value ? "arranged" : "unarranged"}`);
+  await logActivity(
+    supabase,
+    user.id,
+    "patient_logistics_toggled",
+    "patient",
+    patientId,
+    `${PATIENT_LOGISTICS_FIELD_LABELS[field]} ${value ? "arranged" : "unarranged"}`
+  );
 
   revalidatePath("/patients");
   revalidatePath("/");
@@ -580,7 +602,7 @@ export async function setExtraVisitLogisticsFlag(
       "visit_logistics_toggled",
       "patient",
       visit.patient_id,
-      `${field} ${value ? "arranged" : "unarranged"}`
+      `${EXTRA_VISIT_LOGISTICS_FIELD_LABELS[field]} ${value ? "arranged" : "unarranged"}`
     );
   }
 
@@ -611,4 +633,28 @@ export async function deleteExtraVisit(id: string) {
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/projections");
+}
+
+/** Powers the patient modal's History tab. `activity_log` is admin-only under RLS (see
+ * schema.sql), but any active seller can already edit any shared patient record — so seeing
+ * that same patient's own audit trail isn't a bigger exposure. Runs with the service-role
+ * client to read past RLS, but stays scoped to this one patient's rows only. */
+export async function getPatientActivity(patientId: string): Promise<ActivityLogRow[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("activity_log")
+    .select("id, actor_id, action, target_type, target_id, detail, created_at")
+    .eq("target_type", "patient")
+    .eq("target_id", patientId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw new Error(error.message);
+
+  return data as ActivityLogRow[];
 }

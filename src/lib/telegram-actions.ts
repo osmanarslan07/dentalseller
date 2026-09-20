@@ -3,6 +3,7 @@
 import { randomBytes } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getBotUsername } from "@/lib/telegram";
+import { logActivity } from "@/lib/activity-log";
 
 const CODE_TTL_MINUTES = 10;
 
@@ -28,6 +29,8 @@ export async function generateTelegramLinkCode(): Promise<TelegramLinkInfo> {
     .from("telegram_link_codes")
     .insert({ code, user_id: user.id, expires_at: expiresAt });
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "telegram_link_generated", "profile", user.id);
 
   const botUsername = await getBotUsername();
 

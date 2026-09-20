@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { computeQuoteSplit } from "@/lib/quote-templates";
+import { logActivity } from "@/lib/activity-log";
 import { QuoteInput } from "@/types";
 
 function parseInput(formData: FormData): QuoteInput {
@@ -52,17 +53,44 @@ export async function createQuote(formData: FormData) {
     .single();
   if (error) throw new Error(error.message);
 
+  await logActivity(supabase, user.id, "quote_created", "quote", data.id, input.name);
+
   revalidatePath("/quotes");
   return data.id as string;
 }
 
 export async function updateQuote(id: string, formData: FormData) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
 
+  const { data: before } = await supabase
+    .from("quotes")
+    .select("status, total_price, deposit_percent, first_visit_amount, split_mode")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await supabase.from("quotes").update(input).eq("id", id);
   if (error) throw new Error(error.message);
+
+  if (before) {
+    const changes: string[] = [];
+    if (before.status !== input.status) changes.push(`status ${before.status} → ${input.status}`);
+    if (before.total_price !== input.total_price) changes.push(`total ${before.total_price ?? "—"} → ${input.total_price ?? "—"}`);
+    if (before.deposit_percent !== input.deposit_percent) {
+      changes.push(`deposit % ${before.deposit_percent ?? "—"} → ${input.deposit_percent ?? "—"}`);
+    }
+    if (before.first_visit_amount !== input.first_visit_amount) {
+      changes.push(`first visit amount ${before.first_visit_amount ?? "—"} → ${input.first_visit_amount ?? "—"}`);
+    }
+    if (before.split_mode !== input.split_mode) changes.push(`split mode ${before.split_mode} → ${input.split_mode}`);
+    if (changes.length > 0) await logActivity(supabase, user.id, "quote_updated", "quote", id, changes.join(", "));
+  }
 
   revalidatePath("/quotes");
   revalidatePath(`/quotes/${id}/offer`);
@@ -99,14 +127,26 @@ export async function duplicateQuote(id: string) {
     .single();
   if (error) throw new Error(error.message);
 
+  await logActivity(supabase, user.id, "quote_duplicated", "quote", data.id, quote.name);
+
   revalidatePath("/quotes");
   return data.id as string;
 }
 
 export async function deleteQuote(id: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Grab the name before it's gone — the log has to be self-contained since the quote row won't exist anymore.
+  const { data: quote } = await supabase.from("quotes").select("name").eq("id", id).maybeSingle();
+
   const { error } = await supabase.from("quotes").delete().eq("id", id);
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "quote_deleted", "quote", id, quote?.name ?? undefined);
 
   revalidatePath("/quotes");
 }
@@ -170,6 +210,8 @@ export async function convertQuoteToPatient(id: string) {
     .eq("name", quote.name)
     .neq("id", id)
     .in("status", ["draft", "sent"]);
+
+  await logActivity(supabase, user.id, "quote_converted", "quote", id, patient.id);
 
   revalidatePath("/quotes");
   revalidatePath("/patients");

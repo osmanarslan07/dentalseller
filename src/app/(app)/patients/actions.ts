@@ -367,12 +367,19 @@ export async function updatePatient(id: string, formData: FormData) {
 
 export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const patient = await getPatient(supabase, id);
   if (!patient) throw new Error("Patient not found");
 
   const chatIds = await getRecipientChatIds(supabase, patient.responsible_seller_id);
   if (chatIds.length === 0) throw new Error("No Telegram chat linked for this patient's seller");
   await sendTelegramMessageToMany(chatIds, buildVisitMessage(patient, visitKey));
+
+  await logActivity(supabase, user.id, "patient_telegram_sent", "patient", id, visitKey);
 }
 
 /** Hands the patient to another seller — they earn commission on any visit not yet paid.
@@ -538,6 +545,8 @@ export async function setPatientLogisticsFlag(patientId: string, field: PatientL
   const { error } = await supabase.from("patients").update({ [field]: value }).eq("id", patientId);
   if (error) throw new Error(error.message);
 
+  await logActivity(supabase, user.id, "patient_logistics_toggled", "patient", patientId, `${field} ${value ? "arranged" : "unarranged"}`);
+
   revalidatePath("/patients");
   revalidatePath("/");
 }
@@ -555,8 +564,25 @@ export async function setExtraVisitLogisticsFlag(
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  const { data: visit } = await supabase
+    .from("patient_visits")
+    .select("patient_id")
+    .eq("id", extraVisitId)
+    .maybeSingle();
+
   const { error } = await supabase.from("patient_visits").update({ [field]: value }).eq("id", extraVisitId);
   if (error) throw new Error(error.message);
+
+  if (visit) {
+    await logActivity(
+      supabase,
+      user.id,
+      "visit_logistics_toggled",
+      "patient",
+      visit.patient_id,
+      `${field} ${value ? "arranged" : "unarranged"}`
+    );
+  }
 
   revalidatePath("/patients");
   revalidatePath("/");

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DASHBOARD_CARDS } from "@/lib/dashboard-cards";
+import { getSettings } from "@/lib/data";
+import { logActivity } from "@/lib/activity-log";
 
 export async function saveSettings(formData: FormData) {
   const supabase = await createClient();
@@ -34,6 +36,8 @@ export async function saveSettings(formData: FormData) {
     throw new Error("Fixed monthly payment must be a positive number");
   }
 
+  const before = await getSettings(supabase, user.id);
+
   const { error } = await supabase.from("settings").upsert({
     user_id: user.id,
     tier1_threshold,
@@ -47,6 +51,21 @@ export async function saveSettings(formData: FormData) {
   });
 
   if (error) throw new Error(error.message);
+
+  const changes: string[] = [];
+  if (before.tier1_threshold !== tier1_threshold) changes.push(`tier1 threshold ${before.tier1_threshold} → ${tier1_threshold}`);
+  if (before.tier1_rate !== tier1_rate) changes.push(`tier1 rate ${before.tier1_rate} → ${tier1_rate}`);
+  if (before.tier2_threshold !== tier2_threshold) changes.push(`tier2 threshold ${before.tier2_threshold} → ${tier2_threshold}`);
+  if (before.tier2_rate !== tier2_rate) changes.push(`tier2 rate ${before.tier2_rate} → ${tier2_rate}`);
+  if (before.tier3_rate !== tier3_rate) changes.push(`tier3 rate ${before.tier3_rate} → ${tier3_rate}`);
+  if (before.fixed_monthly_payment !== fixed_monthly_payment) {
+    changes.push(`fixed monthly payment ${before.fixed_monthly_payment} → ${fixed_monthly_payment}`);
+  }
+  if (before.show_try !== show_try) changes.push(`show TRY ${before.show_try} → ${show_try}`);
+  if (before.currency !== currency) changes.push(`currency ${before.currency} → ${currency}`);
+  if (changes.length > 0) {
+    await logActivity(supabase, user.id, "commission_settings_updated", "settings", user.id, changes.join(", "));
+  }
 
   revalidatePath("/settings");
   revalidatePath("/");
@@ -90,6 +109,8 @@ export async function saveClinicBranding(formData: FormData) {
     clinic_logo_url = `${publicUrl.publicUrl}?v=${Date.now()}`;
   }
 
+  const before = await getSettings(supabase, user.id);
+
   const { error } = await supabase.from("settings").upsert({
     user_id: user.id,
     clinic_name,
@@ -101,6 +122,17 @@ export async function saveClinicBranding(formData: FormData) {
   });
 
   if (error) throw new Error(error.message);
+
+  const changes: string[] = [];
+  if (before.clinic_name !== clinic_name) changes.push(`name ${before.clinic_name} → ${clinic_name}`);
+  if (before.clinic_short_name !== clinic_short_name) changes.push(`short name ${before.clinic_short_name} → ${clinic_short_name}`);
+  if (before.clinic_address !== clinic_address) changes.push("address changed");
+  if (before.clinic_phone !== clinic_phone) changes.push("phone changed");
+  if (before.clinic_email !== clinic_email) changes.push("email changed");
+  if (clinic_logo_url) changes.push("logo changed");
+  if (changes.length > 0) {
+    await logActivity(supabase, user.id, "clinic_branding_updated", "settings", user.id, changes.join(", "));
+  }
 
   revalidatePath("/settings");
   revalidatePath("/patients/[id]/confirmation-letter", "page");
@@ -123,6 +155,8 @@ export async function saveDashboardCards(formData: FormData) {
     .upsert({ user_id: user.id, dashboard_cards });
 
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "dashboard_cards_updated", "settings", user.id, dashboard_cards.join(", "));
 
   revalidatePath("/settings");
   revalidatePath("/");

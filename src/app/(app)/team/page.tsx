@@ -63,6 +63,48 @@ function describeActivity(
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       return `${actor} deleted a visit for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
     }
+    case "patient_logistics_toggled": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} marked ${patientName}'s ${entry.detail ?? "logistics"}`;
+    }
+    case "visit_logistics_toggled": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} marked a visit's ${entry.detail ?? "logistics"} for ${patientName}`;
+    }
+    case "patient_telegram_sent": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} sent a Telegram message for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
+    }
+    case "quote_created":
+      return `${actor} created quote${entry.detail ? ` "${entry.detail}"` : ""}`;
+    case "quote_updated":
+      return `${actor} edited a quote${entry.detail ? ` — ${entry.detail}` : ""}`;
+    case "quote_duplicated":
+      return `${actor} duplicated quote${entry.detail ? ` "${entry.detail}"` : ""}`;
+    case "quote_deleted":
+      return `${actor} deleted quote ${entry.detail || "(unnamed)"}`;
+    case "quote_converted":
+      return `${actor} converted a quote into a patient`;
+    case "commission_settings_updated":
+      return `${actor} changed commission settings${entry.detail ? ` — ${entry.detail}` : ""}`;
+    case "clinic_branding_updated":
+      return `${actor} updated clinic branding${entry.detail ? ` — ${entry.detail}` : ""}`;
+    case "dashboard_cards_updated":
+      return `${actor} changed their dashboard cards`;
+    case "task_created":
+      return `${actor} created task${entry.detail ? ` "${entry.detail}"` : ""}`;
+    case "task_updated":
+      return `${actor} edited task${entry.detail ? ` "${entry.detail}"` : ""}`;
+    case "task_status_changed":
+      return `${actor} marked a task ${entry.detail ?? "updated"}`;
+    case "task_deleted":
+      return `${actor} deleted task ${entry.detail || "(unnamed)"}`;
+    case "display_name_updated":
+      return `${actor} changed their display name${entry.detail ? ` (${entry.detail})` : ""}`;
+    case "password_changed":
+      return `${actor} changed their password`;
+    case "telegram_link_generated":
+      return `${actor} generated a Telegram link code`;
     default:
       return `${actor} — ${entry.action}`;
   }

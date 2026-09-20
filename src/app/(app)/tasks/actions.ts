@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { logActivity } from "@/lib/activity-log";
 import { TaskInput, TaskStatus } from "@/types";
 
 function parseInput(formData: FormData): TaskInput {
@@ -32,14 +33,21 @@ export async function createTask(formData: FormData) {
   if (!input.title) throw new Error("Title is required");
   if (!input.due_date) throw new Error("Due date is required");
 
-  const { error } = await supabase.from("tasks").insert({ ...input, user_id: user.id });
+  const { data, error } = await supabase.from("tasks").insert({ ...input, user_id: user.id }).select("id").single();
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "task_created", "task", data.id, input.title);
 
   revalidatePath("/tasks");
 }
 
 export async function updateTask(id: string, formData: FormData) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const input = parseInput(formData);
   if (!input.title) throw new Error("Title is required");
   if (!input.due_date) throw new Error("Due date is required");
@@ -48,21 +56,40 @@ export async function updateTask(id: string, formData: FormData) {
   const { error } = await supabase.from("tasks").update({ ...input, notified_at: null }).eq("id", id);
   if (error) throw new Error(error.message);
 
+  await logActivity(supabase, user.id, "task_updated", "task", id, input.title);
+
   revalidatePath("/tasks");
 }
 
 export async function setTaskStatus(id: string, status: TaskStatus) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
   const { error } = await supabase.from("tasks").update({ status }).eq("id", id);
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "task_status_changed", "task", id, status);
 
   revalidatePath("/tasks");
 }
 
 export async function deleteTask(id: string) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Grab the title before it's gone — the log has to be self-contained since the task row won't exist anymore.
+  const { data: task } = await supabase.from("tasks").select("title").eq("id", id).maybeSingle();
+
   const { error } = await supabase.from("tasks").delete().eq("id", id);
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "task_deleted", "task", id, task?.title ?? undefined);
 
   revalidatePath("/tasks");
 }

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { logActivity } from "@/lib/activity-log";
 
 export interface NameState {
   error: string | null;
@@ -37,8 +38,19 @@ export async function updateDisplayName(name: string): Promise<void> {
   if (!trimmed) throw new Error("Please enter your name");
   if (trimmed.length > 60) throw new Error("Name must be 60 characters or fewer");
 
+  const { data: before } = await supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
+
   const { error } = await supabase.from("profiles").update({ display_name: trimmed }).eq("id", user.id);
   if (error) throw new Error(error.message);
+
+  await logActivity(
+    supabase,
+    user.id,
+    "display_name_updated",
+    "profile",
+    user.id,
+    `${before?.display_name ?? "—"} → ${trimmed}`
+  );
 
   revalidatePath("/settings");
   revalidatePath("/", "layout");
@@ -62,4 +74,6 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "password_changed", "profile", user.id);
 }

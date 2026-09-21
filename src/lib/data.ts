@@ -52,6 +52,7 @@ export async function getSettings(supabase: SupabaseClient, userId: string): Pro
     tier3_rate: Number(data.tier3_rate),
     fixed_monthly_payment: Number(data.fixed_monthly_payment),
     hide_earnings: Boolean(data.hide_earnings),
+    celebration_sound: Boolean(data.celebration_sound ?? true),
     show_try: Boolean(data.show_try),
     currency: data.currency,
     dashboard_cards:

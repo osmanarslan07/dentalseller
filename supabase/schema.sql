@@ -188,6 +188,9 @@ alter table public.settings add column if not exists tier2_rate numeric(5,4) not
 alter table public.settings add column if not exists tier3_rate numeric(5,4) not null default 0.04;
 alter table public.settings add column if not exists fixed_monthly_payment numeric(12,2) not null default 0;
 alter table public.settings add column if not exists hide_earnings boolean not null default false;
+-- Whether celebration moments (payment received, tier jump, etc.) play a short chime
+-- alongside their confetti — personal preference, on by default.
+alter table public.settings add column if not exists celebration_sound boolean not null default true;
 alter table public.settings add column if not exists show_try boolean not null default false;
 alter table public.settings add column if not exists dashboard_cards text[] not null default array[
   'total_earned', 'month_earnings', 'expected_earnings', 'patients_sold', 'confirmed_this_month',

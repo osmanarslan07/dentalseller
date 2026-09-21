@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { fireConfetti } from "@/lib/celebrate";
+import { useCelebrationSound } from "@/components/celebration-sound";
+import { fireConfetti, playChime } from "@/lib/celebrate";
 import { formatDate } from "@/lib/format";
 import { describeActivity, formatActivityTime, ActivityLogRow } from "@/lib/activity-log";
 import { Patient, PatientExtraVisit, Profile } from "@/types";
@@ -96,6 +97,7 @@ export function PatientFormModal({
   // so a plain default here is enough to always start back on Details — no effect needed.
   const [activeTab, setActiveTab] = useState<TabId>("details");
   const { showToast } = useToast();
+  const { enabled: soundEnabled } = useCelebrationSound();
 
   const [responsibleId, setResponsibleId] = useState(patient?.responsible_seller_id ?? "");
   const [reassignPending, setReassignPending] = useState(false);
@@ -189,14 +191,18 @@ export function PatientFormModal({
         if (isEdit && patient) {
           const { celebration } = await updatePatient(patient.id, formData);
           if (celebration) {
-            if (celebration.kind === "confetti") fireConfetti();
+            if (celebration.kind === "confetti") {
+              fireConfetti();
+              if (soundEnabled) playChime();
+            }
             showToast(celebration.message);
           } else {
             showToast("Patient saved ✓");
           }
         } else {
           const { celebration } = await createPatient(formData);
-          if (celebration.kind === "confetti") fireConfetti();
+          fireConfetti();
+          if (soundEnabled) playChime();
           showToast(celebration.message);
         }
         router.refresh();

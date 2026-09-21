@@ -200,6 +200,7 @@ export interface CommissionSettings {
   tier3_rate: number;
   fixed_monthly_payment: number;
   hide_earnings: boolean;
+  celebration_sound: boolean;
   show_try: boolean;
   currency: string;
   dashboard_cards: DashboardCardId[];
@@ -213,6 +214,7 @@ export const DEFAULT_SETTINGS: CommissionSettings = {
   tier3_rate: 0.04,
   fixed_monthly_payment: 0,
   hide_earnings: false,
+  celebration_sound: true,
   show_try: false,
   currency: "GBP",
   dashboard_cards: DEFAULT_DASHBOARD_CARDS,

@@ -5,6 +5,7 @@ import { ClinicConfig, CommissionSettings, Patient, Profile } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
+import { CelebrationSoundToggle } from "@/components/celebration-sound";
 import { DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
 import { DashboardCardsPicker } from "@/components/DashboardCardsPicker";
 import { ExchangeRatePoint } from "@/lib/data";
@@ -358,6 +359,15 @@ export function SettingsClient({
             : "Earnings/commission figures are visible everywhere. Hide them before sharing your screen."}
         </p>
         <PrivacyToggleButton />
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-1 text-base font-semibold text-slate-900">Celebrations</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          A little confetti (and, if you keep this on, a short chime) when you close a sale,
+          get paid, or hit a higher commission tier.
+        </p>
+        <CelebrationSoundToggle />
       </Card>
 
       <Card className="p-6">

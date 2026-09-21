@@ -8,7 +8,8 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { computeQuoteSplit } from "@/lib/quote-templates";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { fireConfetti } from "@/lib/celebrate";
+import { useCelebrationSound } from "@/components/celebration-sound";
+import { fireConfetti, playChime } from "@/lib/celebrate";
 import { QuoteFormModal } from "./QuoteFormModal";
 import { QuoteCompareModal } from "./QuoteCompareModal";
 import { deleteQuote, convertQuoteToPatient, duplicateQuote } from "./actions";
@@ -48,6 +49,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
   const [compareKey, setCompareKey] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const { showToast } = useToast();
+  const { enabled: soundEnabled } = useCelebrationSound();
   const router = useRouter();
 
   const rows = useMemo(() => {
@@ -120,6 +122,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
       try {
         const { patientId, celebration } = await convertQuoteToPatient(id);
         fireConfetti();
+        if (soundEnabled) playChime();
         showToast(`${celebration.message} Fill in travel details.`);
         router.push(`/patients?open=${patientId}`);
       } catch (e) {

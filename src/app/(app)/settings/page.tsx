@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getRateHistory, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatients, getProfiles, getRateHistory, getSettings } from "@/lib/data";
 import { SettingsClient } from "./SettingsClient";
 
 export default async function SettingsPage() {
@@ -17,6 +17,8 @@ export default async function SettingsPage() {
       ? await getRateHistory(supabase, settings.currency)
       : [];
   const myProfile = profiles.find((p) => p.id === user?.id) ?? null;
+  const isAdmin = myProfile?.role === "admin";
+  const clinicConfig = isAdmin ? await getClinicConfig(supabase) : { telegramGroupChatId: null };
 
   return (
     <SettingsClient
@@ -28,7 +30,8 @@ export default async function SettingsPage() {
       currentUserEmail={user?.email ?? ""}
       currentDisplayName={myProfile?.display_name ?? ""}
       telegramConnected={!!myProfile?.telegram_chat_id}
-      isAdmin={myProfile?.role === "admin"}
+      telegramGroupChatId={clinicConfig.telegramGroupChatId}
+      isAdmin={isAdmin}
     />
   );
 }

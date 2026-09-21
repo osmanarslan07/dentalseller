@@ -145,6 +145,8 @@ export function describeActivity(
       return `${actor} changed their password`;
     case "telegram_link_generated":
       return `${actor} generated a Telegram link code`;
+    case "telegram_group_chat_updated":
+      return `${actor} changed the shared Telegram group chat${entry.detail ? ` — ${entry.detail}` : ""}`;
     default:
       return `${actor} — ${entry.action}`;
   }

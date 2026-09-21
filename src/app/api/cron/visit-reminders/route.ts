@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addDays, format } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
+import { getClinicConfig } from "@/lib/data";
+import { getFallbackChatId, getGroupChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 
@@ -201,6 +202,8 @@ export async function GET(request: NextRequest) {
   const { data: profiles } = await supabase.from("profiles").select("id, telegram_chat_id");
   const chatBySeller = new Map((profiles ?? []).map((p) => [p.id, p.telegram_chat_id as string | null]));
   const fallback = getFallbackChatId();
+  const clinicConfig = await getClinicConfig(supabase);
+  const group = clinicConfig.telegramGroupChatId || getGroupChatId();
 
   let totalCount = 0;
   await Promise.all(
@@ -210,6 +213,7 @@ export async function GET(request: NextRequest) {
       const own = chatBySeller.get(sellerId);
       if (own) chatIds.add(own);
       if (fallback) chatIds.add(fallback);
+      if (group) chatIds.add(group);
       if (chatIds.size === 0) return;
 
       const text = `<b>Upcoming visits</b>\n\n${lines.join("\n")}`;

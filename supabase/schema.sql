@@ -575,6 +575,31 @@ drop policy if exists "activity_log_insert_self" on public.activity_log;
 create policy "activity_log_insert_self" on public.activity_log
   for insert with check (actor_id = auth.uid());
 
+-- ---------- clinic_config (singleton row — clinic-wide settings, not tied to any one seller) ----------
+create table if not exists public.clinic_config (
+  id boolean primary key default true check (id),
+  telegram_group_chat_id text,
+  updated_at timestamptz not null default now()
+);
+insert into public.clinic_config (id) values (true) on conflict (id) do nothing;
+
+alter table public.clinic_config enable row level security;
+
+drop policy if exists "clinic_config_select_admin" on public.clinic_config;
+create policy "clinic_config_select_admin" on public.clinic_config
+  for select using (public.is_admin(auth.uid()));
+drop policy if exists "clinic_config_update_admin" on public.clinic_config;
+create policy "clinic_config_update_admin" on public.clinic_config
+  for update using (public.is_admin(auth.uid()));
+drop policy if exists "clinic_config_insert_admin" on public.clinic_config;
+create policy "clinic_config_insert_admin" on public.clinic_config
+  for insert with check (public.is_admin(auth.uid()));
+
+drop trigger if exists clinic_config_set_updated_at on public.clinic_config;
+create trigger clinic_config_set_updated_at
+  before update on public.clinic_config
+  for each row execute function public.set_updated_at();
+
 -- ---------- per-visit commission attribution ----------
 -- Locks in "who earned this" the moment a payment is actually recorded, so reassigning a
 -- patient later never drags already-earned commission along to the new seller — only visits

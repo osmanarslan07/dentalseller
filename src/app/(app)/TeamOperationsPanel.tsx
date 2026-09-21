@@ -146,7 +146,15 @@ export function TeamOperationsPanel({
         time: e.time,
         flightNo: e.flightNo,
         daysLeft,
-        expected: isExtra ? extraVisit?.expected ?? null : isVisit2 ? p.visit2_expected : p.visit1_expected,
+        // Departure shares the same expected amount as its arrival — showing it twice per visit
+        // reads as double the money owed, so only the arrival (or self/extra) event carries it.
+        expected: isDeparture
+          ? null
+          : isExtra
+            ? extraVisit?.expected ?? null
+            : isVisit2
+              ? p.visit2_expected
+              : p.visit1_expected,
       });
     }
     events.sort((a, b) => a.date.localeCompare(b.date));
@@ -352,9 +360,11 @@ export function TeamOperationsPanel({
                                 )}
                               </div>
                             </div>
-                            <span className="text-right text-sm font-medium text-slate-700">
-                              {v.expected != null ? formatCurrency(v.expected, currency) : "—"}
-                            </span>
+                            {v.expected != null && (
+                              <span className="text-right text-sm font-medium text-slate-700">
+                                {formatCurrency(v.expected, currency)}
+                              </span>
+                            )}
                           </Link>
                         </li>
                       ))}

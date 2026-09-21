@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DASHBOARD_CARDS } from "@/lib/dashboard-cards";
-import { getSettings } from "@/lib/data";
+import { getClinicConfig, getSettings } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
 
 export async function saveSettings(formData: FormData) {
@@ -136,6 +136,43 @@ export async function saveClinicBranding(formData: FormData) {
 
   revalidatePath("/settings");
   revalidatePath("/patients/[id]/confirmation-letter", "page");
+}
+
+/** Admin-only — enforced both here and by the clinic_config_update_admin RLS policy. Clinic-
+ * wide, unlike every other Settings card, so it lives in its own singleton table rather than
+ * a per-seller `settings` row. */
+export async function saveTelegramGroupChat(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: myProfile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (myProfile?.role !== "admin") throw new Error("Admin only");
+
+  const raw = String(formData.get("telegram_group_chat_id") ?? "").trim();
+  const telegram_group_chat_id = raw || null;
+
+  const before = await getClinicConfig(supabase);
+
+  const { error } = await supabase
+    .from("clinic_config")
+    .upsert({ id: true, telegram_group_chat_id });
+  if (error) throw new Error(error.message);
+
+  if (before.telegramGroupChatId !== telegram_group_chat_id) {
+    await logActivity(
+      supabase,
+      user.id,
+      "telegram_group_chat_updated",
+      "settings",
+      user.id,
+      telegram_group_chat_id ? `set to ${telegram_group_chat_id}` : "cleared"
+    );
+  }
+
+  revalidatePath("/settings");
 }
 
 export async function saveDashboardCards(formData: FormData) {

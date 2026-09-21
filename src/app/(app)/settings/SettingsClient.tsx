@@ -12,6 +12,7 @@ import { RateHistoryChart } from "@/components/RateHistoryChart";
 import { AccountCard } from "./AccountCard";
 import { TeamCard } from "./TeamCard";
 import { TelegramCard } from "./TelegramCard";
+import { TelegramGroupCard } from "./TelegramGroupCard";
 import { saveClinicBranding, saveDashboardCards, saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
@@ -25,6 +26,7 @@ export function SettingsClient({
   currentUserEmail,
   currentDisplayName,
   telegramConnected,
+  telegramGroupChatId,
   isAdmin,
 }: {
   settings: CommissionSettings;
@@ -35,6 +37,7 @@ export function SettingsClient({
   currentUserEmail: string;
   currentDisplayName: string;
   telegramConnected: boolean;
+  telegramGroupChatId: string | null;
   isAdmin: boolean;
 }) {
   const [pending, startTransition] = useTransition();
@@ -122,6 +125,8 @@ export function SettingsClient({
       <AccountCard email={currentUserEmail} displayName={currentDisplayName} />
 
       <TelegramCard connected={telegramConnected} />
+
+      {isAdmin && <TelegramGroupCard groupChatId={telegramGroupChatId} />}
 
       <TeamCard profiles={profiles} currentUserId={currentUserId} isAdmin={isAdmin} />
 

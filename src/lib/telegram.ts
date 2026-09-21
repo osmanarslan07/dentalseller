@@ -34,6 +34,12 @@ export function getFallbackChatId(): string | null {
   return process.env.TELEGRAM_CHAT_ID ?? null;
 }
 
+/** Shared group chat for arrival/departure reminders only — tasks stay seller-private since
+ * a task list is personal to-dos, not something the whole team needs pinged about. */
+export function getGroupChatId(): string | null {
+  return process.env.TELEGRAM_GROUP_CHAT_ID ?? null;
+}
+
 let cachedBotUsername: string | null = null;
 
 /** Used to build the t.me deep link for the "Connect Telegram" flow. */

@@ -67,6 +67,17 @@ export async function getSettings(supabase: SupabaseClient, userId: string): Pro
   };
 }
 
+/** Singleton row — clinic-wide settings not tied to any one seller (e.g. the shared Telegram
+ * group chat). RLS restricts it to admins, so a non-admin caller just gets null back here. */
+export async function getClinicConfig(supabase: SupabaseClient): Promise<{ telegramGroupChatId: string | null }> {
+  const { data, error } = await withRetry(() =>
+    supabase.from("clinic_config").select("telegram_group_chat_id").eq("id", true).maybeSingle()
+  );
+
+  if (error) throw error;
+  return { telegramGroupChatId: data?.telegram_group_chat_id ?? null };
+}
+
 export async function getMyProfile(supabase: SupabaseClient, userId: string): Promise<Profile | null> {
   const { data, error } = await withRetry(() =>
     supabase.from("profiles").select("*").eq("id", userId).maybeSingle()

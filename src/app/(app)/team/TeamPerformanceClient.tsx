@@ -14,8 +14,6 @@ interface Row {
   patientsCameInMonth: number;
   paidInMonth: number;
   commissionInMonth: number;
-  totalActual: number;
-  totalExpected: number;
 }
 
 interface ActivityEntry {
@@ -71,7 +69,7 @@ export function TeamPerformanceClient({
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
+          <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
                 <th className="py-3 pl-4 pr-4 font-medium">Seller</th>
@@ -79,8 +77,6 @@ export function TeamPerformanceClient({
                 <th className="py-3 pr-4 font-medium">Came in {selectedMonthLabel}</th>
                 <th className="py-3 pr-4 font-medium">Paid in {selectedMonthLabel}</th>
                 <th className="py-3 pr-4 font-medium">Commission in {selectedMonthLabel}</th>
-                <th className="py-3 pr-4 font-medium">Total earned</th>
-                <th className="py-3 pr-4 font-medium">Total expected</th>
               </tr>
             </thead>
             <tbody>
@@ -102,17 +98,11 @@ export function TeamPerformanceClient({
                   <td className="py-3 pr-4 font-medium text-slate-700">
                     <Money value={r.commissionInMonth} currency={r.currency} showConversion={false} />
                   </td>
-                  <td className="py-3 pr-4 font-medium text-slate-700">
-                    <Money value={r.totalActual} currency={r.currency} showConversion={false} />
-                  </td>
-                  <td className="py-3 pr-4 text-slate-500">
-                    <Money value={r.totalExpected} currency={r.currency} showConversion={false} />
-                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={5} className="py-8 text-center text-slate-400">
                     No sellers yet.
                   </td>
                 </tr>

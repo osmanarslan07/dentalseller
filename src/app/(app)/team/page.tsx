@@ -51,8 +51,6 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         patientsCameInMonth: countPatientsWithCompletedVisitInMonth(allPatients, selectedMonth, seller.id),
         paidInMonth: monthAgg?.actualTotal ?? 0,
         commissionInMonth: monthAgg?.actualCommission ?? 0,
-        totalActual: aggregates.reduce((sum, a) => sum + a.actualCommission, 0),
-        totalExpected: aggregates.reduce((sum, a) => sum + a.expectedCommission, 0),
       };
     })
   );

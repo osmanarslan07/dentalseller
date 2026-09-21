@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useState, useTransition } from "react";
-import { CommissionSettings, Patient, Profile } from "@/types";
+import { ClinicConfig, CommissionSettings, Patient, Profile } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
@@ -26,7 +26,7 @@ export function SettingsClient({
   currentUserEmail,
   currentDisplayName,
   telegramConnected,
-  telegramGroupChatId,
+  clinicConfig,
   isAdmin,
 }: {
   settings: CommissionSettings;
@@ -37,7 +37,7 @@ export function SettingsClient({
   currentUserEmail: string;
   currentDisplayName: string;
   telegramConnected: boolean;
-  telegramGroupChatId: string | null;
+  clinicConfig: ClinicConfig;
   isAdmin: boolean;
 }) {
   const [pending, startTransition] = useTransition();
@@ -49,7 +49,7 @@ export function SettingsClient({
   const [brandingPending, startBrandingTransition] = useTransition();
   const [brandingError, setBrandingError] = useState<string | null>(null);
   const [brandingSaved, setBrandingSaved] = useState(false);
-  const [logoPreview, setLogoPreview] = useState<string | null>(settings.clinic_logo_url);
+  const [logoPreview, setLogoPreview] = useState<string | null>(clinicConfig.clinicLogoUrl);
   const { hidden, tryRate } = usePrivacy();
 
   const knownCardIds = new Set<DashboardCardId>(DASHBOARD_CARDS.map((c) => c.id));
@@ -126,7 +126,7 @@ export function SettingsClient({
 
       <TelegramCard connected={telegramConnected} />
 
-      {isAdmin && <TelegramGroupCard groupChatId={telegramGroupChatId} />}
+      {isAdmin && <TelegramGroupCard groupChatId={clinicConfig.telegramGroupChatId} />}
 
       <TeamCard profiles={profiles} currentUserId={currentUserId} isAdmin={isAdmin} />
 
@@ -247,74 +247,77 @@ export function SettingsClient({
         </form>
       </Card>
 
-      <Card className="p-6">
-        <h2 className="mb-1 text-base font-semibold text-slate-900">Confirmation letter branding</h2>
-        <p className="mb-5 text-sm text-slate-500">
-          Clinic name, contact details and logo shown on the patient confirmation letter.
-        </p>
+      {isAdmin && (
+        <Card className="p-6">
+          <h2 className="mb-1 text-base font-semibold text-slate-900">Confirmation letter branding</h2>
+          <p className="mb-5 text-sm text-slate-500">
+            Clinic name, contact details and logo — shared across every seller&apos;s confirmation
+            letters and quote offers, not just your own.
+          </p>
 
-        <form action={handleBrandingSubmit} className="space-y-4">
-          <div>
-            <Label>Logo</Label>
-            <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                {logoPreview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoPreview} alt="Clinic logo" className="h-full w-full object-contain" />
-                ) : (
-                  <span className="text-xs text-slate-400">No logo</span>
-                )}
+          <form action={handleBrandingSubmit} className="space-y-4">
+            <div>
+              <Label>Logo</Label>
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                  {logoPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logoPreview} alt="Clinic logo" className="h-full w-full object-contain" />
+                  ) : (
+                    <span className="text-xs text-slate-400">No logo</span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  name="clinic_logo"
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  onChange={handleLogoChange}
+                  className="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+                />
               </div>
-              <input
-                type="file"
-                name="clinic_logo"
-                accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                onChange={handleLogoChange}
-                className="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
-              />
+              <p className="mt-1 text-xs text-slate-400">PNG, JPEG, SVG or WebP, up to 2MB.</p>
             </div>
-            <p className="mt-1 text-xs text-slate-400">PNG, JPEG, SVG or WebP, up to 2MB.</p>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Clinic name (full)</Label>
-              <Input name="clinic_name" defaultValue={settings.clinic_name} required />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Clinic name (full)</Label>
+                <Input name="clinic_name" defaultValue={clinicConfig.clinicName} required />
+              </div>
+              <div>
+                <Label>Clinic name (short)</Label>
+                <Input name="clinic_short_name" defaultValue={clinicConfig.clinicShortName} required />
+              </div>
             </div>
             <div>
-              <Label>Clinic name (short)</Label>
-              <Input name="clinic_short_name" defaultValue={settings.clinic_short_name} required />
+              <Label>Address</Label>
+              <Input name="clinic_address" defaultValue={clinicConfig.clinicAddress} />
             </div>
-          </div>
-          <div>
-            <Label>Address</Label>
-            <Input name="clinic_address" defaultValue={settings.clinic_address} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Phone</Label>
-              <Input name="clinic_phone" defaultValue={settings.clinic_phone} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Phone</Label>
+                <Input name="clinic_phone" defaultValue={clinicConfig.clinicPhone} />
+              </div>
+              <div>
+                <Label>Email</Label>
+                <Input type="email" name="clinic_email" defaultValue={clinicConfig.clinicEmail} />
+              </div>
             </div>
-            <div>
-              <Label>Email</Label>
-              <Input type="email" name="clinic_email" defaultValue={settings.clinic_email} />
-            </div>
-          </div>
 
-          {brandingError && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{brandingError}</p>
-          )}
-          {brandingSaved && (
-            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Settings saved.</p>
-          )}
+            {brandingError && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{brandingError}</p>
+            )}
+            {brandingSaved && (
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Settings saved.</p>
+            )}
 
-          <div className="flex justify-end pt-2">
-            <Button type="submit" disabled={brandingPending}>
-              {brandingPending ? "Saving…" : "Save branding"}
-            </Button>
-          </div>
-        </form>
-      </Card>
+            <div className="flex justify-end pt-2">
+              <Button type="submit" disabled={brandingPending}>
+                {brandingPending ? "Saving…" : "Save branding"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       {settings.show_try && settings.currency !== "TRY" && (
         <Card className="p-6">

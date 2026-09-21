@@ -73,12 +73,18 @@ export async function saveSettings(formData: FormData) {
   revalidatePath("/projections");
 }
 
+/** Admin-only — enforced both here and by the clinic_config_update_admin RLS policy. Clinic-
+ * wide (see saveTelegramGroupChat above): every seller's confirmation letters and quote
+ * offers use this one shared identity, not whatever their own `settings` row had. */
 export async function saveClinicBranding(formData: FormData) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  const { data: myProfile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (myProfile?.role !== "admin") throw new Error("Admin only");
 
   const clinic_name = String(formData.get("clinic_name") ?? "").trim();
   const clinic_short_name = String(formData.get("clinic_short_name") ?? "").trim();
@@ -99,7 +105,7 @@ export async function saveClinicBranding(formData: FormData) {
     }
     const admin = createAdminClient();
     const ext = logoFile.name.split(".").pop() || "png";
-    const path = `${user.id}/logo.${ext}`;
+    const path = `clinic/logo.${ext}`;
     const { error: uploadError } = await admin.storage
       .from("clinic-assets")
       .upload(path, logoFile, { upsert: true, contentType: logoFile.type });
@@ -109,10 +115,10 @@ export async function saveClinicBranding(formData: FormData) {
     clinic_logo_url = `${publicUrl.publicUrl}?v=${Date.now()}`;
   }
 
-  const before = await getSettings(supabase, user.id);
+  const before = await getClinicConfig(supabase);
 
-  const { error } = await supabase.from("settings").upsert({
-    user_id: user.id,
+  const { error } = await supabase.from("clinic_config").upsert({
+    id: true,
     clinic_name,
     clinic_short_name,
     clinic_address,
@@ -124,11 +130,11 @@ export async function saveClinicBranding(formData: FormData) {
   if (error) throw new Error(error.message);
 
   const changes: string[] = [];
-  if (before.clinic_name !== clinic_name) changes.push(`name ${before.clinic_name} → ${clinic_name}`);
-  if (before.clinic_short_name !== clinic_short_name) changes.push(`short name ${before.clinic_short_name} → ${clinic_short_name}`);
-  if (before.clinic_address !== clinic_address) changes.push("address changed");
-  if (before.clinic_phone !== clinic_phone) changes.push("phone changed");
-  if (before.clinic_email !== clinic_email) changes.push("email changed");
+  if (before.clinicName !== clinic_name) changes.push(`name ${before.clinicName} → ${clinic_name}`);
+  if (before.clinicShortName !== clinic_short_name) changes.push(`short name ${before.clinicShortName} → ${clinic_short_name}`);
+  if (before.clinicAddress !== clinic_address) changes.push("address changed");
+  if (before.clinicPhone !== clinic_phone) changes.push("phone changed");
+  if (before.clinicEmail !== clinic_email) changes.push("email changed");
   if (clinic_logo_url) changes.push("logo changed");
   if (changes.length > 0) {
     await logActivity(supabase, user.id, "clinic_branding_updated", "settings", user.id, changes.join(", "));
@@ -136,11 +142,12 @@ export async function saveClinicBranding(formData: FormData) {
 
   revalidatePath("/settings");
   revalidatePath("/patients/[id]/confirmation-letter", "page");
+  revalidatePath("/quotes/[id]/offer", "page");
 }
 
 /** Admin-only — enforced both here and by the clinic_config_update_admin RLS policy. Clinic-
- * wide, unlike every other Settings card, so it lives in its own singleton table rather than
- * a per-seller `settings` row. */
+ * wide, unlike the commission/dashboard-cards settings below, so it lives in its own
+ * singleton table rather than a per-seller `settings` row. */
 export async function saveTelegramGroupChat(formData: FormData) {
   const supabase = await createClient();
   const {

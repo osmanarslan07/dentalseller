@@ -194,12 +194,6 @@ export interface CommissionSettings {
   show_try: boolean;
   currency: string;
   dashboard_cards: DashboardCardId[];
-  clinic_name: string;
-  clinic_short_name: string;
-  clinic_address: string;
-  clinic_phone: string;
-  clinic_email: string;
-  clinic_logo_url: string | null;
 }
 
 export const DEFAULT_SETTINGS: CommissionSettings = {
@@ -213,10 +207,27 @@ export const DEFAULT_SETTINGS: CommissionSettings = {
   show_try: false,
   currency: "GBP",
   dashboard_cards: DEFAULT_DASHBOARD_CARDS,
-  clinic_name: "Thera Dental Clinic Turkey",
-  clinic_short_name: "Thera Dental Clinic",
-  clinic_address: "Kasya Plaza, Göksu, 6806 Sok No:8-3, 07260 Kepez/Antalya",
-  clinic_phone: "+90 (544) 954 04 49",
-  clinic_email: "info@theradentturkey.com",
-  clinic_logo_url: null,
+};
+
+/** Clinic-wide (not per-seller) — confirmation letters and quote offers use this regardless
+ * of which seller owns the patient/quote, so branding can't silently drift between sellers'
+ * own settings rows the way it could when this lived in `settings`. */
+export interface ClinicConfig {
+  telegramGroupChatId: string | null;
+  clinicName: string;
+  clinicShortName: string;
+  clinicAddress: string;
+  clinicPhone: string;
+  clinicEmail: string;
+  clinicLogoUrl: string | null;
+}
+
+export const DEFAULT_CLINIC_CONFIG: ClinicConfig = {
+  telegramGroupChatId: null,
+  clinicName: "Thera Dental Clinic Turkey",
+  clinicShortName: "Thera Dental Clinic",
+  clinicAddress: "Kasya Plaza, Göksu, 6806 Sok No:8-3, 07260 Kepez/Antalya",
+  clinicPhone: "+90 (544) 954 04 49",
+  clinicEmail: "info@theradentturkey.com",
+  clinicLogoUrl: null,
 };

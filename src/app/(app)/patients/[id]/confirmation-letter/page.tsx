@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getPatient, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatient, getSettings } from "@/lib/data";
 import { formatCurrency } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
 
@@ -74,14 +74,15 @@ export default async function ConfirmationLetterPage({
   if (!patient) notFound();
 
   const settings = await getSettings(supabase, patient.responsible_seller_id);
+  const clinicConfig = await getClinicConfig(supabase);
 
   const clinic = {
-    name: settings.clinic_name,
-    shortName: settings.clinic_short_name,
-    address: settings.clinic_address,
-    phone: settings.clinic_phone,
-    email: settings.clinic_email,
-    logoUrl: settings.clinic_logo_url ?? null,
+    name: clinicConfig.clinicName,
+    shortName: clinicConfig.clinicShortName,
+    address: clinicConfig.clinicAddress,
+    phone: clinicConfig.clinicPhone,
+    email: clinicConfig.clinicEmail,
+    logoUrl: clinicConfig.clinicLogoUrl,
   };
 
   const firstVisitPayment = patient.visit1_actual ?? patient.visit1_expected;

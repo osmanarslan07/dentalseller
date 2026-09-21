@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { CommissionSettings, DEFAULT_SETTINGS, Patient, Profile, Quote, Task } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, Quote, Task } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 
 /** Cold-start Supabase reads occasionally flake with a network error; one retry clears it. */
@@ -58,24 +58,27 @@ export async function getSettings(supabase: SupabaseClient, userId: string): Pro
       Array.isArray(data.dashboard_cards) && data.dashboard_cards.length > 0
         ? data.dashboard_cards
         : DEFAULT_DASHBOARD_CARDS,
-    clinic_name: data.clinic_name ?? DEFAULT_SETTINGS.clinic_name,
-    clinic_short_name: data.clinic_short_name ?? DEFAULT_SETTINGS.clinic_short_name,
-    clinic_address: data.clinic_address ?? DEFAULT_SETTINGS.clinic_address,
-    clinic_phone: data.clinic_phone ?? DEFAULT_SETTINGS.clinic_phone,
-    clinic_email: data.clinic_email ?? DEFAULT_SETTINGS.clinic_email,
-    clinic_logo_url: data.clinic_logo_url ?? null,
   };
 }
 
-/** Singleton row — clinic-wide settings not tied to any one seller (e.g. the shared Telegram
- * group chat). RLS restricts it to admins, so a non-admin caller just gets null back here. */
-export async function getClinicConfig(supabase: SupabaseClient): Promise<{ telegramGroupChatId: string | null }> {
-  const { data, error } = await withRetry(() =>
-    supabase.from("clinic_config").select("telegram_group_chat_id").eq("id", true).maybeSingle()
-  );
+/** Singleton row — clinic-wide settings not tied to any one seller (the shared Telegram group
+ * chat, confirmation-letter/quote-offer branding). Readable by any active seller; only admins
+ * can write it (see the clinic_config RLS policies). */
+export async function getClinicConfig(supabase: SupabaseClient): Promise<ClinicConfig> {
+  const { data, error } = await withRetry(() => supabase.from("clinic_config").select("*").eq("id", true).maybeSingle());
 
   if (error) throw error;
-  return { telegramGroupChatId: data?.telegram_group_chat_id ?? null };
+  if (!data) return DEFAULT_CLINIC_CONFIG;
+
+  return {
+    telegramGroupChatId: data.telegram_group_chat_id ?? null,
+    clinicName: data.clinic_name ?? DEFAULT_CLINIC_CONFIG.clinicName,
+    clinicShortName: data.clinic_short_name ?? DEFAULT_CLINIC_CONFIG.clinicShortName,
+    clinicAddress: data.clinic_address ?? DEFAULT_CLINIC_CONFIG.clinicAddress,
+    clinicPhone: data.clinic_phone ?? DEFAULT_CLINIC_CONFIG.clinicPhone,
+    clinicEmail: data.clinic_email ?? DEFAULT_CLINIC_CONFIG.clinicEmail,
+    clinicLogoUrl: data.clinic_logo_url ?? null,
+  };
 }
 
 export async function getMyProfile(supabase: SupabaseClient, userId: string): Promise<Profile | null> {

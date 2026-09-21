@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getQuote, getSettings } from "@/lib/data";
+import { getClinicConfig, getQuote } from "@/lib/data";
 import { formatCurrency } from "@/lib/format";
 import { computeQuoteSplit } from "@/lib/quote-templates";
 import { PrintButton } from "@/components/PrintButton";
@@ -16,12 +16,12 @@ export default async function QuoteOfferPage({ params }: { params: Promise<{ id:
 
   if (!quote) notFound();
 
-  const settings = await getSettings(supabase, quote.user_id);
+  const clinicConfig = await getClinicConfig(supabase);
 
   const clinic = {
-    name: settings.clinic_name,
-    shortName: settings.clinic_short_name,
-    logoUrl: settings.clinic_logo_url ?? null,
+    name: clinicConfig.clinicName,
+    shortName: clinicConfig.clinicShortName,
+    logoUrl: clinicConfig.clinicLogoUrl,
   };
 
   const inclusions = (quote.inclusions || "")

@@ -583,11 +583,24 @@ create table if not exists public.clinic_config (
 );
 insert into public.clinic_config (id) values (true) on conflict (id) do nothing;
 
+-- confirmation-letter/quote-offer branding, moved here from the per-seller `settings` table —
+-- one shared identity for every patient's letter, not whatever each seller's own row happened
+-- to have. Editable by admins only; any active seller can read it (see select policy below).
+alter table public.clinic_config add column if not exists clinic_name text not null default 'Thera Dental Clinic Turkey';
+alter table public.clinic_config add column if not exists clinic_short_name text not null default 'Thera Dental Clinic';
+alter table public.clinic_config add column if not exists clinic_address text not null default 'Kasya Plaza, Göksu, 6806 Sok No:8-3, 07260 Kepez/Antalya';
+alter table public.clinic_config add column if not exists clinic_phone text not null default '+90 (544) 954 04 49';
+alter table public.clinic_config add column if not exists clinic_email text not null default 'info@theradentturkey.com';
+alter table public.clinic_config add column if not exists clinic_logo_url text;
+
 alter table public.clinic_config enable row level security;
 
+-- any active seller can read it (their own confirmation letters/quote offers need it); only
+-- admins can change it.
 drop policy if exists "clinic_config_select_admin" on public.clinic_config;
-create policy "clinic_config_select_admin" on public.clinic_config
-  for select using (public.is_admin(auth.uid()));
+drop policy if exists "clinic_config_select_active" on public.clinic_config;
+create policy "clinic_config_select_active" on public.clinic_config
+  for select using (public.is_active_profile(auth.uid()));
 drop policy if exists "clinic_config_update_admin" on public.clinic_config;
 create policy "clinic_config_update_admin" on public.clinic_config
   for update using (public.is_admin(auth.uid()));

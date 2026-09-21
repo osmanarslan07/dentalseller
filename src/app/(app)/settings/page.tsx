@@ -7,10 +7,11 @@ export default async function SettingsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const [patients, settings, profiles] = await Promise.all([
+  const [patients, settings, profiles, clinicConfig] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, user?.id ?? ""),
     getProfiles(supabase),
+    getClinicConfig(supabase),
   ]);
   const rateHistory =
     settings.show_try && settings.currency !== "TRY"
@@ -18,7 +19,6 @@ export default async function SettingsPage() {
       : [];
   const myProfile = profiles.find((p) => p.id === user?.id) ?? null;
   const isAdmin = myProfile?.role === "admin";
-  const clinicConfig = isAdmin ? await getClinicConfig(supabase) : { telegramGroupChatId: null };
 
   return (
     <SettingsClient
@@ -30,7 +30,7 @@ export default async function SettingsPage() {
       currentUserEmail={user?.email ?? ""}
       currentDisplayName={myProfile?.display_name ?? ""}
       telegramConnected={!!myProfile?.telegram_chat_id}
-      telegramGroupChatId={clinicConfig.telegramGroupChatId}
+      clinicConfig={clinicConfig}
       isAdmin={isAdmin}
     />
   );

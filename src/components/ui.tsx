@@ -19,7 +19,7 @@ export function Button({
   size?: "sm" | "md";
 }) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none";
+    "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition duration-150 active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100";
   const sizes = { sm: "px-3 py-1.5 text-sm", md: "px-4 py-2 text-sm" };
   const variants = {
     primary: "bg-teal-600 text-white hover:bg-teal-700",

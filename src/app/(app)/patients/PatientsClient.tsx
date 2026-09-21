@@ -674,10 +674,11 @@ export function PatientsClient({
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ patient: p, commission, stage, isMine }) => (
+              {rows.map(({ patient: p, commission, stage, isMine }, i) => (
                 <tr
                   key={p.id}
-                  className="cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/50"
+                  className="animate-fade-in-up cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/50"
+                  style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
                   onClick={() => {
                     setEditingPatient(p);
                     setDuplicateFrom(null);

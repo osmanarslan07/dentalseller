@@ -72,9 +72,13 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     description: describeActivity(entry, nameById, patientNameById),
   }));
 
-  // Two years back is plenty for a "pick a past month" dropdown without listing back to
-  // the account's creation date — extend if the clinic ever needs to look further back.
-  const monthOptions = lastNMonths(24)
+  // The clinic's operations in this app start January 2026 — no point listing months
+  // before any data could exist.
+  const CLINIC_START_MONTH = "2026-01";
+  const [startYear, startMonthNum] = CLINIC_START_MONTH.split("-").map(Number);
+  const [currentYear, currentMonthNum] = currentMonthKey().split("-").map(Number);
+  const monthsSinceStart = (currentYear - startYear) * 12 + (currentMonthNum - startMonthNum) + 1;
+  const monthOptions = lastNMonths(Math.max(monthsSinceStart, 1))
     .reverse()
     .map((m) => ({ value: m, label: monthLabel(m) }));
 

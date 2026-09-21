@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { computeQuoteSplit } from "@/lib/quote-templates";
 import { diffFields, logActivity } from "@/lib/activity-log";
-import { QuoteInput } from "@/types";
+import { Celebration, QuoteInput } from "@/types";
 
 const QUOTE_AUDIT_FIELDS: { key: keyof QuoteInput; label: string }[] = [
   { key: "name", label: "name" },
@@ -222,5 +222,7 @@ export async function convertQuoteToPatient(id: string) {
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/projections");
-  return patient.id as string;
+
+  const celebration: Celebration = { kind: "confetti", message: `🎉 ${quote.name} converted into a confirmed patient!` };
+  return { patientId: patient.id as string, celebration };
 }

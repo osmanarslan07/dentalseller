@@ -4,6 +4,15 @@ export type { DashboardCardId };
 
 export type SellerRole = "seller" | "admin";
 
+/** Returned by a handful of server actions alongside their normal result, so the client can
+ * react to a genuinely good moment (a sale, a payment, a tier jump) with confetti/a toast
+ * instead of the usual plain "saved" message. `null` means nothing celebration-worthy happened
+ * on this particular save. */
+export interface Celebration {
+  kind: "confetti" | "toast";
+  message: string;
+}
+
 export interface Profile {
   id: string;
   display_name: string | null;

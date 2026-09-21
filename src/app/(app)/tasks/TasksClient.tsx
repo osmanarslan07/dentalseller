@@ -44,7 +44,8 @@ export function TasksClient({
     setBusyId(task.id);
     startTransition(async () => {
       try {
-        await setTaskStatus(task.id, task.status === "pending" ? "done" : "pending");
+        const { celebration } = await setTaskStatus(task.id, task.status === "pending" ? "done" : "pending");
+        if (celebration) showToast(celebration.message);
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to update task", "error");
       } finally {

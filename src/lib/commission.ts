@@ -1,4 +1,4 @@
-import { CommissionSettings, Patient } from "@/types";
+import { Celebration, CommissionSettings, Patient } from "@/types";
 import { formatCurrency } from "@/lib/format";
 
 export function monthKey(dateStr: string): string {
@@ -222,6 +222,26 @@ export function patientCommissionContribution(
   }
 
   return { actual, expected };
+}
+
+/** Only meaningful the moment a payment is newly recorded — checks whether that specific
+ * amount tipped this month's running total into a higher tier, which raises the rate on
+ * every pound still to come this month, not just the one just paid. `patientsAfterSave`
+ * must already reflect the new amount (i.e. fetched after the DB write it came from). */
+export function detectTierJump(
+  patientsAfterSave: Patient[],
+  sellerId: string,
+  settings: CommissionSettings,
+  visitDate: string,
+  newAmount: number
+): Celebration | null {
+  const month = monthKey(visitDate);
+  const afterTotal = computeMonthTotals(patientsAfterSave, sellerId).get(month)?.actualTotal ?? 0;
+  const beforeTotal = afterTotal - newAmount;
+  const beforeRate = rateForTotal(beforeTotal, settings);
+  const afterRate = rateForTotal(afterTotal, settings);
+  if (afterRate <= beforeRate) return null;
+  return { kind: "confetti", message: `🎉 You just hit the ${(afterRate * 100).toFixed(0)}% commission tier!` };
 }
 
 export function lastNMonths(n: number, endMonth: string = currentMonthKey()): string[] {

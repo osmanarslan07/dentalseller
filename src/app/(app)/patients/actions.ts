@@ -5,10 +5,11 @@ import { revalidatePath } from "next/cache";
 import { addMonths, format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPatient } from "@/lib/data";
+import { getPatient, getPatients, getSettings } from "@/lib/data";
 import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { ActivityLogRow, diffFields, logActivity } from "@/lib/activity-log";
-import { Patient, PatientExtraVisit, PatientInput } from "@/types";
+import { detectTierJump } from "@/lib/commission";
+import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
 
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
  * parses as UTC) so this can't drift a day depending on the server's timezone offset. */
@@ -354,6 +355,17 @@ export async function createPatient(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/projections");
   revalidatePath("/tasks");
+
+  const { count } = await supabase
+    .from("patients")
+    .select("id", { count: "exact", head: true })
+    .eq("responsible_seller_id", user.id);
+  const celebration: Celebration =
+    (count ?? 0) <= 1
+      ? { kind: "confetti", message: `🌟 ${input.name} is your first patient — welcome aboard!` }
+      : { kind: "confetti", message: `🎉 ${input.name} confirmed!` };
+
+  return { celebration };
 }
 
 export async function updatePatient(id: string, formData: FormData) {
@@ -373,6 +385,8 @@ export async function updatePatient(id: string, formData: FormData) {
   const { error } = await supabase.from("patients").update(input).eq("id", id);
   if (error) throw new Error(error.message);
 
+  let celebration: Celebration | null = null;
+
   if (before) {
     const changes = diffFields(before, input, PATIENT_AUDIT_FIELDS);
     if (changes) await logActivity(supabase, user.id, "patient_updated", "patient", id, changes);
@@ -382,12 +396,39 @@ export async function updatePatient(id: string, formData: FormData) {
     if (before.visit1_status !== "completed" && input.visit1_status === "completed") {
       await maybeCreateFollowUpTask(id, before.responsible_seller_id, input);
     }
+
+    const visit1PaymentReceived = before.visit1_actual == null && input.visit1_actual != null;
+    const visit2PaymentReceived = before.visit2_actual == null && input.visit2_actual != null;
+
+    if (visit1PaymentReceived || visit2PaymentReceived) {
+      const visitDate = visit1PaymentReceived ? input.visit1_date : input.visit2_date;
+      const newAmount = (visit1PaymentReceived ? input.visit1_actual : input.visit2_actual) ?? 0;
+
+      // Tier jump takes priority — it means every pound for the rest of this month now
+      // earns more, not just the one just paid.
+      if (visitDate) {
+        const settings = await getSettings(supabase, before.responsible_seller_id);
+        const allPatients = await getPatients(supabase);
+        celebration = detectTierJump(allPatients, before.responsible_seller_id, settings, visitDate, newAmount);
+      }
+
+      if (!celebration) {
+        const wasFullyPaid = before.visit1_actual != null && (!before.needs_visit2 || before.visit2_actual != null);
+        const isFullyPaid = input.visit1_actual != null && (!input.needs_visit2 || input.visit2_actual != null);
+        celebration =
+          !wasFullyPaid && isFullyPaid
+            ? { kind: "confetti", message: `🏁 ${input.name} is fully paid off — treatment complete!` }
+            : { kind: "confetti", message: `💰 Payment received for ${input.name}!` };
+      }
+    }
   }
 
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath("/projections");
+
+  return { celebration };
 }
 
 export async function sendPatientTelegramMessage(id: string, visitKey: string) {

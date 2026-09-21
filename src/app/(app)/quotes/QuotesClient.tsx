@@ -8,6 +8,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { computeQuoteSplit } from "@/lib/quote-templates";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { useToast } from "@/components/Toast";
+import { fireConfetti } from "@/lib/celebrate";
 import { QuoteFormModal } from "./QuoteFormModal";
 import { QuoteCompareModal } from "./QuoteCompareModal";
 import { deleteQuote, convertQuoteToPatient, duplicateQuote } from "./actions";
@@ -117,8 +118,9 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
     setConvertingId(id);
     startTransition(async () => {
       try {
-        const patientId = await convertQuoteToPatient(id);
-        showToast("Converted to patient ✓ — fill in travel details");
+        const { patientId, celebration } = await convertQuoteToPatient(id);
+        fireConfetti();
+        showToast(`${celebration.message} Fill in travel details.`);
         router.push(`/patients?open=${patientId}`);
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to convert quote", "error");

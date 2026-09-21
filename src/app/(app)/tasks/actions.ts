@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { diffFields, logActivity } from "@/lib/activity-log";
-import { TaskInput, TaskStatus } from "@/types";
+import { Celebration, TaskInput, TaskStatus } from "@/types";
 
 const TASK_AUDIT_FIELDS: { key: keyof TaskInput; label: string }[] = [
   { key: "title", label: "title" },
@@ -92,6 +92,9 @@ export async function setTaskStatus(id: string, status: TaskStatus) {
   await logActivity(supabase, user.id, "task_status_changed", "task", id, status);
 
   revalidatePath("/tasks");
+
+  const celebration: Celebration | null = status === "done" ? { kind: "toast", message: "✅ Task done!" } : null;
+  return { celebration };
 }
 
 export async function deleteTask(id: string) {

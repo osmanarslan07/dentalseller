@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
+import { fireConfetti } from "@/lib/celebrate";
 import { formatDate } from "@/lib/format";
 import { describeActivity, formatActivityTime, ActivityLogRow } from "@/lib/activity-log";
 import { Patient, PatientExtraVisit, Profile } from "@/types";
@@ -186,11 +187,17 @@ export function PatientFormModal({
     startTransition(async () => {
       try {
         if (isEdit && patient) {
-          await updatePatient(patient.id, formData);
-          showToast("Patient saved ✓");
+          const { celebration } = await updatePatient(patient.id, formData);
+          if (celebration) {
+            if (celebration.kind === "confetti") fireConfetti();
+            showToast(celebration.message);
+          } else {
+            showToast("Patient saved ✓");
+          }
         } else {
-          await createPatient(formData);
-          showToast("Patient added ✓");
+          const { celebration } = await createPatient(formData);
+          if (celebration.kind === "confetti") fireConfetti();
+          showToast(celebration.message);
         }
         router.refresh();
         onClose();

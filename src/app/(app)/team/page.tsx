@@ -1,12 +1,20 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPatients, getProfiles, getSettings } from "@/lib/data";
-import { computeMonthlyAggregates, countPatientsWithCompletedVisitInMonth, currentMonthKey } from "@/lib/commission";
+import {
+  computeMonthlyAggregates,
+  countPatientsWithCompletedVisitInMonth,
+  currentMonthKey,
+  lastNMonths,
+  monthLabel,
+} from "@/lib/commission";
 import { describeActivity } from "@/lib/activity-log";
 import { Profile } from "@/types";
 import { TeamPerformanceClient } from "./TeamPerformanceClient";
 
-export default async function TeamPage() {
+const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
+
+export default async function TeamPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -16,31 +24,33 @@ export default async function TeamPage() {
   const me = profiles.find((p) => p.id === user?.id);
   if (me?.role !== "admin") redirect("/");
 
+  const { month: monthParam } = await searchParams;
+  const selectedMonth = monthParam && MONTH_KEY_RE.test(monthParam) ? monthParam : currentMonthKey();
+
   const allPatients = await getPatients(supabase);
-  const thisMonth = currentMonthKey();
 
   const rows = await Promise.all(
     profiles.map(async (seller) => {
-      // Pipeline counts (patient count, sold-this-month) follow current ownership; money and
-      // "came this month" follow visit-level attribution so reassigning a patient away doesn't
+      // Pipeline counts (patient count, sold-in-month) follow current ownership; money and
+      // "came in month" follow visit-level attribution so reassigning a patient away doesn't
       // erase a seller's already-earned commission from their own breakdown here.
       const sellerPatients = allPatients.filter((p) => p.responsible_seller_id === seller.id);
       const settings = await getSettings(supabase, seller.id);
       const aggregates = computeMonthlyAggregates(allPatients, settings, seller.id);
-      const thisMonthAgg = aggregates.find((a) => a.month === thisMonth);
+      const monthAgg = aggregates.find((a) => a.month === selectedMonth);
 
-      const patientsSoldThisMonth = sellerPatients.filter(
-        (p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === thisMonth
+      const patientsSoldInMonth = sellerPatients.filter(
+        (p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === selectedMonth
       ).length;
 
       return {
         seller,
         currency: settings.currency,
         patientCount: sellerPatients.length,
-        patientsSoldThisMonth,
-        patientsCameThisMonth: countPatientsWithCompletedVisitInMonth(allPatients, thisMonth, seller.id),
-        paidThisMonth: thisMonthAgg?.actualTotal ?? 0,
-        thisMonthActual: thisMonthAgg?.actualCommission ?? 0,
+        patientsSoldInMonth,
+        patientsCameInMonth: countPatientsWithCompletedVisitInMonth(allPatients, selectedMonth, seller.id),
+        paidInMonth: monthAgg?.actualTotal ?? 0,
+        commissionInMonth: monthAgg?.actualCommission ?? 0,
         totalActual: aggregates.reduce((sum, a) => sum + a.actualCommission, 0),
         totalExpected: aggregates.reduce((sum, a) => sum + a.expectedCommission, 0),
       };
@@ -64,5 +74,19 @@ export default async function TeamPage() {
     description: describeActivity(entry, nameById, patientNameById),
   }));
 
-  return <TeamPerformanceClient rows={rows} activity={activity} />;
+  // Two years back is plenty for a "pick a past month" dropdown without listing back to
+  // the account's creation date — extend if the clinic ever needs to look further back.
+  const monthOptions = lastNMonths(24)
+    .reverse()
+    .map((m) => ({ value: m, label: monthLabel(m) }));
+
+  return (
+    <TeamPerformanceClient
+      rows={rows}
+      activity={activity}
+      selectedMonth={selectedMonth}
+      selectedMonthLabel={monthLabel(selectedMonth)}
+      monthOptions={monthOptions}
+    />
+  );
 }

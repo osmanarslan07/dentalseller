@@ -1,6 +1,7 @@
 "use client";
 
-import { Badge, Card } from "@/components/ui";
+import { useRouter } from "next/navigation";
+import { Badge, Card, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { formatActivityTime } from "@/lib/activity-log";
 import { Profile } from "@/types";
@@ -9,10 +10,10 @@ interface Row {
   seller: Profile;
   currency: string;
   patientCount: number;
-  patientsSoldThisMonth: number;
-  patientsCameThisMonth: number;
-  paidThisMonth: number;
-  thisMonthActual: number;
+  patientsSoldInMonth: number;
+  patientsCameInMonth: number;
+  paidInMonth: number;
+  commissionInMonth: number;
   totalActual: number;
   totalExpected: number;
 }
@@ -23,14 +24,49 @@ interface ActivityEntry {
   description: string;
 }
 
-export function TeamPerformanceClient({ rows, activity }: { rows: Row[]; activity: ActivityEntry[] }) {
+interface MonthOption {
+  value: string;
+  label: string;
+}
+
+export function TeamPerformanceClient({
+  rows,
+  activity,
+  selectedMonth,
+  selectedMonthLabel,
+  monthOptions,
+}: {
+  rows: Row[];
+  activity: ActivityEntry[];
+  selectedMonth: string;
+  selectedMonthLabel: string;
+  monthOptions: MonthOption[];
+}) {
+  const router = useRouter();
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Team performance</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Admin-only — every seller&apos;s activity and commission. Not visible to anyone else.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Team performance</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Admin-only — every seller&apos;s activity and commission. Not visible to anyone else.
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">Month</label>
+          <Select
+            value={selectedMonth}
+            onChange={(e) => router.push(`/team?month=${e.target.value}`)}
+            className="w-40"
+          >
+            {monthOptions.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       <Card className="overflow-hidden">
@@ -39,10 +75,10 @@ export function TeamPerformanceClient({ rows, activity }: { rows: Row[]; activit
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
                 <th className="py-3 pl-4 pr-4 font-medium">Seller</th>
-                <th className="py-3 pr-4 font-medium">Sold this month</th>
-                <th className="py-3 pr-4 font-medium">Came this month</th>
-                <th className="py-3 pr-4 font-medium">Paid this month</th>
-                <th className="py-3 pr-4 font-medium">Commission this month</th>
+                <th className="py-3 pr-4 font-medium">Sold in {selectedMonthLabel}</th>
+                <th className="py-3 pr-4 font-medium">Came in {selectedMonthLabel}</th>
+                <th className="py-3 pr-4 font-medium">Paid in {selectedMonthLabel}</th>
+                <th className="py-3 pr-4 font-medium">Commission in {selectedMonthLabel}</th>
                 <th className="py-3 pr-4 font-medium">Total earned</th>
                 <th className="py-3 pr-4 font-medium">Total expected</th>
               </tr>
@@ -58,13 +94,13 @@ export function TeamPerformanceClient({ rows, activity }: { rows: Row[]; activit
                     </span>
                     <div className="text-xs font-normal text-slate-400">{r.patientCount} patients total</div>
                   </td>
-                  <td className="py-3 pr-4 text-slate-600">{r.patientsSoldThisMonth}</td>
-                  <td className="py-3 pr-4 text-slate-600">{r.patientsCameThisMonth}</td>
+                  <td className="py-3 pr-4 text-slate-600">{r.patientsSoldInMonth}</td>
+                  <td className="py-3 pr-4 text-slate-600">{r.patientsCameInMonth}</td>
                   <td className="py-3 pr-4 text-slate-600">
-                    <Money value={r.paidThisMonth} currency={r.currency} showConversion={false} />
+                    <Money value={r.paidInMonth} currency={r.currency} showConversion={false} />
                   </td>
                   <td className="py-3 pr-4 font-medium text-slate-700">
-                    <Money value={r.thisMonthActual} currency={r.currency} showConversion={false} />
+                    <Money value={r.commissionInMonth} currency={r.currency} showConversion={false} />
                   </td>
                   <td className="py-3 pr-4 font-medium text-slate-700">
                     <Money value={r.totalActual} currency={r.currency} showConversion={false} />

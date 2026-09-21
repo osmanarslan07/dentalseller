@@ -6,6 +6,7 @@ import { Nav } from "@/components/Nav";
 import { PrivacyProvider } from "@/components/privacy";
 import { CelebrationSoundProvider } from "@/components/celebration-sound";
 import { ToastProvider } from "@/components/Toast";
+import { PageTransition } from "@/components/PageTransition";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -28,7 +29,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
           <CelebrationSoundProvider initialEnabled={settings.celebration_sound}>
             <Nav email={user.email ?? ""} displayName={profile.display_name} isAdmin={profile.role === "admin"} />
-            <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-8 lg:px-8">{children}</main>
+            <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-8 lg:px-8">
+              <PageTransition>{children}</PageTransition>
+            </main>
           </CelebrationSoundProvider>
         </PrivacyProvider>
       </ToastProvider>

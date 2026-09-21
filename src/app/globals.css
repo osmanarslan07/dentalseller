@@ -85,11 +85,56 @@ body {
   animation: status-pulse 0.5s ease-out;
 }
 
+/* Login page background — a slow-panning gradient plus two drifting blurred blobs, all
+ * calm enough not to distract from the form itself. */
+@keyframes gradient-pan {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient-pan {
+  background-size: 200% 200%;
+  animation: gradient-pan 18s ease-in-out infinite;
+}
+
+@keyframes float-slow {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(24px, -32px) scale(1.06);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 13s ease-in-out infinite;
+}
+
+@keyframes float-slow-reverse {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-28px, 26px) scale(1.08);
+  }
+}
+
+.animate-float-slow-reverse {
+  animation: float-slow-reverse 15s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-fade-in-up,
   .animate-toast-in,
   .animate-status-pulse,
+  .animate-gradient-pan,
+  .animate-float-slow,
+  .animate-float-slow-reverse,
   .animate-ping,
   .animate-pulse {
     animation: none;

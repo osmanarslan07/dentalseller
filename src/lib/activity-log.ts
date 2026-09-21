@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { format } from "date-fns";
 
 /** Best-effort audit log — a logging failure should never break the action it's recording. */
 export async function logActivity(
@@ -16,6 +17,29 @@ export async function logActivity(
   } catch (err) {
     console.error("Activity log write failed:", err);
   }
+}
+
+/** Compact human-readable diff of the given fields on a shared record, so any edit is
+ * attributed to whoever made it — money, dates, status, or a logistics checkbox. `before`
+ * and `after` are different shapes (a DB row vs. a form-parsed input) that merely share
+ * these field names, hence the two independent type parameters. */
+export function diffFields<B, A>(before: B, after: A, fields: { key: keyof B & keyof A; label: string }[]): string {
+  const changes: string[] = [];
+  for (const { key, label } of fields) {
+    const b = (before as Record<string, unknown>)[key as string] ?? null;
+    const a = (after as Record<string, unknown>)[key as string] ?? null;
+    if (b === a) continue;
+    const fmt = (v: unknown) => (typeof v === "boolean" ? (v ? "yes" : "no") : v ?? "—");
+    changes.push(`${label} ${fmt(b)} → ${fmt(a)}`);
+  }
+  return changes.join(", ");
+}
+
+/** Exact, unambiguous timestamp for an audit entry — "14:30 17.09.2026" in the viewer's
+ * local time. An audit trail exists so a change can be pinned down later; a decaying
+ * "3 days ago" label defeats that once the entry is more than a few hours old. */
+export function formatActivityTime(iso: string): string {
+  return format(new Date(iso), "HH:mm dd.MM.yyyy");
 }
 
 export interface ActivityLogRow {
@@ -110,7 +134,7 @@ export function describeActivity(
     case "task_created":
       return `${actor} created task${entry.detail ? ` "${entry.detail}"` : ""}`;
     case "task_updated":
-      return `${actor} edited task${entry.detail ? ` "${entry.detail}"` : ""}`;
+      return `${actor} edited a task${entry.detail ? ` — ${entry.detail}` : ""}`;
     case "task_status_changed":
       return `${actor} marked a task ${entry.detail ?? "updated"}`;
     case "task_deleted":

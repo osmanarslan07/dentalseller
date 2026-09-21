@@ -2,8 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { logActivity } from "@/lib/activity-log";
+import { diffFields, logActivity } from "@/lib/activity-log";
 import { TaskInput, TaskStatus } from "@/types";
+
+const TASK_AUDIT_FIELDS: { key: keyof TaskInput; label: string }[] = [
+  { key: "title", label: "title" },
+  { key: "notes", label: "notes" },
+  { key: "due_date", label: "due date" },
+  { key: "due_time", label: "due time" },
+  { key: "patient_name", label: "linked patient" },
+  { key: "status", label: "status" },
+];
 
 function parseInput(formData: FormData): TaskInput {
   const str = (key: string) => {
@@ -52,11 +61,20 @@ export async function updateTask(id: string, formData: FormData) {
   if (!input.title) throw new Error("Title is required");
   if (!input.due_date) throw new Error("Due date is required");
 
+  const { data: before } = await supabase
+    .from("tasks")
+    .select("title, notes, due_date, due_time, patient_id, patient_name, status")
+    .eq("id", id)
+    .maybeSingle();
+
   // editing due date/time re-arms the reminder
   const { error } = await supabase.from("tasks").update({ ...input, notified_at: null }).eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "task_updated", "task", id, input.title);
+  if (before) {
+    const changes = diffFields(before, input, TASK_AUDIT_FIELDS);
+    if (changes) await logActivity(supabase, user.id, "task_updated", "task", id, changes);
+  }
 
   revalidatePath("/tasks");
 }

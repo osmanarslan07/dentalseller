@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { RelativeTime } from "@/components/RelativeTime";
 import { formatDate } from "@/lib/format";
-import { describeActivity, ActivityLogRow } from "@/lib/activity-log";
+import { describeActivity, formatActivityTime, ActivityLogRow } from "@/lib/activity-log";
 import { Patient, PatientExtraVisit, Profile } from "@/types";
 import {
   createPatient,
@@ -728,9 +727,7 @@ function HistorySection({
           {entries.map((entry) => (
             <li key={entry.id} className="flex items-center justify-between gap-4 py-2 text-sm">
               <span className="text-slate-700">{describeActivity(entry, nameById, patientNameById)}</span>
-              <span className="shrink-0 text-xs text-slate-400">
-                <RelativeTime timestamp={new Date(entry.created_at).getTime()} />
-              </span>
+              <span className="shrink-0 text-xs text-slate-400">{formatActivityTime(entry.created_at)}</span>
             </li>
           ))}
         </ul>

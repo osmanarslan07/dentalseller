@@ -2,7 +2,7 @@
 
 import { Badge, Card } from "@/components/ui";
 import { Money } from "@/components/privacy";
-import { RelativeTime } from "@/components/RelativeTime";
+import { formatActivityTime } from "@/lib/activity-log";
 import { Profile } from "@/types";
 
 interface Row {
@@ -95,9 +95,7 @@ export function TeamPerformanceClient({ rows, activity }: { rows: Row[]; activit
             {activity.map((entry) => (
               <li key={entry.id} className="flex items-center justify-between gap-4 py-2.5 text-sm">
                 <span className="text-slate-700">{entry.description}</span>
-                <span className="shrink-0 text-xs text-slate-400">
-                  <RelativeTime timestamp={new Date(entry.createdAt).getTime()} />
-                </span>
+                <span className="shrink-0 text-xs text-slate-400">{formatActivityTime(entry.createdAt)}</span>
               </li>
             ))}
           </ul>

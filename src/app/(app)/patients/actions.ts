@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPatient } from "@/lib/data";
 import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
-import { ActivityLogRow, logActivity } from "@/lib/activity-log";
+import { ActivityLogRow, diffFields, logActivity } from "@/lib/activity-log";
 import { Patient, PatientExtraVisit, PatientInput } from "@/types";
 
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
@@ -62,33 +62,46 @@ async function getRecipientChatIds(supabase: SupabaseClient, sellerId: string): 
   return [...ids];
 }
 
-/** Compact human-readable diff of the fields worth auditing on a shared record — money,
- * dates, and status, not every logistics field (arrival flight, hotel, etc). `before` (the
- * full DB row) and `after` (a form-parsed input) are different shapes that merely share
- * these field names, hence the two independent type parameters. */
-function diffFields<B, A>(before: B, after: A, fields: { key: keyof B & keyof A; label: string }[]): string {
-  const changes: string[] = [];
-  for (const { key, label } of fields) {
-    const b = (before as Record<string, unknown>)[key as string] ?? null;
-    const a = (after as Record<string, unknown>)[key as string] ?? null;
-    if (b !== a) changes.push(`${label} ${b ?? "—"} → ${a ?? "—"}`);
-  }
-  return changes.join(", ");
-}
-
 const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
   { key: "name", label: "name" },
   { key: "treatment", label: "treatment" },
+  { key: "notes", label: "notes" },
+  { key: "komo_reference", label: "komo reference" },
   { key: "confirmation_date", label: "confirmed" },
   { key: "needs_visit2", label: "needs visit 2" },
+  { key: "visit2_recall_months", label: "visit2 recall months" },
+
   { key: "visit1_date", label: "visit1 date" },
   { key: "visit1_expected", label: "visit1 expected" },
   { key: "visit1_actual", label: "visit1 actual" },
   { key: "visit1_status", label: "visit1 status" },
+  { key: "visit1_arrival_date", label: "visit1 arrival date" },
+  { key: "visit1_arrival_time", label: "visit1 arrival time" },
+  { key: "visit1_arrival_flight_no", label: "visit1 arrival flight" },
+  { key: "visit1_departure_date", label: "visit1 departure date" },
+  { key: "visit1_departure_time", label: "visit1 departure time" },
+  { key: "visit1_departure_flight_no", label: "visit1 departure flight" },
+  { key: "visit1_hotel_name", label: "visit1 hotel" },
+  { key: "visit1_room_type", label: "visit1 room type" },
+  { key: "visit1_arrival_transfer_arranged", label: "visit1 arrival transfer" },
+  { key: "visit1_departure_transfer_arranged", label: "visit1 departure transfer" },
+  { key: "visit1_hotel_arranged", label: "visit1 hotel arranged" },
+
   { key: "visit2_date", label: "visit2 date" },
   { key: "visit2_expected", label: "visit2 expected" },
   { key: "visit2_actual", label: "visit2 actual" },
   { key: "visit2_status", label: "visit2 status" },
+  { key: "visit2_arrival_date", label: "visit2 arrival date" },
+  { key: "visit2_arrival_time", label: "visit2 arrival time" },
+  { key: "visit2_arrival_flight_no", label: "visit2 arrival flight" },
+  { key: "visit2_departure_date", label: "visit2 departure date" },
+  { key: "visit2_departure_time", label: "visit2 departure time" },
+  { key: "visit2_departure_flight_no", label: "visit2 departure flight" },
+  { key: "visit2_hotel_name", label: "visit2 hotel" },
+  { key: "visit2_room_type", label: "visit2 room type" },
+  { key: "visit2_arrival_transfer_arranged", label: "visit2 arrival transfer" },
+  { key: "visit2_departure_transfer_arranged", label: "visit2 departure transfer" },
+  { key: "visit2_hotel_arranged", label: "visit2 hotel arranged" },
 ];
 
 const EXTRA_VISIT_AUDIT_FIELDS: { key: keyof ReturnType<typeof parseExtraVisitInput>; label: string }[] = [
@@ -98,6 +111,18 @@ const EXTRA_VISIT_AUDIT_FIELDS: { key: keyof ReturnType<typeof parseExtraVisitIn
   { key: "actual", label: "actual" },
   { key: "status", label: "status" },
   { key: "treatment", label: "treatment" },
+  { key: "notes", label: "notes" },
+  { key: "arrival_date", label: "arrival date" },
+  { key: "arrival_time", label: "arrival time" },
+  { key: "arrival_flight_no", label: "arrival flight" },
+  { key: "departure_date", label: "departure date" },
+  { key: "departure_time", label: "departure time" },
+  { key: "departure_flight_no", label: "departure flight" },
+  { key: "hotel_name", label: "hotel" },
+  { key: "room_type", label: "room type" },
+  { key: "arrival_transfer_arranged", label: "arrival transfer" },
+  { key: "departure_transfer_arranged", label: "departure transfer" },
+  { key: "hotel_arranged", label: "hotel arranged" },
 ];
 
 function formatDateTime(date: string | null, time: string | null) {

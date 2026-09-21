@@ -3,8 +3,25 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { computeQuoteSplit } from "@/lib/quote-templates";
-import { logActivity } from "@/lib/activity-log";
+import { diffFields, logActivity } from "@/lib/activity-log";
 import { QuoteInput } from "@/types";
+
+const QUOTE_AUDIT_FIELDS: { key: keyof QuoteInput; label: string }[] = [
+  { key: "name", label: "name" },
+  { key: "label", label: "label" },
+  { key: "status", label: "status" },
+  { key: "intro_text", label: "intro text" },
+  { key: "inclusions", label: "inclusions" },
+  { key: "total_price", label: "total" },
+  { key: "currency", label: "currency" },
+  { key: "split_mode", label: "split mode" },
+  { key: "deposit_percent", label: "deposit %" },
+  { key: "first_visit_amount", label: "first visit amount" },
+  { key: "include_bone_graft_note", label: "bone graft note included" },
+  { key: "bone_graft_note", label: "bone graft note" },
+  { key: "notes", label: "notes" },
+  { key: "komo_reference", label: "komo reference" },
+];
 
 function parseInput(formData: FormData): QuoteInput {
   const num = (key: string) => {
@@ -69,27 +86,14 @@ export async function updateQuote(id: string, formData: FormData) {
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
 
-  const { data: before } = await supabase
-    .from("quotes")
-    .select("status, total_price, deposit_percent, first_visit_amount, split_mode")
-    .eq("id", id)
-    .maybeSingle();
+  const { data: before } = await supabase.from("quotes").select("*").eq("id", id).maybeSingle();
 
   const { error } = await supabase.from("quotes").update(input).eq("id", id);
   if (error) throw new Error(error.message);
 
   if (before) {
-    const changes: string[] = [];
-    if (before.status !== input.status) changes.push(`status ${before.status} → ${input.status}`);
-    if (before.total_price !== input.total_price) changes.push(`total ${before.total_price ?? "—"} → ${input.total_price ?? "—"}`);
-    if (before.deposit_percent !== input.deposit_percent) {
-      changes.push(`deposit % ${before.deposit_percent ?? "—"} → ${input.deposit_percent ?? "—"}`);
-    }
-    if (before.first_visit_amount !== input.first_visit_amount) {
-      changes.push(`first visit amount ${before.first_visit_amount ?? "—"} → ${input.first_visit_amount ?? "—"}`);
-    }
-    if (before.split_mode !== input.split_mode) changes.push(`split mode ${before.split_mode} → ${input.split_mode}`);
-    if (changes.length > 0) await logActivity(supabase, user.id, "quote_updated", "quote", id, changes.join(", "));
+    const changes = diffFields(before, input, QUOTE_AUDIT_FIELDS);
+    if (changes) await logActivity(supabase, user.id, "quote_updated", "quote", id, changes);
   }
 
   revalidatePath("/quotes");
@@ -211,6 +215,7 @@ export async function convertQuoteToPatient(id: string) {
     .neq("id", id)
     .in("status", ["draft", "sent"]);
 
+  await logActivity(supabase, user.id, "patient_created", "patient", patient.id, quote.name);
   await logActivity(supabase, user.id, "quote_converted", "quote", id, patient.id);
 
   revalidatePath("/quotes");

@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 interface VisitRow {
   name: string;
   responsible_seller_id: string;
+  treatment: string | null;
   visit1_date: string | null;
   visit1_arrival_date: string | null;
   visit1_arrival_time: string | null;
@@ -33,16 +34,22 @@ interface VisitRow {
   visit2_hotel_arranged: boolean;
 }
 
-function flightLine(time: string | null, flightNo: string | null) {
+function flightValue(time: string | null, flightNo: string | null): string | null {
   const parts = [time, flightNo].filter(Boolean);
-  return parts.length ? ` (${parts.join(", ")})` : "";
+  return parts.length ? parts.join(" ") : null;
 }
 
 /** Only meaningful once we know a date's actually set — a patient with no flight info yet,
  * or who arranges their own transfer/hotel, shouldn't get nagged. */
-function missingWarning(items: { label: string; ok: boolean }[]): string {
+function missingLine(items: { label: string; ok: boolean }[]): string | null {
   const missing = items.filter((i) => !i.ok).map((i) => i.label);
-  return missing.length ? ` ⚠️ ${missing.join(" & ")} not arranged` : "";
+  return missing.length ? `⚠ Missing: ${missing.join(", ")}` : null;
+}
+
+/** One label:value line per known field — omits anything not set instead of printing a
+ * blank, so a patient with no flight details yet still gets a clean, short card. */
+function card(header: string, fields: (string | null)[]): string {
+  return [header, ...fields.filter((f): f is string => f != null)].join("\n");
 }
 
 export async function GET(request: NextRequest) {
@@ -56,10 +63,17 @@ export async function GET(request: NextRequest) {
   const in1 = format(addDays(today, 1), "yyyy-MM-dd");
   const in7 = format(addDays(today, 7), "yyyy-MM-dd");
 
+  // Fetched up front (rather than only when building the send list) so every reminder line
+  // below can name the responsible seller — the group now sees everyone's patients, not just
+  // their own, so "who is this" is no longer implicit from whose chat it landed in.
+  const { data: profiles } = await supabase.from("profiles").select("id, telegram_chat_id, display_name");
+  const chatBySeller = new Map((profiles ?? []).map((p) => [p.id, p.telegram_chat_id as string | null]));
+  const nameBySeller = new Map((profiles ?? []).map((p) => [p.id, (p.display_name as string | null) || "Unassigned"]));
+
   const { data, error } = await supabase
     .from("patients")
     .select(
-      "name, responsible_seller_id, visit1_date, visit1_arrival_date, visit1_arrival_time, visit1_arrival_flight_no, visit1_departure_date, visit1_departure_time, visit1_departure_flight_no, visit1_hotel_name, visit1_arrival_transfer_arranged, visit1_departure_transfer_arranged, visit1_hotel_arranged, visit2_date, visit2_arrival_date, visit2_arrival_time, visit2_arrival_flight_no, visit2_departure_date, visit2_departure_time, visit2_departure_flight_no, visit2_hotel_name, visit2_arrival_transfer_arranged, visit2_departure_transfer_arranged, visit2_hotel_arranged"
+      "name, responsible_seller_id, treatment, visit1_date, visit1_arrival_date, visit1_arrival_time, visit1_arrival_flight_no, visit1_departure_date, visit1_departure_time, visit1_departure_flight_no, visit1_hotel_name, visit1_arrival_transfer_arranged, visit1_departure_transfer_arranged, visit1_hotel_arranged, visit2_date, visit2_arrival_date, visit2_arrival_time, visit2_arrival_flight_no, visit2_departure_date, visit2_departure_time, visit2_departure_flight_no, visit2_hotel_name, visit2_arrival_transfer_arranged, visit2_departure_transfer_arranged, visit2_hotel_arranged"
     )
     .or(
       [
@@ -126,32 +140,50 @@ export async function GET(request: NextRequest) {
         p.visit2_hotel_arranged,
       ],
     ] as const) {
+      const seller = nameBySeller.get(p.responsible_seller_id) ?? "Unassigned";
+      const treatmentLine = p.treatment ? `Treatment: ${p.treatment}` : null;
+      const sellerLine = `Seller: ${seller}`;
+
       if (arrivalDate === in7) {
         addLine(
           p.responsible_seller_id,
-          `🗓 <b>${p.name}</b> (${visit}) arrives in 7 days${flightLine(arrivalTime, arrivalFlight)}${missingWarning([{ label: "transfer", ok: arrivalTransferArranged }, { label: "hotel", ok: hotelArranged }])}`
+          card(`🗓 <b>${p.name}</b> — ${visit} arrival, in 7 days`, [
+            sellerLine,
+            treatmentLine,
+            flightValue(arrivalTime, arrivalFlight) ? `Flight: ${flightValue(arrivalTime, arrivalFlight)}` : null,
+            missingLine([{ label: "transfer", ok: arrivalTransferArranged }, { label: "hotel", ok: hotelArranged }]),
+          ])
         );
       }
       if (arrivalDate === in1) {
         addLine(
           p.responsible_seller_id,
-          `🛬 <b>${p.name}</b> (${visit}) arrives <b>tomorrow</b>${flightLine(arrivalTime, arrivalFlight)}${hotel ? ` — ${hotel}` : ""}${missingWarning([{ label: "transfer", ok: arrivalTransferArranged }, { label: "hotel", ok: hotelArranged }])}`
+          card(`🛬 <b>${p.name}</b> — ${visit} arrival, tomorrow`, [
+            sellerLine,
+            treatmentLine,
+            flightValue(arrivalTime, arrivalFlight) ? `Flight: ${flightValue(arrivalTime, arrivalFlight)}` : null,
+            hotel ? `Hotel: ${hotel}` : null,
+            missingLine([{ label: "transfer", ok: arrivalTransferArranged }, { label: "hotel", ok: hotelArranged }]),
+          ])
         );
       }
       if (departureDate === in1) {
         addLine(
           p.responsible_seller_id,
-          `🛫 <b>${p.name}</b> (${visit}) departs <b>tomorrow</b>${missingWarning([{ label: "transfer", ok: departureTransferArranged }])}`
+          card(`🛫 <b>${p.name}</b> — ${visit} departure, tomorrow`, [
+            sellerLine,
+            missingLine([{ label: "transfer", ok: departureTransferArranged }]),
+          ])
         );
       }
 
       // Patients without flight details: remind off the clinic visit date itself.
       if (!arrivalDate) {
         if (visitDate === in7) {
-          addLine(p.responsible_seller_id, `📍 <b>${p.name}</b> (${visit}) in 7 days`);
+          addLine(p.responsible_seller_id, card(`📍 <b>${p.name}</b> — ${visit}, in 7 days`, [sellerLine, treatmentLine]));
         }
         if (visitDate === in1) {
-          addLine(p.responsible_seller_id, `📍 <b>${p.name}</b> (${visit}) <b>tomorrow</b>`);
+          addLine(p.responsible_seller_id, card(`📍 <b>${p.name}</b> — ${visit}, tomorrow`, [sellerLine, treatmentLine]));
         }
       }
     }
@@ -179,19 +211,26 @@ export async function GET(request: NextRequest) {
   }[]) {
     if (!v.patients) continue;
     const name = v.patients.name;
+    const seller = nameBySeller.get(v.patients.responsible_seller_id) ?? "Unassigned";
     // Only warn if they're flying in specifically for this extra visit — most are add-ons
     // during an already-arranged stay, so no separate arrival to arrange.
     const warning = v.arrival_date
-      ? missingWarning([
+      ? missingLine([
           { label: "transfer", ok: v.arrival_transfer_arranged },
           { label: "hotel", ok: v.hotel_arranged },
         ])
-      : "";
+      : null;
     if (v.visit_date === in7) {
-      addLine(v.patients.responsible_seller_id, `🦷 <b>${name}</b> (${v.label}) in 7 days${warning}`);
+      addLine(
+        v.patients.responsible_seller_id,
+        card(`🦷 <b>${name}</b> — ${v.label}, in 7 days`, [`Seller: ${seller}`, warning])
+      );
     }
     if (v.visit_date === in1) {
-      addLine(v.patients.responsible_seller_id, `🦷 <b>${name}</b> (${v.label}) <b>tomorrow</b>${warning}`);
+      addLine(
+        v.patients.responsible_seller_id,
+        card(`🦷 <b>${name}</b> — ${v.label}, tomorrow`, [`Seller: ${seller}`, warning])
+      );
     }
   }
 
@@ -199,8 +238,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ sent: false, reason: "No reminders today" });
   }
 
-  const { data: profiles } = await supabase.from("profiles").select("id, telegram_chat_id");
-  const chatBySeller = new Map((profiles ?? []).map((p) => [p.id, p.telegram_chat_id as string | null]));
   const fallback = getFallbackChatId();
   const clinicConfig = await getClinicConfig(supabase);
   const group = clinicConfig.telegramGroupChatId || getGroupChatId();
@@ -216,7 +253,7 @@ export async function GET(request: NextRequest) {
       if (group) chatIds.add(group);
       if (chatIds.size === 0) return;
 
-      const text = `<b>Upcoming visits</b>\n\n${lines.join("\n")}`;
+      const text = `<b>Upcoming visits</b>\n\n${lines.join("\n\n")}`;
       await sendTelegramMessageToMany([...chatIds], text);
     })
   );

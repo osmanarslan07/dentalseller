@@ -74,6 +74,8 @@ export function describeActivity(
       return `${actor} promoted ${target} to admin`;
     case "seller_demoted":
       return `${actor} demoted ${target} to seller`;
+    case "seller_deleted":
+      return `${actor} deleted seller (${entry.detail ?? "unknown email"})`;
     case "password_reset":
       return `${actor} reset ${target}'s password`;
     case "patient_reassigned": {

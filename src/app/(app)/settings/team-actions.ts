@@ -125,3 +125,54 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
 
   return { email: targetUser.email, tempPassword };
 }
+
+/** Admin-only. Permanently deletes the auth user (and, via FK cascade, their profile row).
+ * Patients/visits/quotes/tasks all FK-cascade straight off `auth.users`, so a bare delete
+ * would silently wipe anything they owned — instead everything they owned is handed to the
+ * admin doing the deletion first, via the service-role client (quotes/tasks RLS is strictly
+ * own-row-only, with no admin carve-out, so the RLS-scoped client can't do this reassignment). */
+export async function deleteSeller(sellerId: string): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  if (sellerId === user.id) throw new Error("You can't delete your own account");
+
+  const { data: myProfile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (myProfile?.role !== "admin") throw new Error("Admin only");
+
+  const admin = createAdminClient();
+  const {
+    data: { user: targetUser },
+  } = await admin.auth.admin.getUserById(sellerId);
+
+  const [{ count: patientCount }, { count: quoteCount }, { count: taskCount }] = await Promise.all([
+    admin
+      .from("patients")
+      .update({ responsible_seller_id: user.id }, { count: "exact" })
+      .eq("responsible_seller_id", sellerId),
+    admin.from("quotes").update({ user_id: user.id }, { count: "exact" }).eq("user_id", sellerId),
+    admin.from("tasks").update({ user_id: user.id }, { count: "exact" }).eq("user_id", sellerId),
+  ]);
+  await admin.from("patient_visits").update({ created_by_seller_id: user.id }).eq("created_by_seller_id", sellerId);
+
+  const { error } = await admin.auth.admin.deleteUser(sellerId);
+  if (error) throw new Error(error.message);
+
+  await logActivity(
+    supabase,
+    user.id,
+    "seller_deleted",
+    "profile",
+    null,
+    `${targetUser?.email ?? sellerId} — reassigned ${patientCount ?? 0} patient(s), ${quoteCount ?? 0} quote(s), ${taskCount ?? 0} task(s) to self`
+  );
+
+  revalidatePath("/settings");
+  revalidatePath("/team");
+  revalidatePath("/patients");
+  revalidatePath("/quotes");
+  revalidatePath("/tasks");
+  revalidatePath("/");
+}

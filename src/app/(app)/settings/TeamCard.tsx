@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { Profile } from "@/types";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { addSeller, adminResetPassword, setSellerActive, setSellerRole, AddSellerResult } from "./team-actions";
+import {
+  addSeller,
+  adminResetPassword,
+  deleteSeller,
+  setSellerActive,
+  setSellerRole,
+  AddSellerResult,
+} from "./team-actions";
 
 interface CredentialResult extends AddSellerResult {
   kind: "created" | "reset";
@@ -81,6 +88,27 @@ export function TeamCard({
     }
   }
 
+  async function handleDelete(seller: Profile) {
+    if (
+      !confirm(
+        `Permanently delete ${seller.display_name || seller.id}? This can't be undone. Any patients, quotes, and tasks they own will be reassigned to you.`
+      )
+    )
+      return;
+    setRowError(null);
+    setCredentialResult(null);
+    setRowPendingId(seller.id);
+    try {
+      await deleteSeller(seller.id);
+      showToast("Seller deleted ✓");
+      router.refresh();
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : "Failed to delete seller");
+    } finally {
+      setRowPendingId(null);
+    }
+  }
+
   async function handleResetPassword(seller: Profile) {
     if (!confirm(`Reset ${seller.display_name || "this seller"}'s password?`)) return;
     setRowError(null);
@@ -146,6 +174,15 @@ export function TeamCard({
                       onClick={() => handleToggleActive(p)}
                     >
                       {p.is_active ? "Deactivate" : "Reactivate"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      disabled={rowBusy}
+                      onClick={() => handleDelete(p)}
+                    >
+                      Delete
                     </Button>
                   </>
                 )}

@@ -38,9 +38,31 @@ const STATUS_LABELS: Record<QuoteStatus, string> = {
   declined: "Declined",
 };
 
+const STATUS_ORDER = Object.keys(STATUS_LABELS) as QuoteStatus[];
+
+type SortKey = "created" | "name" | "status" | "total";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  created: "Created",
+  name: "Name",
+  status: "Status",
+  total: "Total",
+};
+
+// text/status columns read best A→Z first; numeric/date columns read best highest/newest first
+const DEFAULT_SORT_DIR: Record<SortKey, "asc" | "desc"> = {
+  created: "desc",
+  name: "asc",
+  status: "asc",
+  total: "desc",
+};
+
 export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; defaultCurrency: string }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | "all">("all");
+  const [sortKey, setSortKey] = useState<SortKey>("created");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -52,6 +74,28 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
   const { enabled: soundEnabled } = useCelebrationSound();
   const router = useRouter();
 
+  function selectSort(key: SortKey) {
+    setSortKey(key);
+    setSortDir(DEFAULT_SORT_DIR[key]);
+  }
+
+  function handleHeaderSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      selectSort(key);
+    }
+  }
+
+  function toggleGroup(key: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   const rows = useMemo(() => {
     let list = quotes;
     if (search.trim()) {
@@ -62,23 +106,52 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
       list = list.filter((quote) => quote.status === statusFilter);
     }
 
-    // group quotes that share a name so alternatives for the same patient sit together,
-    // newest group first (source list is already newest-first) and stable within a group
-    const groupOrder = new Map<string, number>();
-    const groupCounts = new Map<string, number>();
+    // group quotes that share a name so alternatives for the same patient sit together;
+    // each group keeps the source list's newest-first order internally
+    const groups = new Map<string, Quote[]>();
     for (const quote of list) {
       const key = groupKey(quote);
-      if (!groupOrder.has(key)) groupOrder.set(key, groupOrder.size);
-      groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(quote);
     }
-    const sorted = [...list].sort((a, b) => groupOrder.get(groupKey(a))! - groupOrder.get(groupKey(b))!);
 
-    return sorted.map((quote, i) => {
-      const key = groupKey(quote);
-      const isGroupStart = i === 0 || groupKey(sorted[i - 1]) !== key;
-      return { quote, groupCount: groupCounts.get(key)!, isGroupStart };
+    const dir = sortDir === "asc" ? 1 : -1;
+    const groupList = [...groups.entries()].map(([key, group]) => ({ key, group, representative: group[0] }));
+    groupList.sort((a, b) => {
+      switch (sortKey) {
+        case "name":
+          return dir * a.representative.name.localeCompare(b.representative.name);
+        case "status":
+          return (
+            dir *
+            (STATUS_ORDER.indexOf(a.representative.status) - STATUS_ORDER.indexOf(b.representative.status))
+          );
+        case "total": {
+          const at = a.representative.total_price ?? -Infinity;
+          const bt = b.representative.total_price ?? -Infinity;
+          return dir * (at - bt);
+        }
+        case "created":
+        default:
+          return (
+            dir *
+            (new Date(a.representative.created_at).getTime() - new Date(b.representative.created_at).getTime())
+          );
+      }
     });
-  }, [quotes, search, statusFilter]);
+
+    return groupList.flatMap(({ key, group }) => {
+      const isExpanded = group.length <= 1 || expandedGroups.has(key);
+      const visible = isExpanded ? group : group.slice(0, 1);
+      return visible.map((quote, i) => ({
+        quote,
+        groupKeyValue: key,
+        groupCount: group.length,
+        isGroupStart: i === 0,
+        isExpanded,
+      }));
+    });
+  }, [quotes, search, statusFilter, sortKey, sortDir, expandedGroups]);
 
   const compareQuotes = useMemo(
     () => (compareKey ? quotes.filter((quote) => groupKey(quote) === compareKey) : []),
@@ -170,16 +243,39 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
               </option>
             ))}
           </Select>
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <Select
+              value={sortKey}
+              onChange={(e) => selectSort(e.target.value as SortKey)}
+              className="sm:max-w-[160px]"
+            >
+              {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+                <option key={k} value={k}>
+                  Sort: {SORT_LABELS[k]}
+                </option>
+              ))}
+            </Select>
+            <button
+              type="button"
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              title={sortDir === "asc" ? "Ascending" : "Descending"}
+              className="rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-500 hover:bg-slate-50"
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
+          </div>
         </div>
       </Card>
 
       <div className="grid gap-3 md:hidden">
-        {rows.map(({ quote, groupCount, isGroupStart }) => (
+        {rows.map(({ quote, groupCount, isGroupStart, isExpanded, groupKeyValue }) => (
           <QuoteCard
             key={quote.id}
             quote={quote}
             groupCount={groupCount}
             showCompare={isGroupStart && groupCount > 1}
+            showToggle={isGroupStart && groupCount > 1}
+            isExpanded={isExpanded}
             defaultCurrency={defaultCurrency}
             deleting={deletingId === quote.id}
             converting={convertingId === quote.id}
@@ -192,6 +288,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
             onConvert={() => handleConvert(quote.id)}
             onDuplicate={() => handleDuplicate(quote.id)}
             onCompare={() => setCompareKey(groupKey(quote))}
+            onToggle={() => toggleGroup(groupKeyValue)}
           />
         ))}
         {rows.length === 0 && <div className="py-10 text-center text-slate-400">No quotes match your filters.</div>}
@@ -201,17 +298,27 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px] text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
-                <th className="pb-2 pl-4 pr-4 font-medium">Name</th>
-                <th className="pb-2 pr-4 font-medium">Status</th>
-                <th className="pb-2 pr-4 font-medium">Total</th>
-                <th className="pb-2 pr-4 font-medium">Split</th>
-                <th className="pb-2 pr-4 font-medium">Created</th>
-                <th className="pb-2 pr-4 font-medium text-right">Actions</th>
+              <tr className="border-b border-slate-100 bg-slate-50/60">
+                <th className="py-3 pl-4 pr-4">
+                  <SortHeader label="Name" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+                </th>
+                <th className="py-3 pr-4">
+                  <SortHeader label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+                </th>
+                <th className="py-3 pr-4">
+                  <SortHeader label="Total" sortKey="total" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+                </th>
+                <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">Split</th>
+                <th className="py-3 pr-4">
+                  <SortHeader label="Created" sortKey="created" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+                </th>
+                <th className="py-3 pr-4 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ quote, groupCount, isGroupStart }) => {
+              {rows.map(({ quote, groupCount, isGroupStart, isExpanded, groupKeyValue }) => {
                 const { first, second } = computeQuoteSplit(
                   quote.total_price,
                   quote.split_mode,
@@ -231,10 +338,16 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
                       <span className="inline-flex items-center gap-2">
                         {quote.name}
                         {quote.label && <span className="text-xs font-normal text-slate-400">{quote.label}</span>}
-                        {groupCount > 1 && (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                            {groupCount} quotes
-                          </span>
+                        {isGroupStart && groupCount > 1 && (
+                          <button
+                            className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-slate-200"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleGroup(groupKeyValue);
+                            }}
+                          >
+                            {isExpanded ? "▾" : "▸"} {groupCount} quotes
+                          </button>
                         )}
                         {isGroupStart && groupCount > 1 && (
                           <button
@@ -323,10 +436,39 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
   );
 }
 
+function SortHeader({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  dir: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sortKey === activeKey;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={`inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wide hover:text-slate-600 ${
+        active ? "text-slate-600" : "text-slate-400"
+      }`}
+    >
+      {label} {active && (dir === "asc" ? "↑" : "↓")}
+    </button>
+  );
+}
+
 function QuoteCard({
   quote,
   groupCount,
   showCompare,
+  showToggle,
+  isExpanded,
   defaultCurrency,
   deleting,
   converting,
@@ -336,10 +478,13 @@ function QuoteCard({
   onConvert,
   onDuplicate,
   onCompare,
+  onToggle,
 }: {
   quote: Quote;
   groupCount: number;
   showCompare: boolean;
+  showToggle: boolean;
+  isExpanded: boolean;
   defaultCurrency: string;
   deleting: boolean;
   converting: boolean;
@@ -349,6 +494,7 @@ function QuoteCard({
   onConvert: () => void;
   onDuplicate: () => void;
   onCompare: () => void;
+  onToggle: () => void;
 }) {
   const { first, second } = computeQuoteSplit(
     quote.total_price,
@@ -363,10 +509,16 @@ function QuoteCard({
           <div className="flex items-center gap-2 font-medium text-slate-800">
             {quote.name}
             {quote.label && <span className="text-xs font-normal text-slate-400">{quote.label}</span>}
-            {groupCount > 1 && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                {groupCount} quotes
-              </span>
+            {showToggle && (
+              <button
+                className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-slate-200"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle();
+                }}
+              >
+                {isExpanded ? "▾" : "▸"} {groupCount} quotes
+              </button>
             )}
             {showCompare && (
               <button

@@ -47,8 +47,14 @@ body {
   animation: fade-in 0.35s ease-out both;
 }
 
+/* `backwards`, not `both` — holding the final keyframe (`forwards`) would pin
+ * `transform: translateY(0)` on the element indefinitely after the animation ends. Even at
+ * zero offset that's a non-`none` transform, which makes the element a containing block for any
+ * `position: fixed` descendant (e.g. a modal rendered inside an animated page wrapper) instead
+ * of the viewport. `backwards` alone still holds elements at their pre-animation state during a
+ * delay (for staggered list fade-ins), without leaving a transform behind once it's done. */
 .animate-fade-in-up {
-  animation: fade-in-up 0.35s ease-out both;
+  animation: fade-in-up 0.35s ease-out backwards;
 }
 
 @keyframes toast-in {
@@ -62,8 +68,10 @@ body {
   }
 }
 
+/* `backwards`, not `both` — see the note on `.animate-fade-in-up` above; same reasoning applies
+ * to this transform-based animation. */
 .animate-toast-in {
-  animation: toast-in 0.25s ease-out both;
+  animation: toast-in 0.25s ease-out backwards;
 }
 
 @keyframes status-pulse {

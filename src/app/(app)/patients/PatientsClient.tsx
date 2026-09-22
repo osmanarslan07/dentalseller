@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { Patient, CommissionSettings, Profile } from "@/types";
 import {
   computeMonthlyAggregates,
@@ -91,6 +92,36 @@ function SortHeader({
   );
 }
 
+/** Positions a dropdown in a portal anchored to its trigger button, in viewport (`fixed`)
+ * coordinates. The table's `overflow-x-auto`/`overflow-hidden` wrappers clip anything that
+ * would render inside them past their edge — most visibly a menu opened from the last row(s),
+ * since there's no room below for it to fit before hitting the clipped boundary. Rendering into
+ * `document.body` sidesteps that entirely. Captured on toggle (a click handler), not via effect,
+ * since the trigger's position never needs to be tracked while the menu is closed.
+ *
+ * `itemCount` sizes an estimate of the menu's height (items are a consistent ~34px row each,
+ * plus the container's py-1) so a trigger near the bottom of the *viewport* itself — not just
+ * the table — flips the menu to open upward instead of running off the bottom of the screen. */
+function useDropdownStyle() {
+  const [style, setStyle] = useState<
+    ({ position: "fixed"; right: number } & ({ top: number } | { bottom: number })) | null
+  >(null);
+
+  function capture(el: HTMLElement | null, itemCount: number) {
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const right = window.innerWidth - rect.right;
+    const estimatedHeight = itemCount * 34 + 8;
+    if (rect.bottom + estimatedHeight + 4 > window.innerHeight) {
+      setStyle({ position: "fixed", bottom: window.innerHeight - rect.top + 4, right });
+    } else {
+      setStyle({ position: "fixed", top: rect.bottom + 4, right });
+    }
+  }
+
+  return { style, capture };
+}
+
 function DocumentsMenu({
   patient: p,
   open,
@@ -121,13 +152,20 @@ function DocumentsMenu({
       : null,
   ].filter((item): item is { label: string; href: string } => item != null);
 
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const { style, capture } = useDropdownStyle();
+
   if (items.length === 0) return null;
 
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={onToggle}
+        onClick={() => {
+          if (!open) capture(buttonRef.current, items.length);
+          onToggle();
+        }}
         title="Documents"
         className={`rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 ${
           open ? "bg-slate-100 text-slate-700" : ""
@@ -138,20 +176,23 @@ function DocumentsMenu({
           <path d="M14 3v5h5" />
         </svg>
       </button>
-      {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          {items.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              target="_blank"
-              className="block px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-600"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      )}
+      {open &&
+        style &&
+        createPortal(
+          <div style={style} className="z-20 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+            {items.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                className="block px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-600"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -172,6 +213,8 @@ function TelegramMenu({
 }) {
   const { showToast } = useToast();
   const [sendingKey, setSendingKey] = useState<string | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const { style, capture } = useDropdownStyle();
 
   const visitOptions = [
     { value: "visit1", label: "Visit 1" },
@@ -195,8 +238,12 @@ function TelegramMenu({
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={onToggle}
+        onClick={() => {
+          if (!open) capture(buttonRef.current, visitOptions.length);
+          onToggle();
+        }}
         title="Send to Telegram"
         className={`rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 ${
           open ? "bg-slate-100 text-slate-700" : ""
@@ -207,21 +254,24 @@ function TelegramMenu({
           <path d="M22 2 15 22 11 13 2 9 22 2Z" />
         </svg>
       </button>
-      {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          {visitOptions.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              disabled={sendingKey !== null}
-              onClick={() => send(o.value)}
-              className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-600 disabled:opacity-50"
-            >
-              {sendingKey === o.value ? "Sending…" : `Send ${o.label}`}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        style &&
+        createPortal(
+          <div style={style} className="z-20 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+            {visitOptions.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                disabled={sendingKey !== null}
+                onClick={() => send(o.value)}
+                className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-600 disabled:opacity-50"
+              >
+                {sendingKey === o.value ? "Sending…" : `Send ${o.label}`}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

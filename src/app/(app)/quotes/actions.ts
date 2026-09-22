@@ -221,7 +221,7 @@ export async function convertQuoteToPatient(id: string) {
   revalidatePath("/quotes");
   revalidatePath("/patients");
   revalidatePath("/");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
 
   const celebration: Celebration = { kind: "confetti", message: `🎉 ${quote.name} converted into a confirmed patient!` };
   return { patientId: patient.id as string, celebration };

@@ -54,7 +54,7 @@ function CalendarIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function ProjectionsIcon({ className = "" }: { className?: string }) {
+function EarningsIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M4 20V10M11 20V4M18 20v-7" strokeLinecap="round" strokeLinejoin="round" />
@@ -92,7 +92,7 @@ const BASE_LINKS: { href: string; label: string; icon: (props: { className?: str
   { href: "/quotes", label: "Quotes", icon: QuotesIcon },
   { href: "/tasks", label: "Tasks", icon: TasksIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
-  { href: "/projections", label: "Projections", icon: ProjectionsIcon },
+  { href: "/earnings", label: "Earnings", icon: EarningsIcon },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 

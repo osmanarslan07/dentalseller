@@ -353,7 +353,7 @@ export async function createPatient(formData: FormData) {
 
   revalidatePath("/patients");
   revalidatePath("/");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
   revalidatePath("/tasks");
 
   const { count } = await supabase
@@ -426,7 +426,7 @@ export async function updatePatient(id: string, formData: FormData) {
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/tasks");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
 
   return { celebration };
 }
@@ -470,7 +470,7 @@ export async function reassignPatient(id: string, newSellerId: string) {
 
   revalidatePath("/patients");
   revalidatePath("/");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
 }
 
 export async function deletePatient(id: string) {
@@ -491,7 +491,7 @@ export async function deletePatient(id: string) {
 
   revalidatePath("/patients");
   revalidatePath("/");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
 }
 
 function parseExtraVisitInput(formData: FormData) {
@@ -547,7 +547,7 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
 
   revalidatePath("/patients");
   revalidatePath("/");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
 }
 
 export async function updateExtraVisit(id: string, formData: FormData) {
@@ -576,7 +576,7 @@ export async function updateExtraVisit(id: string, formData: FormData) {
 
   revalidatePath("/patients");
   revalidatePath("/");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
 }
 
 const PATIENT_LOGISTICS_FIELDS = [
@@ -698,7 +698,7 @@ export async function deleteExtraVisit(id: string) {
 
   revalidatePath("/patients");
   revalidatePath("/");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
 }
 
 /** Powers the patient modal's History tab. `activity_log` is admin-only under RLS (see

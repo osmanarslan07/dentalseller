@@ -6,7 +6,7 @@ import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
 import { CelebrationSoundToggle } from "@/components/celebration-sound";
-import { DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
+import { DashboardCardId, EARNINGS_CARD_IDS, OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
 import { DashboardCardsPicker } from "@/components/DashboardCardsPicker";
 import { ExchangeRatePoint } from "@/lib/data";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
@@ -47,19 +47,24 @@ export function SettingsClient({
   const [cardsPending, startCardsTransition] = useTransition();
   const [cardsError, setCardsError] = useState<string | null>(null);
   const [cardsSaved, setCardsSaved] = useState(false);
+  const [earningsCardsPending, startEarningsCardsTransition] = useTransition();
+  const [earningsCardsError, setEarningsCardsError] = useState<string | null>(null);
+  const [earningsCardsSaved, setEarningsCardsSaved] = useState(false);
   const [brandingPending, startBrandingTransition] = useTransition();
   const [brandingError, setBrandingError] = useState<string | null>(null);
   const [brandingSaved, setBrandingSaved] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(clinicConfig.clinicLogoUrl);
   const { hidden, tryRate } = usePrivacy();
 
-  const knownCardIds = new Set<DashboardCardId>(DASHBOARD_CARDS.map((c) => c.id));
-  const savedOrder = settings.dashboard_cards.filter((id) => knownCardIds.has(id));
-  const cardsInitialOrder = [
-    ...savedOrder,
-    ...DASHBOARD_CARDS.map((c) => c.id).filter((id) => !savedOrder.includes(id)),
-  ];
-  const cardsInitialEnabled = new Set(savedOrder);
+  function cardsForCategory(categoryIds: DashboardCardId[]) {
+    const eligible = new Set<DashboardCardId>(categoryIds);
+    const savedOrder = settings.dashboard_cards.filter((id) => eligible.has(id));
+    const initialOrder = [...savedOrder, ...categoryIds.filter((id) => !savedOrder.includes(id))];
+    return { initialOrder, initialEnabled: new Set(savedOrder) };
+  }
+
+  const dashboardCardsState = cardsForCategory(OPERATIONAL_CARD_IDS);
+  const earningsCardsState = cardsForCategory(EARNINGS_CARD_IDS);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -85,6 +90,20 @@ export function SettingsClient({
         setTimeout(() => setCardsSaved(false), 2500);
       } catch (e) {
         setCardsError(e instanceof Error ? e.message : "Something went wrong");
+      }
+    });
+  }
+
+  function handleEarningsCardsSubmit(formData: FormData) {
+    setEarningsCardsError(null);
+    setEarningsCardsSaved(false);
+    startEarningsCardsTransition(async () => {
+      try {
+        await saveDashboardCards(formData);
+        setEarningsCardsSaved(true);
+        setTimeout(() => setEarningsCardsSaved(false), 2500);
+      } catch (e) {
+        setEarningsCardsError(e instanceof Error ? e.message : "Something went wrong");
       }
     });
   }
@@ -335,10 +354,14 @@ export function SettingsClient({
       <Card className="p-6">
         <h2 className="mb-1 text-base font-semibold text-slate-900">Dashboard cards</h2>
         <p className="mb-4 text-sm text-slate-500">
-          Choose which stat cards show on the Dashboard, and drag ⠿ to reorder them.
+          Choose which operational stat cards show on the Dashboard, and drag ⠿ to reorder them.
         </p>
         <form action={handleCardsSubmit} className="space-y-3">
-          <DashboardCardsPicker initialOrder={cardsInitialOrder} initialEnabled={cardsInitialEnabled} />
+          <DashboardCardsPicker
+            initialOrder={dashboardCardsState.initialOrder}
+            initialEnabled={dashboardCardsState.initialEnabled}
+            category="dashboard"
+          />
           {cardsError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{cardsError}</p>}
           {cardsSaved && (
             <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Settings saved.</p>
@@ -352,10 +375,35 @@ export function SettingsClient({
       </Card>
 
       <Card className="p-6">
+        <h2 className="mb-1 text-base font-semibold text-slate-900">Earnings cards</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Choose which commission stat cards show on Earnings, and drag ⠿ to reorder them.
+        </p>
+        <form action={handleEarningsCardsSubmit} className="space-y-3">
+          <DashboardCardsPicker
+            initialOrder={earningsCardsState.initialOrder}
+            initialEnabled={earningsCardsState.initialEnabled}
+            category="earnings"
+          />
+          {earningsCardsError && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{earningsCardsError}</p>
+          )}
+          {earningsCardsSaved && (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Settings saved.</p>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={earningsCardsPending}>
+              {earningsCardsPending ? "Saving…" : "Save settings"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card className="p-6">
         <h2 className="mb-1 text-base font-semibold text-slate-900">Privacy</h2>
         <p className="mb-4 text-sm text-slate-500">
           {hidden
-            ? "Earnings/commission figures are hidden on Dashboard, Projections and Patients. Safe to show your screen."
+            ? "Earnings/commission figures are hidden on Earnings and Patients. Safe to show your screen."
             : "Earnings/commission figures are visible everywhere. Hide them before sharing your screen."}
         </p>
         <PrivacyToggleButton />

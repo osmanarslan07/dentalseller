@@ -5,6 +5,11 @@ export function monthKey(dateStr: string): string {
   return dateStr.slice(0, 7); // 'YYYY-MM'
 }
 
+export function treatmentTotal(p: Patient): number {
+  const extra = p.extra_visits.reduce((sum, v) => sum + (v.expected ?? 0), 0);
+  return (p.visit1_expected ?? 0) + (p.visit2_expected ?? 0) + extra;
+}
+
 export function monthLabel(key: string): string {
   const [year, month] = key.split("-").map(Number);
   const d = new Date(year, month - 1, 1);

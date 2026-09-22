@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { DASHBOARD_CARDS } from "@/lib/dashboard-cards";
+import { EARNINGS_CARD_IDS, OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
 import { getClinicConfig, getSettings } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
 
@@ -70,7 +70,7 @@ export async function saveSettings(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/");
   revalidatePath("/patients");
-  revalidatePath("/projections");
+  revalidatePath("/earnings");
 }
 
 /** Admin-only — enforced both here and by the clinic_config_update_admin RLS policy. Clinic-
@@ -182,6 +182,9 @@ export async function saveTelegramGroupChat(formData: FormData) {
   revalidatePath("/settings");
 }
 
+/** One saved column (`settings.dashboard_cards`) backs both pickers — Dashboard and Earnings
+ * each only ever submit their own category's ids, so saving one must splice those in without
+ * touching the other category's stored order. */
 export async function saveDashboardCards(formData: FormData) {
   const supabase = await createClient();
   const {
@@ -189,10 +192,16 @@ export async function saveDashboardCards(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const validCardIds = new Set<string>(DASHBOARD_CARDS.map((c) => c.id));
-  const dashboard_cards = formData
+  const category = formData.get("category");
+  const categoryIds = category === "earnings" ? EARNINGS_CARD_IDS : OPERATIONAL_CARD_IDS;
+  const validCardIds = new Set<string>(categoryIds);
+  const submittedIds = formData
     .getAll("dashboard_cards")
     .filter((id): id is string => typeof id === "string" && validCardIds.has(id));
+
+  const current = await getSettings(supabase, user.id);
+  const otherCategoryIds = current.dashboard_cards.filter((id) => !validCardIds.has(id));
+  const dashboard_cards = category === "earnings" ? [...otherCategoryIds, ...submittedIds] : [...submittedIds, ...otherCategoryIds];
 
   const { error } = await supabase
     .from("settings")
@@ -200,6 +209,8 @@ export async function saveDashboardCards(formData: FormData) {
 
   if (error) throw new Error(error.message);
 
+  revalidatePath("/");
+  revalidatePath("/earnings");
   await logActivity(supabase, user.id, "dashboard_cards_updated", "settings", user.id, dashboard_cards.join(", "));
 
   revalidatePath("/settings");

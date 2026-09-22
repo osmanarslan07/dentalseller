@@ -23,9 +23,11 @@ const CARD_LABELS = new Map(DASHBOARD_CARDS.map((c) => [c.id, c.label]));
 export function DashboardCardsPicker({
   initialOrder,
   initialEnabled,
+  category,
 }: {
   initialOrder: DashboardCardId[];
   initialEnabled: Set<DashboardCardId>;
+  category: "dashboard" | "earnings";
 }) {
   const [order, setOrder] = useState(initialOrder);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -42,6 +44,7 @@ export function DashboardCardsPicker({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <input type="hidden" name="category" value={category} />
       <SortableContext items={order} strategy={verticalListSortingStrategy}>
         <div className="space-y-1.5">
           {order.map((id) => (

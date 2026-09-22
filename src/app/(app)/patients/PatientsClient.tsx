@@ -81,7 +81,7 @@ function SortHeader({
 }) {
   return (
     <th
-      className={`cursor-pointer select-none pb-2 pr-4 font-medium hover:text-slate-700 ${className}`}
+      className={`cursor-pointer select-none py-3 pr-4 font-medium hover:text-slate-700 ${className}`}
       onClick={() => onSort(sortKeyValue)}
     >
       <span className="inline-flex items-center gap-1">
@@ -714,13 +714,13 @@ export function PatientsClient({
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
                 <SortHeader label="Name" sortKeyValue="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="pl-4" />
-                <th className="pb-2 pr-4 font-medium">Treatment</th>
+                <th className="py-3 pr-4 font-medium">Treatment</th>
                 <SortHeader label="Confirmed" sortKeyValue="confirmation_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Visit 1" sortKeyValue="visit1_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Visit 2" sortKeyValue="visit2_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <th className="pb-2 pr-4 font-medium">Stage</th>
+                <th className="py-3 pr-4 font-medium">Stage</th>
                 <SortHeader label="Commission" sortKeyValue="commission" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <th className="pb-2 pr-4 font-medium text-right">Actions</th>
+                <th className="py-3 pr-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>

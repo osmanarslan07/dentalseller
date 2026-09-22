@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
@@ -38,7 +37,6 @@ export function QuoteFormModal({
   );
   const isEdit = !!quote;
   const { showToast } = useToast();
-  const router = useRouter();
 
   function handleRequestClose() {
     if (isDirty && !confirm("Discard unsaved changes?")) return;
@@ -54,10 +52,9 @@ export function QuoteFormModal({
           showToast("Quote saved ✓");
           onClose();
         } else {
-          const id = await createQuote(formData);
+          await createQuote(formData);
           showToast("Quote created ✓");
           onClose();
-          router.push(`/quotes/${id}/offer`);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong");

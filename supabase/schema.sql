@@ -826,13 +826,20 @@ end $$;
 alter table public.profiles add constraint profiles_role_check
   check (role in ('seller', 'admin', 'superadmin'));
 
--- a superadmin belongs to no clinic; every seller/admin belongs to exactly one
+-- A superadmin must never have a clinic — that's the one state that's actually dangerous
+-- (platform-wide access scoped to a single tenant makes no sense) and it's the only half we
+-- can enforce as a hard CHECK. A seller/admin with clinic_id still null is a real, if
+-- transient, state: handle_new_user() inserts a bare profile row (role defaults to
+-- 'seller', clinic_id null) the moment an auth user is created, in its own request/
+-- transaction, separate from whatever app code runs next to assign clinic_id (addSeller,
+-- clinic creation, ...) — there's no way to make that atomic across the Auth API boundary,
+-- so a hard NOT NULL-style check here would intermittently break account creation itself.
+-- RLS already makes an unassigned profile harmless: every clinic-scoped policy requires
+-- clinic_id = my_clinic_id(), which a null clinic_id can never satisfy, so such a row can
+-- see and do nothing until the app finishes assigning it a clinic.
 alter table public.profiles drop constraint if exists profiles_clinic_role_check;
 alter table public.profiles add constraint profiles_clinic_role_check
-  check (
-    (role = 'superadmin' and clinic_id is null)
-    or (role in ('seller', 'admin') and clinic_id is not null)
-  );
+  check (not (role = 'superadmin' and clinic_id is not null));
 
 -- clinic_id itself is never changed through the normal update path from here on (not a
 -- supported product operation — only a manual/service-role move between tenants, which
@@ -1061,10 +1068,17 @@ create policy "activity_log_select_admin" on public.activity_log
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,
--- after confirming the target user's id:
+-- after confirming the target user's id.
 --
+-- A direct SQL Editor / DB connection has no auth.uid() (no request-scoped JWT), so
+-- guard_profile_privilege_change()'s is_admin(auth.uid()) check always fails there —
+-- disable that one trigger for the duration of this single statement, same as any other
+-- superuser-run administrative update:
+--
+--   alter table public.profiles disable trigger profiles_guard_privilege;
 --   update public.profiles
 --   set role = 'superadmin', clinic_id = null
 --   where id = '<your own auth.users id>';
+--   alter table public.profiles enable trigger profiles_guard_privilege;
 --
 -- =====================================================================

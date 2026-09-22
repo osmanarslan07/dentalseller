@@ -32,7 +32,7 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
 
   const { data: myProfile, error: profileError } = await supabase
     .from("profiles")
-    .select("is_active")
+    .select("is_active, clinic_id")
     .eq("id", user.id)
     .maybeSingle();
   if (profileError) throw new Error(profileError.message);
@@ -40,7 +40,7 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
 
   const tempPassword = generateTempPassword();
   const admin = createAdminClient();
-  const { error } = await admin.auth.admin.createUser({
+  const { data, error } = await admin.auth.admin.createUser({
     email,
     password: tempPassword,
     email_confirm: true,
@@ -52,6 +52,16 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
     }
     throw new Error(error.message);
   }
+
+  // handle_new_user() only inserts a bare row (id, default role/clinic_id null) — the new
+  // seller belongs to the inviting seller's own clinic, set via the admin client since RLS
+  // only lets an admin update someone else's row (this action is deliberately open to any
+  // active seller, not just admins).
+  const { error: clinicIdError } = await admin
+    .from("profiles")
+    .update({ clinic_id: myProfile.clinic_id })
+    .eq("id", data.user.id);
+  if (clinicIdError) throw new Error(clinicIdError.message);
 
   await logActivity(supabase, user.id, "seller_added", "profile", null, email);
 

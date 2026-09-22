@@ -565,13 +565,13 @@ export function TeamOperationsPanel({
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                <th className="pb-2 pl-4 font-medium">Name</th>
-                <th className="pb-2 font-medium">Treatment</th>
-                <th className="pb-2 font-medium">Confirmed</th>
-                <th className="pb-2 font-medium">First visit</th>
-                <th className="pb-2 font-medium">Visit 2</th>
-                {scope === "team" && <th className="pb-2 font-medium">Responsible</th>}
-                <th className="pb-2 font-medium">Komo</th>
+                <th className="py-3 pl-4 font-medium">Name</th>
+                <th className="py-3 font-medium">Treatment</th>
+                <th className="py-3 font-medium">Confirmed</th>
+                <th className="py-3 font-medium">First visit</th>
+                <th className="py-3 font-medium">Visit 2</th>
+                {scope === "team" && <th className="py-3 font-medium">Responsible</th>}
+                <th className="py-3 font-medium">Komo</th>
               </tr>
             </thead>
             <tbody>

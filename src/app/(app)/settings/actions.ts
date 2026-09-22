@@ -83,7 +83,7 @@ export async function saveClinicBranding(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { data: myProfile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
   if (myProfile?.role !== "admin") throw new Error("Admin only");
 
   const clinic_name = String(formData.get("clinic_name") ?? "").trim();
@@ -118,7 +118,7 @@ export async function saveClinicBranding(formData: FormData) {
   const before = await getClinicConfig(supabase);
 
   const { error } = await supabase.from("clinic_config").upsert({
-    id: true,
+    clinic_id: myProfile.clinic_id,
     clinic_name,
     clinic_short_name,
     clinic_address,
@@ -155,7 +155,7 @@ export async function saveTelegramGroupChat(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { data: myProfile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
   if (myProfile?.role !== "admin") throw new Error("Admin only");
 
   const raw = String(formData.get("telegram_group_chat_id") ?? "").trim();
@@ -165,7 +165,7 @@ export async function saveTelegramGroupChat(formData: FormData) {
 
   const { error } = await supabase
     .from("clinic_config")
-    .upsert({ id: true, telegram_group_chat_id });
+    .upsert({ clinic_id: myProfile.clinic_id, telegram_group_chat_id });
   if (error) throw new Error(error.message);
 
   if (before.telegramGroupChatId !== telegram_group_chat_id) {

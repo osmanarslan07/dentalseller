@@ -723,3 +723,348 @@ alter table public.patients add column if not exists visit2_recall_months intege
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('clinic-assets', 'clinic-assets', true, 2097152, array['image/png','image/jpeg','image/svg+xml','image/webp'])
 on conflict (id) do nothing;
+
+-- =====================================================================
+-- MULTI-TENANT MIGRATION — Phase 1: clinics table, clinic_id everywhere,
+-- superadmin role. Idempotent/safe to re-run, same as everything above.
+-- Nothing in the app changes behavior yet — this is pure schema/RLS.
+-- =====================================================================
+
+-- ---------- clinics (tenants) ----------
+create table if not exists public.clinics (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text unique,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table public.clinics enable row level security;
+
+-- ---------- clinic_id added to every clinic-scoped table (nullable for now — backfilled
+-- and locked down below, in that order, since a couple of the steps that follow depend on
+-- data already being backfilled before they can run) ----------
+alter table public.profiles add column if not exists clinic_id uuid references public.clinics(id);
+alter table public.patients add column if not exists clinic_id uuid references public.clinics(id);
+alter table public.patient_visits add column if not exists clinic_id uuid references public.clinics(id);
+alter table public.quotes add column if not exists clinic_id uuid references public.clinics(id);
+alter table public.tasks add column if not exists clinic_id uuid references public.clinics(id);
+alter table public.settings add column if not exists clinic_id uuid references public.clinics(id);
+alter table public.telegram_link_codes add column if not exists clinic_id uuid references public.clinics(id);
+-- nullable permanently: a superadmin action (e.g. "created clinic X") isn't scoped to any one clinic
+alter table public.activity_log add column if not exists clinic_id uuid references public.clinics(id);
+
+create or replace function public.is_superadmin(uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce((select role = 'superadmin' from public.profiles where id = uid), false);
+$$;
+
+-- the caller's own clinic — used throughout RLS below instead of repeating the subselect;
+-- security definer for the same self-referential-recursion reason as is_admin()/is_active_profile().
+create or replace function public.my_clinic_id()
+returns uuid
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select clinic_id from public.profiles where id = auth.uid();
+$$;
+
+-- ---------- backfill: everything that exists today belongs to one clinic. Must run before
+-- the role/clinic check constraints below (a fresh check constraint validates every existing
+-- row immediately) and before guard_profile_privilege_change() is tightened to forbid
+-- clinic_id changes (this backfill IS a clinic_id change, and would trip its own new guard
+-- if that guard were already active) ----------
+insert into public.clinics (name, slug)
+select 'Thera Dental Clinic Turkey', 'thera'
+where not exists (select 1 from public.clinics);
+
+do $$
+declare
+  default_clinic_id uuid;
+begin
+  select id into default_clinic_id from public.clinics order by created_at asc limit 1;
+
+  -- excludes superadmins: their clinic_id is intentionally null, and stays that way on
+  -- every re-run of this script too (matters once a superadmin has actually been promoted)
+  update public.profiles set clinic_id = default_clinic_id where clinic_id is null and role <> 'superadmin';
+  update public.patients set clinic_id = default_clinic_id where clinic_id is null;
+  update public.patient_visits set clinic_id = default_clinic_id where clinic_id is null;
+  update public.quotes set clinic_id = default_clinic_id where clinic_id is null;
+  update public.tasks set clinic_id = default_clinic_id where clinic_id is null;
+  update public.settings set clinic_id = default_clinic_id where clinic_id is null;
+  update public.telegram_link_codes set clinic_id = default_clinic_id where clinic_id is null;
+  update public.activity_log set clinic_id = default_clinic_id where clinic_id is null;
+end $$;
+
+-- ---------- now that every existing profile has a clinic_id, add the role/clinic
+-- constraints and lock clinic_id down ----------
+
+-- drop whatever the original inline `check (role in (...))` constraint ended up named,
+-- without hardcoding Postgres's auto-generated name
+do $$
+declare
+  r record;
+begin
+  for r in
+    select conname from pg_constraint
+    where conrelid = 'public.profiles'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%role%'
+      and pg_get_constraintdef(oid) ilike '%seller%'
+  loop
+    execute format('alter table public.profiles drop constraint %I', r.conname);
+  end loop;
+end $$;
+
+alter table public.profiles add constraint profiles_role_check
+  check (role in ('seller', 'admin', 'superadmin'));
+
+-- a superadmin belongs to no clinic; every seller/admin belongs to exactly one
+alter table public.profiles drop constraint if exists profiles_clinic_role_check;
+alter table public.profiles add constraint profiles_clinic_role_check
+  check (
+    (role = 'superadmin' and clinic_id is null)
+    or (role in ('seller', 'admin') and clinic_id is not null)
+  );
+
+-- clinic_id itself is never changed through the normal update path from here on (not a
+-- supported product operation — only a manual/service-role move between tenants, which
+-- doesn't exist today). Safe to introduce now that the one legitimate clinic_id change
+-- (the backfill above) has already happened.
+create or replace function public.guard_profile_privilege_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if (new.role is distinct from old.role or new.is_active is distinct from old.is_active)
+     and not public.is_admin(auth.uid()) then
+    raise exception 'Only an admin can change role or active status';
+  end if;
+  if new.clinic_id is distinct from old.clinic_id then
+    raise exception 'clinic_id cannot be changed directly';
+  end if;
+  return new;
+end;
+$$;
+
+alter table public.patients alter column clinic_id set not null;
+alter table public.patient_visits alter column clinic_id set not null;
+alter table public.quotes alter column clinic_id set not null;
+alter table public.tasks alter column clinic_id set not null;
+alter table public.settings alter column clinic_id set not null;
+alter table public.telegram_link_codes alter column clinic_id set not null;
+
+create index if not exists patients_clinic_id_idx on public.patients(clinic_id);
+create index if not exists patient_visits_clinic_id_idx on public.patient_visits(clinic_id);
+create index if not exists quotes_clinic_id_idx on public.quotes(clinic_id);
+create index if not exists tasks_clinic_id_idx on public.tasks(clinic_id);
+create index if not exists profiles_clinic_id_idx on public.profiles(clinic_id);
+create index if not exists activity_log_clinic_id_idx on public.activity_log(clinic_id);
+
+-- ---------- clinics: superadmin manages every row; anyone can read their own ----------
+drop policy if exists "clinics_select_own" on public.clinics;
+create policy "clinics_select_own" on public.clinics
+  for select using (id = public.my_clinic_id());
+
+drop policy if exists "clinics_select_superadmin" on public.clinics;
+create policy "clinics_select_superadmin" on public.clinics
+  for select using (public.is_superadmin(auth.uid()));
+
+drop policy if exists "clinics_insert_superadmin" on public.clinics;
+create policy "clinics_insert_superadmin" on public.clinics
+  for insert with check (public.is_superadmin(auth.uid()));
+
+drop policy if exists "clinics_update_superadmin" on public.clinics;
+create policy "clinics_update_superadmin" on public.clinics
+  for update using (public.is_superadmin(auth.uid()));
+
+-- ---------- profiles: scope the existing policies to the caller's own clinic ----------
+drop policy if exists "profiles_select_active_sellers" on public.profiles;
+create policy "profiles_select_active_sellers" on public.profiles
+  for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "profiles_select_superadmin" on public.profiles;
+create policy "profiles_select_superadmin" on public.profiles
+  for select using (public.is_superadmin(auth.uid()));
+
+drop policy if exists "profiles_update_self_or_admin" on public.profiles;
+create policy "profiles_update_self_or_admin" on public.profiles
+  for update using (
+    auth.uid() = id or (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id())
+  )
+  with check (
+    auth.uid() = id or (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id())
+  );
+
+-- ---------- patients: same policies, now clinic-scoped ----------
+drop policy if exists "patients_select_active_sellers" on public.patients;
+create policy "patients_select_active_sellers" on public.patients
+  for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "patients_insert_self" on public.patients;
+create policy "patients_insert_self" on public.patients
+  for insert with check (
+    responsible_seller_id = auth.uid()
+    and public.is_active_profile(auth.uid())
+    and clinic_id = public.my_clinic_id()
+  );
+
+drop policy if exists "patients_update_active_sellers" on public.patients;
+create policy "patients_update_active_sellers" on public.patients
+  for update using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id())
+  with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "patients_delete_owner_or_admin" on public.patients;
+create policy "patients_delete_owner_or_admin" on public.patients
+  for delete using (
+    clinic_id = public.my_clinic_id()
+    and (responsible_seller_id = auth.uid() or public.is_admin(auth.uid()))
+  );
+
+-- reassigning a patient can never hand it to a seller in a different clinic
+create or replace function public.guard_patient_reassignment()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.responsible_seller_id is distinct from old.responsible_seller_id then
+    if not (auth.uid() = old.responsible_seller_id or public.is_admin(auth.uid())) then
+      raise exception 'Only the responsible seller or an admin can reassign this patient';
+    end if;
+    if not exists (
+      select 1 from public.profiles
+      where id = new.responsible_seller_id and clinic_id = old.clinic_id
+    ) then
+      raise exception 'Cannot reassign a patient to a seller outside this clinic';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+-- ---------- patient_visits: same policies, now clinic-scoped ----------
+drop policy if exists "patient_visits_select_active_sellers" on public.patient_visits;
+create policy "patient_visits_select_active_sellers" on public.patient_visits
+  for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "patient_visits_insert_active_sellers" on public.patient_visits;
+create policy "patient_visits_insert_active_sellers" on public.patient_visits
+  for insert with check (
+    created_by_seller_id = auth.uid()
+    and public.is_active_profile(auth.uid())
+    and clinic_id = public.my_clinic_id()
+  );
+
+drop policy if exists "patient_visits_update_active_sellers" on public.patient_visits;
+create policy "patient_visits_update_active_sellers" on public.patient_visits
+  for update using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id())
+  with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "patient_visits_delete_active_sellers" on public.patient_visits;
+create policy "patient_visits_delete_active_sellers" on public.patient_visits
+  for delete using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+-- ---------- quotes: still private per-seller, now also clinic-scoped ----------
+drop policy if exists "quotes_select_own" on public.quotes;
+create policy "quotes_select_own" on public.quotes
+  for select using (auth.uid() = user_id and clinic_id = public.my_clinic_id());
+
+drop policy if exists "quotes_insert_own" on public.quotes;
+create policy "quotes_insert_own" on public.quotes
+  for insert with check (auth.uid() = user_id and clinic_id = public.my_clinic_id());
+
+drop policy if exists "quotes_update_own" on public.quotes;
+create policy "quotes_update_own" on public.quotes
+  for update using (auth.uid() = user_id and clinic_id = public.my_clinic_id())
+  with check (auth.uid() = user_id and clinic_id = public.my_clinic_id());
+
+drop policy if exists "quotes_delete_own" on public.quotes;
+create policy "quotes_delete_own" on public.quotes
+  for delete using (auth.uid() = user_id and clinic_id = public.my_clinic_id());
+
+-- ---------- tasks: still private per-seller, now also clinic-scoped ----------
+drop policy if exists "tasks_select_own" on public.tasks;
+create policy "tasks_select_own" on public.tasks
+  for select using (auth.uid() = user_id and clinic_id = public.my_clinic_id());
+
+drop policy if exists "tasks_insert_own" on public.tasks;
+create policy "tasks_insert_own" on public.tasks
+  for insert with check (auth.uid() = user_id and clinic_id = public.my_clinic_id());
+
+drop policy if exists "tasks_update_own" on public.tasks;
+create policy "tasks_update_own" on public.tasks
+  for update using (auth.uid() = user_id and clinic_id = public.my_clinic_id())
+  with check (auth.uid() = user_id and clinic_id = public.my_clinic_id());
+
+drop policy if exists "tasks_delete_own" on public.tasks;
+create policy "tasks_delete_own" on public.tasks
+  for delete using (auth.uid() = user_id and clinic_id = public.my_clinic_id());
+
+-- ---------- settings: own-row policies are already safe; only the admin cross-seller
+-- read was a cross-clinic leak under multi-tenancy — fix that one ----------
+drop policy if exists "settings_select_admin" on public.settings;
+create policy "settings_select_admin" on public.settings
+  for select using (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id());
+
+-- ---------- clinic_config: singleton row -> one row per clinic ----------
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'clinic_config' and column_name = 'id'
+      and data_type = 'boolean'
+  ) then
+    alter table public.clinic_config add column if not exists clinic_id uuid references public.clinics(id);
+    update public.clinic_config set clinic_id = (select id from public.clinics order by created_at asc limit 1)
+      where clinic_id is null;
+    alter table public.clinic_config alter column clinic_id set not null;
+    alter table public.clinic_config drop constraint if exists clinic_config_pkey;
+    alter table public.clinic_config drop column if exists id;
+    alter table public.clinic_config add primary key (clinic_id);
+  end if;
+end $$;
+
+drop policy if exists "clinic_config_select_admin" on public.clinic_config;
+drop policy if exists "clinic_config_select_active" on public.clinic_config;
+create policy "clinic_config_select_active" on public.clinic_config
+  for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "clinic_config_update_admin" on public.clinic_config;
+create policy "clinic_config_update_admin" on public.clinic_config
+  for update using (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "clinic_config_insert_admin" on public.clinic_config;
+create policy "clinic_config_insert_admin" on public.clinic_config
+  for insert with check (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id());
+
+-- ---------- activity_log: the existing admin read was also a cross-clinic leak ----------
+-- Deliberately no superadmin read policy here yet: entries can name a patient (e.g.
+-- "added patient John Smith"), which would cross the "aggregates only, no patient PII"
+-- boundary for the superadmin platform area. Phase 3 adds either a redacted view or a
+-- counts-only RPC instead of relaxing this policy.
+drop policy if exists "activity_log_select_admin" on public.activity_log;
+create policy "activity_log_select_admin" on public.activity_log
+  for select using (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id());
+
+-- =====================================================================
+-- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
+-- Promote exactly one existing account to superadmin (there's no self-serve path to
+-- becoming the first one, same as today's "first admin" reality). Run by hand, once,
+-- after confirming the target user's id:
+--
+--   update public.profiles
+--   set role = 'superadmin', clinic_id = null
+--   where id = '<your own auth.users id>';
+--
+-- =====================================================================

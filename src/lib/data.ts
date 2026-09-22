@@ -67,7 +67,9 @@ export async function getSettings(supabase: SupabaseClient, userId: string): Pro
  * chat, confirmation-letter/quote-offer branding). Readable by any active seller; only admins
  * can write it (see the clinic_config RLS policies). */
 export async function getClinicConfig(supabase: SupabaseClient): Promise<ClinicConfig> {
-  const { data, error } = await withRetry(() => supabase.from("clinic_config").select("*").eq("id", true).maybeSingle());
+  // RLS (clinic_config_select_active) already scopes this to the caller's own clinic —
+  // no need to filter by clinic_id here too.
+  const { data, error } = await withRetry(() => supabase.from("clinic_config").select("*").maybeSingle());
 
   if (error) throw error;
   if (!data) return DEFAULT_CLINIC_CONFIG;

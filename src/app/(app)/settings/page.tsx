@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatients, getProfiles, getRateHistory, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatients, getProfiles, getRateHistory, getSettings, getTeamMembers } from "@/lib/data";
 import { SettingsClient } from "./SettingsClient";
 
 export default async function SettingsPage() {
@@ -19,13 +19,14 @@ export default async function SettingsPage() {
       : [];
   const myProfile = profiles.find((p) => p.id === user?.id) ?? null;
   const isAdmin = myProfile?.role === "admin";
+  const teamMembers = await getTeamMembers(profiles, isAdmin);
 
   return (
     <SettingsClient
       settings={settings}
       patients={patients}
       rateHistory={rateHistory}
-      profiles={profiles}
+      teamMembers={teamMembers}
       currentUserId={user?.id ?? ""}
       currentUserEmail={user?.email ?? ""}
       currentDisplayName={myProfile?.display_name ?? ""}

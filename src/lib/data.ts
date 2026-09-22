@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, Quote, Task } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, Quote, SellerRole, Task } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /** Cold-start Supabase reads occasionally flake with a network error; one retry clears it. */
 async function withRetry<T>(fn: () => PromiseLike<T>): Promise<T> {
@@ -98,6 +99,40 @@ export async function getProfiles(supabase: SupabaseClient): Promise<Profile[]> 
 
   if (error) throw error;
   return data as Profile[];
+}
+
+export interface TeamMember {
+  id: string;
+  displayName: string | null;
+  role: SellerRole;
+  isActive: boolean;
+  /** Only ever populated for an admin caller — sellers must never see a colleague's email,
+   * registered or still-invited. */
+  email: string | null;
+}
+
+/** Admin sees everyone (registered or still-invited, with email — the only way to tell who an
+ * invited row even is, since `display_name` stays null until first login). A seller sees only
+ * registered colleagues, names only, no invited/pending rows and never an email. */
+export async function getTeamMembers(profiles: Profile[], isAdmin: boolean): Promise<TeamMember[]> {
+  if (!isAdmin) {
+    return profiles
+      .filter((p) => p.display_name)
+      .map((p) => ({ id: p.id, displayName: p.display_name, role: p.role, isActive: p.is_active, email: null }));
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.auth.admin.listUsers({ perPage: 200 });
+  if (error) throw error;
+  const emailById = new Map(data.users.map((u) => [u.id, u.email ?? null]));
+
+  return profiles.map((p) => ({
+    id: p.id,
+    displayName: p.display_name,
+    role: p.role,
+    isActive: p.is_active,
+    email: emailById.get(p.id) ?? null,
+  }));
 }
 
 export async function getQuotes(supabase: SupabaseClient): Promise<Quote[]> {

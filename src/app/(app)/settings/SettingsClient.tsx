@@ -1,14 +1,14 @@
 "use client";
 
 import { ChangeEvent, useState, useTransition } from "react";
-import { ClinicConfig, CommissionSettings, Patient, Profile } from "@/types";
+import { ClinicConfig, CommissionSettings, Patient } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
 import { CelebrationSoundToggle } from "@/components/celebration-sound";
 import { DashboardCardId, EARNINGS_CARD_IDS, OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
 import { DashboardCardsPicker } from "@/components/DashboardCardsPicker";
-import { ExchangeRatePoint } from "@/lib/data";
+import { ExchangeRatePoint, TeamMember } from "@/lib/data";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
 import { AccountCard } from "./AccountCard";
 import { TeamCard } from "./TeamCard";
@@ -22,7 +22,7 @@ export function SettingsClient({
   settings,
   patients,
   rateHistory,
-  profiles,
+  teamMembers,
   currentUserId,
   currentUserEmail,
   currentDisplayName,
@@ -33,7 +33,7 @@ export function SettingsClient({
   settings: CommissionSettings;
   patients: Patient[];
   rateHistory: ExchangeRatePoint[];
-  profiles: Profile[];
+  teamMembers: TeamMember[];
   currentUserId: string;
   currentUserEmail: string;
   currentDisplayName: string;
@@ -148,7 +148,7 @@ export function SettingsClient({
 
       {isAdmin && <TelegramGroupCard groupChatId={clinicConfig.telegramGroupChatId} />}
 
-      <TeamCard profiles={profiles} currentUserId={currentUserId} isAdmin={isAdmin} />
+      <TeamCard members={teamMembers} currentUserId={currentUserId} isAdmin={isAdmin} />
 
       <Card className="p-6">
         <h2 className="mb-1 text-base font-semibold text-slate-900">Commission tiers</h2>

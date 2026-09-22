@@ -2,7 +2,7 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Profile } from "@/types";
+import { TeamMember } from "@/lib/data";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import {
@@ -19,11 +19,11 @@ interface CredentialResult extends AddSellerResult {
 }
 
 export function TeamCard({
-  profiles,
+  members,
   currentUserId,
   isAdmin,
 }: {
-  profiles: Profile[];
+  members: TeamMember[];
   currentUserId: string;
   isAdmin: boolean;
 }) {
@@ -58,12 +58,12 @@ export function TeamCard({
     navigator.clipboard.writeText(credentialResult.tempPassword).then(() => showToast("Password copied"));
   }
 
-  async function handleToggleActive(seller: Profile) {
+  async function handleToggleActive(member: TeamMember) {
     setRowError(null);
-    setRowPendingId(seller.id);
+    setRowPendingId(member.id);
     try {
-      await setSellerActive(seller.id, !seller.is_active);
-      showToast(seller.is_active ? "Seller deactivated ✓" : "Seller reactivated ✓");
+      await setSellerActive(member.id, !member.isActive);
+      showToast(member.isActive ? "Seller deactivated ✓" : "Seller reactivated ✓");
       router.refresh();
     } catch (err) {
       setRowError(err instanceof Error ? err.message : "Failed to update seller");
@@ -72,13 +72,13 @@ export function TeamCard({
     }
   }
 
-  async function handleToggleRole(seller: Profile) {
-    const nextRole = seller.role === "admin" ? "seller" : "admin";
-    if (!confirm(`${nextRole === "admin" ? "Promote" : "Demote"} ${seller.display_name || "this seller"}?`)) return;
+  async function handleToggleRole(member: TeamMember) {
+    const nextRole = member.role === "admin" ? "seller" : "admin";
+    if (!confirm(`${nextRole === "admin" ? "Promote" : "Demote"} ${member.displayName || "this seller"}?`)) return;
     setRowError(null);
-    setRowPendingId(seller.id);
+    setRowPendingId(member.id);
     try {
-      await setSellerRole(seller.id, nextRole);
+      await setSellerRole(member.id, nextRole);
       showToast(nextRole === "admin" ? "Promoted to admin ✓" : "Demoted to seller ✓");
       router.refresh();
     } catch (err) {
@@ -88,18 +88,18 @@ export function TeamCard({
     }
   }
 
-  async function handleDelete(seller: Profile) {
+  async function handleDelete(member: TeamMember) {
     if (
       !confirm(
-        `Permanently delete ${seller.display_name || seller.id}? This can't be undone. Any patients, quotes, and tasks they own will be reassigned to you.`
+        `Permanently delete ${member.displayName || member.email || member.id}? This can't be undone. Any patients, quotes, and tasks they own will be reassigned to you.`
       )
     )
       return;
     setRowError(null);
     setCredentialResult(null);
-    setRowPendingId(seller.id);
+    setRowPendingId(member.id);
     try {
-      await deleteSeller(seller.id);
+      await deleteSeller(member.id);
       showToast("Seller deleted ✓");
       router.refresh();
     } catch (err) {
@@ -109,13 +109,13 @@ export function TeamCard({
     }
   }
 
-  async function handleResetPassword(seller: Profile) {
-    if (!confirm(`Reset ${seller.display_name || "this seller"}'s password?`)) return;
+  async function handleResetPassword(member: TeamMember) {
+    if (!confirm(`Reset ${member.displayName || "this seller"}'s password?`)) return;
     setRowError(null);
     setCredentialResult(null);
-    setRowPendingId(seller.id);
+    setRowPendingId(member.id);
     try {
-      const r = await adminResetPassword(seller.id);
+      const r = await adminResetPassword(member.id);
       setCredentialResult({ ...r, kind: "reset" });
       showToast("Password reset ✓");
     } catch (err) {
@@ -133,19 +133,20 @@ export function TeamCard({
       </p>
 
       <ul className="mb-5 divide-y divide-slate-100">
-        {profiles.map((p) => {
-          const isSelf = p.id === currentUserId;
-          const rowBusy = rowPendingId === p.id;
+        {members.map((m) => {
+          const isSelf = m.id === currentUserId;
+          const rowBusy = rowPendingId === m.id;
           return (
-            <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+            <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
               <span className="font-medium text-slate-900">
-                {p.display_name || "Invited — awaiting first login"}
+                {m.displayName || "Invited — awaiting first login"}
                 {isSelf && <span className="ml-1.5 text-xs font-normal text-slate-400">(you)</span>}
+                {m.email && <span className="ml-1.5 text-xs font-normal text-slate-400">{m.email}</span>}
               </span>
               <div className="flex items-center gap-1.5">
-                {p.role === "admin" && <Badge tone="blue">Admin</Badge>}
-                {!p.is_active && <Badge tone="amber">Inactive</Badge>}
-                {!p.display_name && <Badge tone="slate">Pending</Badge>}
+                {m.role === "admin" && <Badge tone="blue">Admin</Badge>}
+                {!m.isActive && <Badge tone="amber">Inactive</Badge>}
+                {!m.displayName && <Badge tone="slate">Pending</Badge>}
                 {isAdmin && !isSelf && (
                   <>
                     <Button
@@ -153,7 +154,7 @@ export function TeamCard({
                       size="sm"
                       variant="secondary"
                       disabled={rowBusy}
-                      onClick={() => handleResetPassword(p)}
+                      onClick={() => handleResetPassword(m)}
                     >
                       Reset password
                     </Button>
@@ -162,25 +163,25 @@ export function TeamCard({
                       size="sm"
                       variant="secondary"
                       disabled={rowBusy}
-                      onClick={() => handleToggleRole(p)}
+                      onClick={() => handleToggleRole(m)}
                     >
-                      {p.role === "admin" ? "Demote" : "Promote"}
+                      {m.role === "admin" ? "Demote" : "Promote"}
                     </Button>
                     <Button
                       type="button"
                       size="sm"
-                      variant={p.is_active ? "danger" : "secondary"}
+                      variant={m.isActive ? "danger" : "secondary"}
                       disabled={rowBusy}
-                      onClick={() => handleToggleActive(p)}
+                      onClick={() => handleToggleActive(m)}
                     >
-                      {p.is_active ? "Deactivate" : "Reactivate"}
+                      {m.isActive ? "Deactivate" : "Reactivate"}
                     </Button>
                     <Button
                       type="button"
                       size="sm"
                       variant="danger"
                       disabled={rowBusy}
-                      onClick={() => handleDelete(p)}
+                      onClick={() => handleDelete(m)}
                     >
                       Delete
                     </Button>

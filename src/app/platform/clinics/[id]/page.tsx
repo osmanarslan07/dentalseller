@@ -36,6 +36,10 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
         <p className="mt-1 text-sm text-slate-500">
           Created {formatDate(clinic.created_at.slice(0, 10))}
           {stats.lastActivityAt && <> · last activity {formatActivityTime(stats.lastActivityAt)}</>}
+          {" · "}
+          <Link href={`/platform/audit?clinic=${clinic.id}`} className="text-teal-700 hover:underline">
+            Platform audit log
+          </Link>
         </p>
       </div>
 

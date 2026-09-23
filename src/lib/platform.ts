@@ -332,3 +332,96 @@ export async function getMonthlyUsage(clinicId?: string): Promise<MonthlyUsage[]
   const start = firstUsed === -1 ? latestStart : Math.min(firstUsed, latestStart);
   return months.slice(Math.max(start, 0));
 }
+
+/** Every action a superadmin can take from the platform area, as logged by actions.ts. */
+export const PLATFORM_ACTION_LABELS: Record<string, string> = {
+  clinic_created: "Created clinic",
+  clinic_updated: "Edited clinic details",
+  clinic_suspended: "Suspended clinic",
+  clinic_reactivated: "Reactivated clinic",
+  password_reset: "Reset password",
+  superadmin_added: "Added superadmin",
+};
+
+export const AUDIT_LOG_LIMIT = 200;
+
+export interface PlatformAuditEntry {
+  id: string;
+  createdAt: string;
+  action: string;
+  actionLabel: string;
+  actorName: string;
+  /** Who or what was acted on — a clinic, or a person (with their clinic, if any). */
+  targetLabel: string;
+  /** The clinic involved, directly or via the person acted on — drives the clinic filter
+   * and the link. Null for platform-level targets like a new superadmin. */
+  clinicId: string | null;
+  clinicName: string | null;
+  detail: string | null;
+}
+
+/** Actions taken by superadmins, newest first. Read with the service role — clinic staff's
+ * own activity_log rows (which can name patients) are never included, only rows whose
+ * actor is a superadmin. */
+export async function getPlatformAuditLog(): Promise<{
+  entries: PlatformAuditEntry[];
+  /** Every clinic as [id, name], sorted by name — for the clinic filter. */
+  clinics: [string, string][];
+}> {
+  const admin = createAdminClient();
+  const { data: superadmins, error: saError } = await admin.from("profiles").select("id").eq("role", "superadmin");
+  if (saError) throw saError;
+  const superadminIds = (superadmins ?? []).map((s) => s.id);
+
+  const { data: rows, error } = await admin
+    .from("activity_log")
+    .select("id, actor_id, action, target_type, target_id, detail, created_at")
+    .in("actor_id", superadminIds)
+    .order("created_at", { ascending: false })
+    .limit(AUDIT_LOG_LIMIT);
+  if (error) throw error;
+  const entries = rows ?? [];
+
+  const profileTargetIds = entries.filter((r) => r.target_type === "profile" && r.target_id).map((r) => r.target_id);
+  const peopleIds = [...new Set([...superadminIds, ...profileTargetIds])];
+
+  const [{ data: clinics, error: cError }, { data: people, error: pError }, authById] = await Promise.all([
+    admin.from("clinics").select("id, name"),
+    admin.from("profiles").select("id, display_name, clinic_id").in("id", peopleIds),
+    getAuthInfoById(),
+  ]);
+  if (cError) throw cError;
+  if (pError) throw pError;
+
+  const clinicName = new Map((clinics ?? []).map((c) => [c.id, c.name as string]));
+  const clinicList = [...clinicName].sort((a, b) => a[1].localeCompare(b[1]));
+  const person = new Map((people ?? []).map((p) => [p.id, p]));
+  // A deleted account keeps its log rows — label it rather than dropping the entry.
+  const nameOf = (id: string) => person.get(id)?.display_name || authById.get(id)?.email || "Deleted account";
+
+  const auditEntries = entries.map((r): PlatformAuditEntry => {
+    let targetLabel = "—";
+    let clinicId: string | null = null;
+    if (r.target_type === "clinic" && r.target_id) {
+      clinicId = r.target_id;
+      targetLabel = clinicName.get(r.target_id) ?? "Deleted clinic";
+    } else if (r.target_type === "profile" && r.target_id) {
+      clinicId = person.get(r.target_id)?.clinic_id ?? null;
+      const email = authById.get(r.target_id)?.email;
+      targetLabel = email ?? nameOf(r.target_id);
+    }
+    return {
+      id: r.id,
+      createdAt: r.created_at,
+      action: r.action,
+      actionLabel: PLATFORM_ACTION_LABELS[r.action] ?? r.action,
+      actorName: r.actor_id ? nameOf(r.actor_id) : "Unknown",
+      targetLabel,
+      clinicId,
+      clinicName: clinicId ? (clinicName.get(clinicId) ?? null) : null,
+      detail: r.detail,
+    };
+  });
+
+  return { entries: auditEntries, clinics: clinicList };
+}

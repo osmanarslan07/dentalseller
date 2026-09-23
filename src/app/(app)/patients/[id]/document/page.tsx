@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPatient, getSettings } from "@/lib/data";
+import { extraLabel, extrasFor, visitAmount } from "@/lib/balance";
+import { visitExpectedTotal } from "@/lib/commission";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
 
@@ -68,8 +70,11 @@ export default async function PatientDocumentPage({
   const visitNum: 1 | 2 = visit === "2" ? 2 : 1;
   const mode: "visit1" | "visit2" | "extra" = extraVisit ? "extra" : visitNum === 2 ? "visit2" : "visit1";
 
-  const firstVisitPayment = patient.visit1_actual ?? patient.visit1_expected;
-  const secondVisitPayment = patient.visit2_actual ?? patient.visit2_expected;
+  // paid amount once there is one, otherwise the agreed price + that visit's extras
+  const firstVisitPayment = visitAmount(patient, "visit1");
+  const secondVisitPayment = visitAmount(patient, "visit2");
+  const visitKey = mode === "extra" ? extraVisit!.id : mode;
+  const extras = extrasFor(patient, visitKey);
   const totalPayment = (firstVisitPayment ?? 0) + (secondVisitPayment ?? 0);
 
   const travel =
@@ -217,7 +222,10 @@ export default async function PatientDocumentPage({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field
                 label="Expected payment"
-                value={extraVisit!.expected != null ? formatCurrency(extraVisit!.expected, settings.currency) : ""}
+                value={(() => {
+                  const e = visitExpectedTotal(patient, extraVisit!.id, extraVisit!.expected);
+                  return e != null ? formatCurrency(e, settings.currency) : "";
+                })()}
               />
               <Field
                 label="Actual payment"
@@ -236,6 +244,21 @@ export default async function PatientDocumentPage({
                 value={secondVisitPayment != null ? formatCurrency(secondVisitPayment, settings.currency) : ""}
               />
               <Field label="Total payment" value={formatCurrency(totalPayment, settings.currency)} strong />
+            </div>
+          )}
+          {extras.length > 0 && (
+            <div className="mt-4 border-t border-teal-100 pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Extras on this visit (included above)
+              </p>
+              <ul className="mt-2 space-y-1 text-sm text-slate-800">
+                {extras.map((e) => (
+                  <li key={e.id} className="flex justify-between gap-4">
+                    <span>{extraLabel(e)}</span>
+                    <span className="font-semibold tabular-nums">{formatCurrency(e.total, settings.currency)}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

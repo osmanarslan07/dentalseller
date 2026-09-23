@@ -15,6 +15,7 @@ import {
 } from "./patients/actions";
 import { Patient, Profile } from "@/types";
 import { isMismatch, visitBalances } from "@/lib/balance";
+import { visitExpectedTotal } from "@/lib/commission";
 
 const EVENT_ICONS: Record<CalendarEventKind, string> = {
   visit1_arrival: "🛬",
@@ -152,13 +153,16 @@ export function TeamOperationsPanel({
         daysLeft,
         // Departure shares the same expected amount as its arrival — showing it twice per visit
         // reads as double the money owed, so only the arrival (or self/extra) event carries it.
+        // price + that visit's extras
         expected: isDeparture
           ? null
           : isExtra
-            ? extraVisit?.expected ?? null
+            ? extraVisit
+              ? visitExpectedTotal(p, extraVisit.id, extraVisit.expected)
+              : null
             : isVisit2
-              ? p.visit2_expected
-              : p.visit1_expected,
+              ? visitExpectedTotal(p, "visit2", p.visit2_expected)
+              : visitExpectedTotal(p, "visit1", p.visit1_expected),
       });
     }
     events.sort((a, b) => a.date.localeCompare(b.date));

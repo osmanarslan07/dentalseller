@@ -12,6 +12,8 @@ import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
 import { getActingUser } from "@/lib/viewer";
 import { recordSupportEvent } from "@/lib/support-log";
 import { recordRef } from "@/lib/activity-mask";
+import { visitExpectedTotal } from "@/lib/commission";
+import { extraLabel, extrasFor } from "@/lib/balance";
 
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
  * parses as UTC) so this can't drift a day depending on the server's timezone offset. */
@@ -239,18 +241,25 @@ function buildVisitMessage(patient: Patient, visitKey: string): string {
   // visit1/visit2 messages carry both visits' payments (+ a running total) for planning
   // purposes — whoever's arranging visit2 logistics needs to know what visit1 already
   // brought in, and vice versa. Extra visits stay single-payment, as before.
-  const paymentLines: (string | null)[] = [];
+  // expected amounts include the extras sold on that visit (paid amounts already do)
+  expected = visitExpectedTotal(patient, visitKey, expected);
+  const visit1Expected = visitExpectedTotal(patient, "visit1", patient.visit1_expected);
+  const visit2Expected = visitExpectedTotal(patient, "visit2", patient.visit2_expected);
+
+  const paymentLines: (string | null)[] = extrasFor(patient, visitKey).map(
+    (e) => `<b>Ekstra:</b> ${extraLabel(e, "tr")} — £${e.total}`
+  );
   if (visitKey === "visit1") {
     paymentLines.push(paymentLine("İlk visit ödeme", actual, expected));
     if (patient.needs_visit2) {
-      paymentLines.push(paymentLine("İkinci visit ödeme", patient.visit2_actual, patient.visit2_expected));
-      const total = amountOf(actual, expected) + amountOf(patient.visit2_actual, patient.visit2_expected);
+      paymentLines.push(paymentLine("İkinci visit ödeme", patient.visit2_actual, visit2Expected));
+      const total = amountOf(actual, expected) + amountOf(patient.visit2_actual, visit2Expected);
       if (total > 0) paymentLines.push(`<b>Toplam Ödeme:</b> £${total}`);
     }
   } else if (visitKey === "visit2") {
-    paymentLines.push(paymentLine("İlk visit ödeme", patient.visit1_actual, patient.visit1_expected));
+    paymentLines.push(paymentLine("İlk visit ödeme", patient.visit1_actual, visit1Expected));
     paymentLines.push(paymentLine("İkinci visit ödeme", actual, expected));
-    const total = amountOf(patient.visit1_actual, patient.visit1_expected) + amountOf(actual, expected);
+    const total = amountOf(patient.visit1_actual, visit1Expected) + amountOf(actual, expected);
     if (total > 0) paymentLines.push(`<b>Toplam Ödeme:</b> £${total}`);
   } else {
     paymentLines.push(paymentLine("Ödeme", actual, expected));

@@ -8,6 +8,7 @@ import {
   monthLabel,
   patientCommissionContribution,
   ratesMapFromAggregates,
+  visitExpectedTotal,
 } from "@/lib/commission";
 import { formatCurrency, formatDate } from "@/lib/format";
 import Link from "next/link";
@@ -17,6 +18,14 @@ import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
 import { deletePatient, sendPatientTelegramMessage } from "./actions";
 import { patientBalance } from "@/lib/balance";
+
+/** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. */
+function visitMoney(p: Patient, key: "visit1" | "visit2", currency: string): string {
+  const actual = key === "visit1" ? p.visit1_actual : p.visit2_actual;
+  if (actual != null) return formatCurrency(actual, currency);
+  const expected = visitExpectedTotal(p, key, key === "visit1" ? p.visit1_expected : p.visit2_expected);
+  return expected != null ? `${formatCurrency(expected, currency)} (exp.)` : "—";
+}
 
 /** Money in vs money owed (price + extras) across all the patient's visits. */
 function BalanceBadge({ patient }: { patient: Patient }) {
@@ -594,22 +603,14 @@ export function PatientsClient({
                 <div className="text-xs uppercase tracking-wide text-slate-400">Visit 1</div>
                 <div className="text-slate-600">{formatDate(p.visit1_date)}</div>
                 <div className="text-xs text-slate-400">
-                  {p.visit1_actual != null
-                    ? formatCurrency(p.visit1_actual, settings.currency)
-                    : p.visit1_expected != null
-                    ? `${formatCurrency(p.visit1_expected, settings.currency)} (exp.)`
-                    : "—"}
+                  {visitMoney(p, "visit1", settings.currency)}
                 </div>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-400">Visit 2</div>
                 <div className="text-slate-600">{formatDate(p.visit2_date)}</div>
                 <div className="text-xs text-slate-400">
-                  {p.visit2_actual != null
-                    ? formatCurrency(p.visit2_actual, settings.currency)
-                    : p.visit2_expected != null
-                    ? `${formatCurrency(p.visit2_expected, settings.currency)} (exp.)`
-                    : "—"}
+                  {visitMoney(p, "visit2", settings.currency)}
                 </div>
               </div>
             </div>
@@ -708,21 +709,13 @@ export function PatientsClient({
                   <td className="py-3 pr-4 text-slate-500">
                     <div>{formatDate(p.visit1_date)}</div>
                     <div className="text-xs">
-                      {p.visit1_actual != null
-                        ? formatCurrency(p.visit1_actual, settings.currency)
-                        : p.visit1_expected != null
-                        ? `${formatCurrency(p.visit1_expected, settings.currency)} (exp.)`
-                        : "—"}
+                      {visitMoney(p, "visit1", settings.currency)}
                     </div>
                   </td>
                   <td className="py-3 pr-4 text-slate-500">
                     <div>{formatDate(p.visit2_date)}</div>
                     <div className="text-xs">
-                      {p.visit2_actual != null
-                        ? formatCurrency(p.visit2_actual, settings.currency)
-                        : p.visit2_expected != null
-                        ? `${formatCurrency(p.visit2_expected, settings.currency)} (exp.)`
-                        : "—"}
+                      {visitMoney(p, "visit2", settings.currency)}
                     </div>
                   </td>
                   <td className="py-3 pr-4">

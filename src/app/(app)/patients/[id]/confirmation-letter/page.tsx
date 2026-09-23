@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getPatient, getSettings } from "@/lib/data";
+import { extraLabel, extrasFor, visitAmount } from "@/lib/balance";
 import { formatCurrency } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
 
@@ -85,8 +86,12 @@ export default async function ConfirmationLetterPage({
     logoUrl: clinicConfig.clinicLogoUrl,
   };
 
-  const firstVisitPayment = patient.visit1_actual ?? patient.visit1_expected;
-  const secondVisitPayment = patient.visit2_actual ?? patient.visit2_expected;
+  // paid amount once there is one, otherwise the agreed price + that visit's extras
+  const firstVisitPayment = visitAmount(patient, "visit1");
+  const secondVisitPayment = visitAmount(patient, "visit2");
+  const firstVisitExtras = extrasFor(patient, "visit1");
+  const secondVisitExtras = extrasFor(patient, "visit2");
+  const surchargePct = `${Number((clinicConfig.cardSurchargeRate * 100).toFixed(2))}%`;
   const totalPayment = (firstVisitPayment ?? 0) + (secondVisitPayment ?? 0);
 
   const travel =
@@ -198,12 +203,24 @@ export default async function ConfirmationLetterPage({
                     {firstVisitPayment != null ? formatCurrency(firstVisitPayment, settings.currency) : "—"}
                   </span>
                 </li>
+                {firstVisitExtras.map((e) => (
+                  <li key={e.id} className="flex items-baseline justify-between gap-4 pl-4 text-xs text-slate-500">
+                    <span>incl. {extraLabel(e)}</span>
+                    <span className="tabular-nums">{formatCurrency(e.total, settings.currency)}</span>
+                  </li>
+                ))}
                 <li className="flex items-baseline justify-between gap-4">
                   <span>Second Visit Payment:</span>
                   <span className="font-bold tabular-nums">
                     {secondVisitPayment != null ? formatCurrency(secondVisitPayment, settings.currency) : "—"}
                   </span>
                 </li>
+                {secondVisitExtras.map((e) => (
+                  <li key={e.id} className="flex items-baseline justify-between gap-4 pl-4 text-xs text-slate-500">
+                    <span>incl. {extraLabel(e)}</span>
+                    <span className="tabular-nums">{formatCurrency(e.total, settings.currency)}</span>
+                  </li>
+                ))}
               </ul>
               <div className="mt-3 flex items-center justify-between gap-4 rounded-lg bg-teal-600 px-4 py-3 text-white">
                 <span className="text-sm font-semibold">Total Amount To Be Paid</span>
@@ -211,7 +228,7 @@ export default async function ConfirmationLetterPage({
               </div>
               <p className="mt-4 text-xs leading-relaxed text-slate-500">
                 Our package prices are quoted for cash payments in British Pounds (£). If you prefer to pay
-                via credit card, debit card, or bank transfer, please be aware that a 3% bank commission fee
+                via credit card, debit card, or bank transfer, please be aware that a {surchargePct} bank commission fee
                 will be applied. We kindly ask that you have your preferred payment method arranged before
                 your treatment begins.
               </p>

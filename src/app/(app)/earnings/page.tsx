@@ -9,6 +9,7 @@ import {
   lastNMonths,
   monthLabel,
   treatmentTotal,
+  visitExpectedTotal,
 } from "@/lib/commission";
 import { formatCurrency } from "@/lib/format";
 import { Badge, Card, StatCard } from "@/components/ui";
@@ -80,9 +81,9 @@ export default async function EarningsPage() {
   const upcoming: UpcomingVisit[] = [];
   for (const p of patients) {
     const visitEntries: readonly (readonly [string | null, "upcoming" | "completed", number | null])[] = [
-      [p.visit1_date, p.visit1_status, p.visit1_expected],
-      [p.visit2_date, p.visit2_status, p.visit2_expected],
-      ...p.extra_visits.map((v) => [v.visit_date, v.status, v.expected] as const),
+      [p.visit1_date, p.visit1_status, visitExpectedTotal(p, "visit1", p.visit1_expected)],
+      [p.visit2_date, p.visit2_status, visitExpectedTotal(p, "visit2", p.visit2_expected)],
+      ...p.extra_visits.map((v) => [v.visit_date, v.status, visitExpectedTotal(p, v.id, v.expected)] as const),
     ];
     for (const [date, status, expected] of visitEntries) {
       if (!date || status !== "upcoming") continue;

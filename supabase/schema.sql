@@ -1274,6 +1274,33 @@ revoke all on function public.platform_monthly_usage(int) from public, anon, aut
 grant execute on function public.platform_monthly_usage(int) to service_role;
 
 -- =====================================================================
+-- PLATFORM: per-clinic plan & billing record. Idempotent/safe to re-run.
+-- =====================================================================
+
+-- Its own table rather than columns on clinics: clinics is readable by the clinic's own
+-- staff (clinics_select_own), and a clinic mustn't see its price or the platform's private
+-- notes about it. RLS on with no policies = service role only. No row = no plan set yet.
+-- Record-keeping only — no payments happen here.
+create table if not exists public.clinic_billing (
+  clinic_id uuid primary key references public.clinics(id) on delete cascade,
+  plan text not null default 'trial' check (plan in ('trial', 'starter', 'pro', 'custom')),
+  -- max active accounts (admins + sellers); null = unlimited
+  seat_limit int check (seat_limit is null or seat_limit > 0),
+  trial_ends_at date,
+  monthly_price numeric(10, 2) check (monthly_price is null or monthly_price >= 0),
+  currency text not null default 'EUR' check (currency in ('GBP', 'USD', 'EUR', 'TRY')),
+  notes text,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.clinic_billing enable row level security;
+
+drop trigger if exists clinic_billing_set_updated_at on public.clinic_billing;
+create trigger clinic_billing_set_updated_at
+  before update on public.clinic_billing
+  for each row execute function public.set_updated_at();
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

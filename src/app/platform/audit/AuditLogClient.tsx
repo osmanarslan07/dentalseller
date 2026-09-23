@@ -12,6 +12,7 @@ const ACTION_TONES: Record<string, "slate" | "green" | "amber" | "blue" | "red">
   clinic_suspended: "red",
   password_reset: "amber",
   superadmin_added: "blue",
+  clinic_billing_updated: "blue",
 };
 
 export function AuditLogClient({

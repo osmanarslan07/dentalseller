@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity } from "@/lib/activity-log";
 import { assertSuperadmin } from "@/lib/platform";
+import { BILLING_CURRENCIES, formatPrice, Plan, PLAN_LABELS, PLANS } from "@/lib/clinic-billing";
 
 function generateTempPassword(): string {
   return randomBytes(12).toString("base64url");
@@ -180,4 +181,58 @@ export async function addSuperadmin(rawEmail: string, rawName: string): Promise<
 
   revalidatePath("/platform/superadmins");
   return { email, tempPassword };
+}
+
+function optionalNumber(formData: FormData, key: string, label: string, { integer = false } = {}): number | null {
+  const raw = String(formData.get(key) ?? "").trim();
+  if (!raw) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || (integer && !Number.isInteger(value))) {
+    throw new Error(`${label} must be a ${integer ? "whole " : ""}number of 0 or more`);
+  }
+  return value;
+}
+
+/** Record-keeping only — no payment is taken. Upserted: a clinic has no row until its first
+ * plan is saved. */
+export async function updateClinicBilling(clinicId: string, formData: FormData): Promise<void> {
+  const { supabase, user } = await assertSuperadmin();
+
+  const plan = String(formData.get("plan") ?? "") as Plan;
+  if (!PLANS.includes(plan)) throw new Error("Choose a plan");
+  const currency = String(formData.get("currency") ?? "");
+  if (!(BILLING_CURRENCIES as readonly string[]).includes(currency)) throw new Error("Choose a currency");
+
+  const seatLimit = optionalNumber(formData, "seat_limit", "Seat limit", { integer: true });
+  if (seatLimit === 0) throw new Error("Seat limit must be at least 1, or blank for unlimited");
+  const monthlyPrice = optionalNumber(formData, "monthly_price", "Monthly price");
+  // A trial end date only means something on the trial plan — don't leave a stale one behind.
+  const trialEndsAt = plan === "trial" ? String(formData.get("trial_ends_at") ?? "").trim() || null : null;
+  if (trialEndsAt && !/^\d{4}-\d{2}-\d{2}$/.test(trialEndsAt)) throw new Error("Enter a valid trial end date");
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("clinic_billing").upsert({
+    clinic_id: clinicId,
+    plan,
+    seat_limit: seatLimit,
+    trial_ends_at: trialEndsAt,
+    monthly_price: monthlyPrice,
+    currency,
+    notes,
+  });
+  if (error) throw new Error(error.message);
+
+  const summary = [
+    PLAN_LABELS[plan],
+    seatLimit ? `${seatLimit} seats` : "unlimited seats",
+    monthlyPrice !== null && `${formatPrice(monthlyPrice, currency)}/month`,
+    trialEndsAt && `trial ends ${trialEndsAt}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  await logActivity(supabase, user.id, "clinic_billing_updated", "clinic", clinicId, summary);
+
+  revalidatePath("/platform");
+  revalidatePath(`/platform/clinics/${clinicId}`);
 }

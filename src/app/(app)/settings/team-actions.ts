@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity } from "@/lib/activity-log";
+import { assertSeatAvailable } from "@/lib/seats";
 import { SellerRole } from "@/types";
 
 function generateTempPassword(): string {
@@ -37,6 +38,7 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
     .maybeSingle();
   if (profileError) throw new Error(profileError.message);
   if (!myProfile?.is_active) throw new Error("Your account isn't active");
+  await assertSeatAvailable(myProfile.clinic_id);
 
   const tempPassword = generateTempPassword();
   const admin = createAdminClient();
@@ -78,6 +80,12 @@ export async function setSellerActive(sellerId: string, active: boolean): Promis
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
   if (sellerId === user.id) throw new Error("You can't deactivate your own account");
+
+  // Reactivating takes a seat back; RLS already confines this to the caller's own clinic.
+  if (active) {
+    const { data: myProfile } = await supabase.from("profiles").select("clinic_id").eq("id", user.id).maybeSingle();
+    if (myProfile?.clinic_id) await assertSeatAvailable(myProfile.clinic_id);
+  }
 
   const { error } = await supabase.from("profiles").update({ is_active: active }).eq("id", sellerId);
   if (error) throw new Error(error.message);

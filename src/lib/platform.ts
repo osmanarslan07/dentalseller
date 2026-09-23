@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { currentMonthKey, monthLabel } from "@/lib/commission";
 import { computeHealthFlags, HealthFlag } from "@/lib/clinic-health";
 import { computeOnboarding, OnboardingStep } from "@/lib/clinic-onboarding";
+import { ClinicBilling, Plan } from "@/lib/clinic-billing";
 import { ProfileRole } from "@/types";
 
 /** Server-side gate for every /platform page and action. Platform reads go through the
@@ -68,6 +69,8 @@ export interface ClinicWithStats extends Clinic {
   /** Worst first; empty when the clinic is healthy (or suspended). */
   health: HealthFlag[];
   onboarding: OnboardingStep[];
+  /** Null until a superadmin records a plan. */
+  billing: ClinicBilling | null;
 }
 
 export interface ClinicMember {
@@ -126,7 +129,17 @@ async function summarizeClinic(
   const { start, end } = currentMonthRange();
   const count = { count: "exact" as const, head: true };
 
-  const [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity, brandingRes, confirmedPatients] =
+  const [
+    profilesRes,
+    patients,
+    patientsThisMonth,
+    quotes,
+    quotesThisMonth,
+    lastActivity,
+    brandingRes,
+    confirmedPatients,
+    billingRes,
+  ] =
     await Promise.all([
       admin.from("profiles").select("id, role, is_active").eq("clinic_id", clinicId),
       admin.from("patients").select("id", count).eq("clinic_id", clinicId),
@@ -151,8 +164,23 @@ async function summarizeClinic(
         .eq("clinic_id", clinicId)
         .maybeSingle(),
       admin.from("patients").select("id", count).eq("clinic_id", clinicId).not("confirmation_date", "is", null),
+      admin
+        .from("clinic_billing")
+        .select("plan, seat_limit, trial_ends_at, monthly_price, currency, notes")
+        .eq("clinic_id", clinicId)
+        .maybeSingle(),
     ]);
-  const results = [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity, brandingRes, confirmedPatients];
+  const results = [
+    profilesRes,
+    patients,
+    patientsThisMonth,
+    quotes,
+    quotesThisMonth,
+    lastActivity,
+    brandingRes,
+    confirmedPatients,
+    billingRes,
+  ];
   for (const res of results) {
     if (res.error) throw res.error;
   }
@@ -170,6 +198,7 @@ async function summarizeClinic(
         logoUrl: branding.clinic_logo_url,
       }
     : null;
+  const billing = toClinicBilling(billingRes.data);
 
   return {
     ...clinic,
@@ -194,13 +223,37 @@ async function summarizeClinic(
         lastSignInAt: authById.get(p.id)?.lastSignInAt ?? null,
       })),
       branding: brandingInput,
+      billing,
     }),
+    billing,
     onboarding: computeOnboarding({
       branding: brandingInput && { ...brandingInput, telegramGroupChatId: branding?.telegram_group_chat_id ?? null },
       sellers: profiles.filter((p) => p.role === "seller").length,
       quotes: quotes.count ?? 0,
       confirmedPatients: confirmedPatients.count ?? 0,
     }),
+  };
+}
+
+interface ClinicBillingRow {
+  plan: Plan;
+  seat_limit: number | null;
+  trial_ends_at: string | null;
+  monthly_price: string | number | null;
+  currency: string;
+  notes: string | null;
+}
+
+function toClinicBilling(row: ClinicBillingRow | null): ClinicBilling | null {
+  if (!row) return null;
+  return {
+    plan: row.plan,
+    seatLimit: row.seat_limit,
+    trialEndsAt: row.trial_ends_at,
+    // numeric can arrive as a string or a number depending on the driver path — normalize
+    monthlyPrice: row.monthly_price === null ? null : Number(row.monthly_price),
+    currency: row.currency,
+    notes: row.notes,
   };
 }
 
@@ -341,6 +394,7 @@ export const PLATFORM_ACTION_LABELS: Record<string, string> = {
   clinic_reactivated: "Reactivated clinic",
   password_reset: "Reset password",
   superadmin_added: "Added superadmin",
+  clinic_billing_updated: "Updated plan",
 };
 
 export const AUDIT_LOG_LIMIT = 200;

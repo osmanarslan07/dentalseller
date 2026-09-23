@@ -10,6 +10,7 @@ import { Badge, Card, Input } from "@/components/ui";
 import { severityRank, worstSeverity } from "@/lib/clinic-health";
 import { HealthSummary } from "./HealthFlags";
 import { OnboardingTag } from "./Onboarding";
+import { formatPrice, PLAN_LABELS, trialStatus } from "@/lib/clinic-billing";
 
 type SortKey = "name" | "health" | "users" | "patients" | "activity" | "created";
 
@@ -86,11 +87,12 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-left text-sm">
+        <table className="w-full min-w-[980px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50/60">
               <th className="py-3 pl-4 pr-4">{header("Clinic", "name")}</th>
               <th className="py-3 pr-4">{header("Health", "health")}</th>
+              <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">Plan</th>
               <th className="py-3 pr-4">{header("Team", "users")}</th>
               <th className="py-3 pr-4">{header("Patients", "patients")}</th>
               <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">Quotes</th>
@@ -122,6 +124,9 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
                 <td className="py-3 pr-4">
                   <HealthSummary flags={clinic.health} />
                 </td>
+                <td className="py-3 pr-4">
+                  <PlanCell clinic={clinic} />
+                </td>
                 <td className="py-3 pr-4 text-slate-600">
                   {pluralize(clinic.stats.admins, "admin")}, {pluralize(clinic.stats.sellers, "seller")}
                   {clinic.stats.onlineNow > 0 && (
@@ -143,7 +148,7 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-slate-400">
+                <td colSpan={8} className="py-10 text-center text-slate-400">
                   {clinics.length === 0 ? "No clinics yet." : "No clinics match your search."}
                 </td>
               </tr>
@@ -152,6 +157,26 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
         </table>
       </div>
     </Card>
+  );
+}
+
+function PlanCell({ clinic }: { clinic: ClinicWithStats }) {
+  const b = clinic.billing;
+  if (!b) return <span className="text-xs text-slate-400">Not set</span>;
+  const trial = trialStatus(b);
+  return (
+    <div className="text-sm">
+      <span className="text-slate-900">{PLAN_LABELS[b.plan]}</span>
+      {b.monthlyPrice !== null && (
+        <span className="text-slate-500"> · {formatPrice(b.monthlyPrice, b.currency)}/mo</span>
+      )}
+      {trial.kind === "active" && (
+        <span className="block text-xs text-slate-400">
+          {trial.daysLeft === 0 ? "ends today" : `${trial.daysLeft} day${trial.daysLeft === 1 ? "" : "s"} left`}
+        </span>
+      )}
+      {trial.kind === "expired" && <span className="block text-xs text-red-600">expired</span>}
+    </div>
   );
 }
 

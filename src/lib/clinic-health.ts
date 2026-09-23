@@ -1,10 +1,19 @@
+import { ClinicBilling, TRIAL_WARNING_DAYS, trialStatus } from "@/lib/clinic-billing";
+
 /** Automatic "needs attention" checks for the platform area. Pure — no DB access — so the
  * rules and thresholds live in one place, separate from how the inputs get fetched. */
 
 export type HealthSeverity = "critical" | "warning" | "info";
 
 export interface HealthFlag {
-  id: "no_active_admin" | "inactive" | "never_signed_in" | "branding_incomplete";
+  id:
+    | "no_active_admin"
+    | "trial_expired"
+    | "trial_ending"
+    | "over_seat_limit"
+    | "inactive"
+    | "never_signed_in"
+    | "branding_incomplete";
   severity: HealthSeverity;
   label: string;
   /** What's wrong, and what to do about it. */
@@ -21,6 +30,7 @@ export interface ClinicHealthInput {
   lastActivityAt: string | null;
   members: { role: string; isActive: boolean; lastSignInAt: string | null }[];
   branding: { address: string; phone: string; email: string; logoUrl: string | null } | null;
+  billing: ClinicBilling | null;
 }
 
 export function computeHealthFlags(input: ClinicHealthInput, now = Date.now()): HealthFlag[] {
@@ -36,6 +46,34 @@ export function computeHealthFlags(input: ClinicHealthInput, now = Date.now()): 
       severity: "critical",
       label: "No active admin",
       detail: "Nobody at this clinic can manage its team or branding. If their admin is just locked out, reset that admin's password below.",
+    });
+  }
+
+  const trial = trialStatus(input.billing, now);
+  if (trial.kind === "expired") {
+    flags.push({
+      id: "trial_expired",
+      severity: "critical",
+      label: "Trial expired",
+      detail: `The trial ended ${trial.daysAgo === 0 ? "today" : `${trial.daysAgo} day${trial.daysAgo === 1 ? "" : "s"} ago`}. Move them to a paid plan or extend the trial below.`,
+    });
+  } else if (trial.kind === "active" && trial.daysLeft <= TRIAL_WARNING_DAYS) {
+    flags.push({
+      id: "trial_ending",
+      severity: "warning",
+      label: trial.daysLeft === 0 ? "Trial ends today" : `Trial ends in ${trial.daysLeft} day${trial.daysLeft === 1 ? "" : "s"}`,
+      detail: "Worth a conversation about which plan they want before the trial runs out.",
+    });
+  }
+
+  const activeAccounts = input.members.filter((m) => m.isActive).length;
+  const seatLimit = input.billing?.seatLimit;
+  if (seatLimit && activeAccounts > seatLimit) {
+    flags.push({
+      id: "over_seat_limit",
+      severity: "warning",
+      label: `Over seat limit (${activeAccounts}/${seatLimit})`,
+      detail: "More active accounts than the plan allows, probably because the limit was lowered. New accounts are blocked until they are back under it.",
     });
   }
 

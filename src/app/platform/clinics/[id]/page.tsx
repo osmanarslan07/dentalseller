@@ -10,6 +10,7 @@ import { ClinicTeamCard } from "./ClinicTeamCard";
 import { HealthCard } from "../../HealthFlags";
 import { OnboardingCard } from "../../Onboarding";
 import { UsageTrends } from "../../UsageTrends";
+import { BillingCard } from "./BillingCard";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -57,7 +58,10 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
       <UsageTrends title="Usage, month by month" data={usage} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <ClinicDetailsCard clinic={clinic} />
+        <div className="space-y-6">
+          <ClinicDetailsCard clinic={clinic} />
+          <BillingCard clinicId={clinic.id} billing={clinic.billing} activeAccounts={stats.activeUsers} />
+        </div>
         <ClinicTeamCard members={members} />
       </div>
     </div>

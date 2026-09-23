@@ -1217,6 +1217,63 @@ revoke all on function public.touch_presence() from public, anon;
 grant execute on function public.touch_presence() to authenticated;
 
 -- =====================================================================
+-- PLATFORM: monthly usage trends. Idempotent/safe to re-run.
+-- =====================================================================
+
+-- One row per clinic per month (zero-filled) for the last p_months months, counts only —
+-- nothing identifying crosses into the platform area. Aggregated in SQL because pulling raw
+-- rows would hit PostgREST's row cap on any clinic with real history. "Active users" is
+-- distinct people who logged any activity that month: the only historical signal there is
+-- (user_presence only knows the latest heartbeat). Months are UTC, matching the app's own
+-- month keys (currentMonthKey uses toISOString).
+create or replace function public.platform_monthly_usage(p_months int default 12)
+returns table (clinic_id uuid, month date, quotes_created int, patients_confirmed int, active_users int)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with bounds as (
+    select
+      (date_trunc('month', now() at time zone 'utc') - make_interval(months => greatest(p_months, 1) - 1))::date as first_month,
+      (date_trunc('month', now() at time zone 'utc') + interval '1 month')::date as end_month
+  ),
+  months as (
+    select generate_series(b.first_month, b.end_month - 1, interval '1 month')::date as month from bounds b
+  ),
+  q as (
+    select t.clinic_id, date_trunc('month', t.created_at at time zone 'utc')::date as m, count(*) as n
+    from public.quotes t, bounds b
+    where t.created_at >= b.first_month and t.created_at < b.end_month
+    group by 1, 2
+  ),
+  p as (
+    select t.clinic_id, date_trunc('month', t.confirmation_date)::date as m, count(*) as n
+    from public.patients t, bounds b
+    where t.confirmation_date >= b.first_month and t.confirmation_date < b.end_month
+    group by 1, 2
+  ),
+  a as (
+    select t.clinic_id, date_trunc('month', t.created_at at time zone 'utc')::date as m, count(distinct t.actor_id) as n
+    from public.activity_log t, bounds b
+    where t.clinic_id is not null and t.created_at >= b.first_month and t.created_at < b.end_month
+    group by 1, 2
+  )
+  select c.id, mo.month, coalesce(q.n, 0)::int, coalesce(p.n, 0)::int, coalesce(a.n, 0)::int
+  from public.clinics c
+  cross join months mo
+  left join q on q.clinic_id = c.id and q.m = mo.month
+  left join p on p.clinic_id = c.id and p.m = mo.month
+  left join a on a.clinic_id = c.id and a.m = mo.month
+  order by c.id, mo.month;
+$$;
+
+-- Service role only: this spans every clinic, so it's for the platform area's server code
+-- (behind requireSuperadmin), never for a signed-in user calling it directly.
+revoke all on function public.platform_monthly_usage(int) from public, anon, authenticated;
+grant execute on function public.platform_monthly_usage(int) to service_role;
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

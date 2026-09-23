@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { getClinicsWithStats } from "@/lib/platform";
+import { getClinicsWithStats, getMonthlyUsage } from "@/lib/platform";
 import { monthLabel, currentMonthKey } from "@/lib/commission";
 import { StatCard } from "@/components/ui";
 import { pluralize } from "@/lib/format";
 import { CheckCircleIcon, LayersIcon, PeopleIcon, TagIcon } from "@/components/StatIcons";
 import { ClinicsTable } from "./ClinicsTable";
 import { NeedsAttentionPanel } from "./HealthFlags";
+import { UsageTrends } from "./UsageTrends";
 
 export default async function PlatformOverviewPage() {
-  const clinics = await getClinicsWithStats();
+  const [clinics, usage] = await Promise.all([getClinicsWithStats(), getMonthlyUsage()]);
   const thisMonth = monthLabel(currentMonthKey());
 
   const sum = (pick: (c: (typeof clinics)[number]) => number) => clinics.reduce((acc, c) => acc + pick(c), 0);
@@ -61,6 +62,8 @@ export default async function PlatformOverviewPage() {
       <NeedsAttentionPanel clinics={clinics} />
 
       <ClinicsTable clinics={clinics} />
+
+      <UsageTrends title="Platform usage, month by month" data={usage} />
     </div>
   );
 }

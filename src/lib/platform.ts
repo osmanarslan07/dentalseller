@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { currentMonthKey } from "@/lib/commission";
+import { currentMonthKey, monthLabel } from "@/lib/commission";
 import { computeHealthFlags, HealthFlag } from "@/lib/clinic-health";
 import { computeOnboarding, OnboardingStep } from "@/lib/clinic-onboarding";
 import { ProfileRole } from "@/types";
@@ -270,4 +270,65 @@ export async function getSuperadmins(): Promise<ClinicMember[]> {
     .order("created_at", { ascending: true });
   if (error) throw error;
   return toMembers(data ?? []);
+}
+
+export interface MonthlyUsage {
+  /** "2026-09" */
+  month: string;
+  /** "Sept" — axis tick */
+  short: string;
+  /** "Sept 2026" — tooltip / table */
+  label: string;
+  quotesCreated: number;
+  patientsConfirmed: number;
+  activeUsers: number;
+}
+
+interface MonthlyUsageRow {
+  clinic_id: string;
+  month: string;
+  quotes_created: number;
+  patients_confirmed: number;
+  active_users: number;
+}
+
+const MIN_TREND_MONTHS = 6;
+
+function shortMonthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("en-GB", { month: "short" });
+}
+
+/** Last 12 months of counts, for one clinic or summed across the whole platform (a user
+ * belongs to exactly one clinic, so summing active users across clinics doesn't double
+ * count). Leading all-zero months are trimmed so a young platform doesn't show a row of
+ * empty bars, but at least 6 months are always kept for context. */
+export async function getMonthlyUsage(clinicId?: string): Promise<MonthlyUsage[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("platform_monthly_usage", { p_months: 12 });
+  if (error) throw error;
+
+  const byMonth = new Map<string, MonthlyUsage>();
+  for (const row of (data ?? []) as MonthlyUsageRow[]) {
+    if (clinicId && row.clinic_id !== clinicId) continue;
+    const month = row.month.slice(0, 7);
+    const acc = byMonth.get(month) ?? {
+      month,
+      short: shortMonthLabel(month),
+      label: monthLabel(month),
+      quotesCreated: 0,
+      patientsConfirmed: 0,
+      activeUsers: 0,
+    };
+    acc.quotesCreated += row.quotes_created;
+    acc.patientsConfirmed += row.patients_confirmed;
+    acc.activeUsers += row.active_users;
+    byMonth.set(month, acc);
+  }
+
+  const months = [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
+  const firstUsed = months.findIndex((m) => m.quotesCreated + m.patientsConfirmed + m.activeUsers > 0);
+  const latestStart = months.length - MIN_TREND_MONTHS;
+  const start = firstUsed === -1 ? latestStart : Math.min(firstUsed, latestStart);
+  return months.slice(Math.max(start, 0));
 }

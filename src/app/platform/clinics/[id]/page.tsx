@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getClinicMembers, getClinicWithStats } from "@/lib/platform";
+import { getClinicMembers, getClinicWithStats, getMonthlyUsage } from "@/lib/platform";
 import { currentMonthKey, monthLabel } from "@/lib/commission";
 import { formatActivityTime } from "@/lib/activity-log";
 import { formatDate, pluralize } from "@/lib/format";
@@ -9,6 +9,7 @@ import { ClinicDetailsCard } from "./ClinicDetailsCard";
 import { ClinicTeamCard } from "./ClinicTeamCard";
 import { HealthCard } from "../../HealthFlags";
 import { OnboardingCard } from "../../Onboarding";
+import { UsageTrends } from "../../UsageTrends";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -16,7 +17,7 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   if (!UUID_RE.test(id)) notFound();
 
-  const [clinic, members] = await Promise.all([getClinicWithStats(id), getClinicMembers(id)]);
+  const [clinic, members, usage] = await Promise.all([getClinicWithStats(id), getClinicMembers(id), getMonthlyUsage(id)]);
   if (!clinic) notFound();
 
   const thisMonth = monthLabel(currentMonthKey());
@@ -48,6 +49,8 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
       <HealthCard flags={clinic.health} />
 
       <OnboardingCard steps={clinic.onboarding} />
+
+      <UsageTrends title="Usage, month by month" data={usage} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <ClinicDetailsCard clinic={clinic} />

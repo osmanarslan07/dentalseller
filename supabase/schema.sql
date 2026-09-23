@@ -2085,6 +2085,83 @@ drop policy if exists "transfers_support_readonly_delete" on public.transfers;
 create policy "transfers_support_readonly_delete" on public.transfers
   as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write());
 
+-- ---------- extras sold on a visit (extra hotel nights, extra treatments, anything else) ----------
+-- Added to what the patient owes for that visit, and they count toward commission exactly like
+-- the treatment itself (once paid). Same visit reference as transfers.
+create table if not exists public.patient_extras (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  visit_number smallint check (visit_number in (1, 2)),
+  extra_visit_id uuid references public.patient_visits(id) on delete cascade,
+  kind text not null default 'treatment' check (kind in ('night', 'treatment', 'other')),
+  description text,
+  quantity numeric(10,2) not null default 1 check (quantity > 0),
+  unit_price numeric(10,2) not null default 0 check (unit_price >= 0),
+  total numeric(12,2) generated always as (round(quantity * unit_price, 2)) stored,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check ((visit_number is not null) <> (extra_visit_id is not null))
+);
+create index if not exists patient_extras_patient_idx on public.patient_extras (patient_id);
+
+drop trigger if exists patient_extras_set_updated_at on public.patient_extras;
+create trigger patient_extras_set_updated_at before update on public.patient_extras
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists patient_extras_set_clinic_id on public.patient_extras;
+create trigger patient_extras_set_clinic_id before insert on public.patient_extras
+  for each row execute function public.set_row_clinic_id();
+
+-- the patient (and extra visit) must be in the row's own clinic. Sorts after set_clinic_id.
+create or replace function public.validate_patient_extra()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from public.patients where id = new.patient_id and clinic_id = new.clinic_id) then
+    raise exception 'Patient not found';
+  end if;
+  if new.extra_visit_id is not null
+     and not exists (select 1 from public.patient_visits where id = new.extra_visit_id and patient_id = new.patient_id) then
+    raise exception 'Visit not found';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists patient_extras_validate on public.patient_extras;
+create trigger patient_extras_validate before insert or update on public.patient_extras
+  for each row execute function public.validate_patient_extra();
+
+alter table public.patient_extras enable row level security;
+
+drop policy if exists "patient_extras_select_active" on public.patient_extras;
+create policy "patient_extras_select_active" on public.patient_extras
+  for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "patient_extras_insert_active" on public.patient_extras;
+create policy "patient_extras_insert_active" on public.patient_extras
+  for insert with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "patient_extras_update_active" on public.patient_extras;
+create policy "patient_extras_update_active" on public.patient_extras
+  for update using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id())
+  with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "patient_extras_delete_active" on public.patient_extras;
+create policy "patient_extras_delete_active" on public.patient_extras
+  for delete using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "patient_extras_support_readonly_insert" on public.patient_extras;
+create policy "patient_extras_support_readonly_insert" on public.patient_extras
+  as restrictive for insert with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "patient_extras_support_readonly_update" on public.patient_extras;
+create policy "patient_extras_support_readonly_update" on public.patient_extras
+  as restrictive for update using (not public.is_superadmin(auth.uid()) or public.support_can_write())
+  with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "patient_extras_support_readonly_delete" on public.patient_extras;
+create policy "patient_extras_support_readonly_delete" on public.patient_extras
+  as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write());
+
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to

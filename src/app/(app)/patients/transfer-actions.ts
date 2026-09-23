@@ -6,6 +6,7 @@ import { getPatient } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
 import { getActingUser } from "@/lib/viewer";
 import { Patient, TransferKind, TransferStatus } from "@/types";
+import { visitLabel, visitRef } from "@/lib/visit-key";
 
 /** Places offered (and used by "Suggest transfers") alongside the visit's hotel. */
 const AIRPORT = "Airport";
@@ -15,17 +16,8 @@ const KINDS: TransferKind[] = ["arrival", "departure", "local"];
 const STATUSES: TransferStatus[] = ["planned", "sent", "done"];
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** "visit1" | "visit2" | an extra visit's id — the same keys the Telegram menu uses. */
-function visitRef(visitKey: string): { visit_number: 1 | 2 | null; extra_visit_id: string | null } {
-  if (visitKey === "visit1") return { visit_number: 1, extra_visit_id: null };
-  if (visitKey === "visit2") return { visit_number: 2, extra_visit_id: null };
-  return { visit_number: null, extra_visit_id: visitKey };
-}
-
 function visitName(patient: Patient | null, visitKey: string): string {
-  if (visitKey === "visit1") return "Visit 1";
-  if (visitKey === "visit2") return "Visit 2";
-  return patient?.extra_visits.find((v) => v.id === visitKey)?.label ?? "Extra visit";
+  return visitLabel(visitKey, patient?.extra_visits ?? []);
 }
 
 function parseTransfer(formData: FormData) {

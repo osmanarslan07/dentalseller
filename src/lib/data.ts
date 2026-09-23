@@ -22,20 +22,34 @@ async function getMyClinicId(): Promise<string | null> {
   return (await getViewer())?.clinicId ?? null;
 }
 
+/** A patient with everything hanging off their visits that money or operations reads. */
+const PATIENT_SELECT = "*, extra_visits:patient_visits(*), extras:patient_extras(*)";
+
+/** Postgres numerics can arrive as strings — make the money fields plain numbers once, here. */
+function normalizePatient(row: Record<string, unknown>): Patient {
+  const p = row as unknown as Patient;
+  return {
+    ...p,
+    extras: (p.extras ?? [])
+      .map((e) => ({ ...e, quantity: Number(e.quantity), unit_price: Number(e.unit_price), total: Number(e.total) }))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at)),
+  };
+}
+
 export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
   const { data, error } = await withRetry(() =>
     supabase
       .from("patients")
-      .select("*, extra_visits:patient_visits(*)")
+      .select(PATIENT_SELECT)
       .eq("clinic_id", clinicId)
       .order("confirmation_date", { ascending: false, nullsFirst: false })
       .order("visit_date", { foreignTable: "patient_visits", ascending: true, nullsFirst: false })
   );
 
   if (error) throw error;
-  return data as Patient[];
+  return (data ?? []).map(normalizePatient);
 }
 
 export async function getPatient(supabase: SupabaseClient, id: string): Promise<Patient | null> {
@@ -44,14 +58,14 @@ export async function getPatient(supabase: SupabaseClient, id: string): Promise<
   const { data, error } = await withRetry(() =>
     supabase
       .from("patients")
-      .select("*, extra_visits:patient_visits(*)")
+      .select(PATIENT_SELECT)
       .eq("id", id)
       .eq("clinic_id", clinicId)
       .maybeSingle()
   );
 
   if (error) throw error;
-  return data as Patient | null;
+  return data ? normalizePatient(data) : null;
 }
 
 /** userId must be explicit: admin can now read every seller's settings row (for the team

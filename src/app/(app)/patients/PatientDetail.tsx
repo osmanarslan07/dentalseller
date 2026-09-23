@@ -11,6 +11,7 @@ import { formatDate } from "@/lib/format";
 import { describeActivity, formatActivityTime, ActivityLogRow } from "@/lib/activity-log";
 import { Patient, PatientExtraVisit, Profile, Transfer, TransferCompany } from "@/types";
 import { TransfersSection, VisitTravel } from "./TransfersSection";
+import { ExtrasSection } from "./ExtrasSection";
 import {
   createPatient,
   updatePatient,
@@ -666,19 +667,28 @@ export function PatientDetail({
 
       {(activeTab === "visit1" || (activeTab === "visit2" && needsVisit2)) &&
         (isEdit && patient ? (
-          <TransfersSection
-            key={activeTab}
-            patientId={patient.id}
-            patientName={patient.name}
-            patientPhone={patient.phone}
-            visitKey={activeTab}
-            travel={mainVisitTravel(patient, activeTab === "visit1" ? 1 : 2)}
-            transfers={transfers.filter((t) => t.visit_number === (activeTab === "visit1" ? 1 : 2))}
-            companies={companies}
-          />
+          <>
+            <ExtrasSection
+              key={`extras-${activeTab}`}
+              patientId={patient.id}
+              visitKey={activeTab}
+              extras={patient.extras.filter((e) => e.visit_number === (activeTab === "visit1" ? 1 : 2))}
+              hotel={activeTab === "visit1" ? patient.visit1_hotel_name : patient.visit2_hotel_name}
+            />
+            <TransfersSection
+              key={activeTab}
+              patientId={patient.id}
+              patientName={patient.name}
+              patientPhone={patient.phone}
+              visitKey={activeTab}
+              travel={mainVisitTravel(patient, activeTab === "visit1" ? 1 : 2)}
+              transfers={transfers.filter((t) => t.visit_number === (activeTab === "visit1" ? 1 : 2))}
+              companies={companies}
+            />
+          </>
         ) : (
           <p className="rounded-lg border border-dashed border-slate-200 py-4 text-center text-sm text-slate-400">
-            Add the patient first — transfers can be added right after.
+            Add the patient first — extras and transfers can be added right after.
           </p>
         ))}
 
@@ -1209,6 +1219,13 @@ function ExtraVisitRow({
           </button>
         </div>
       </div>
+      <ExtrasSection
+        compact
+        patientId={visit.patient_id}
+        visitKey={visit.id}
+        extras={patient.extras.filter((e) => e.extra_visit_id === visit.id)}
+        hotel={visit.hotel_name}
+      />
       <TransfersSection
         compact
         patientId={visit.patient_id}

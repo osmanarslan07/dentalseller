@@ -97,6 +97,18 @@ export function describeActivity(
     }
     case "patient_deleted":
       return `${actor} deleted patient ${entry.detail || "(unnamed)"}`;
+    case "extra_added": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} added an extra for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
+    }
+    case "extra_updated": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} edited an extra for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
+    }
+    case "extra_deleted": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} deleted an extra for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
+    }
     case "transfer_added": {
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       return `${actor} added a transfer for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;

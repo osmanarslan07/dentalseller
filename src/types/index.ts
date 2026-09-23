@@ -136,6 +136,8 @@ export interface Patient {
   visit2_hotel_arranged: boolean;
 
   extra_visits: PatientExtraVisit[];
+  /** Extras sold on any of this patient's visits — see PatientExtra. */
+  extras: PatientExtra[];
 
   created_at: string;
   updated_at: string;
@@ -148,6 +150,7 @@ export type PatientInput = Omit<
   | "created_at"
   | "updated_at"
   | "extra_visits"
+  | "extras"
   | "visit1_earned_by_seller_id"
   | "visit2_earned_by_seller_id"
   // derived from transfers by a DB trigger — never written by a patient save
@@ -180,6 +183,25 @@ export interface Driver {
   vehicle: string | null;
   is_active: boolean;
   created_at: string;
+}
+
+export type PatientExtraKind = "night" | "treatment" | "other";
+
+/** Something sold on top of a visit's treatment — extra hotel nights, an extra treatment.
+ * Adds to what the patient owes for that visit and counts toward commission like treatment. */
+export interface PatientExtra {
+  id: string;
+  patient_id: string;
+  visit_number: 1 | 2 | null;
+  extra_visit_id: string | null;
+  kind: PatientExtraKind;
+  description: string | null;
+  quantity: number;
+  unit_price: number;
+  /** quantity × unit_price, computed by the database */
+  total: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export type TransferKind = "arrival" | "departure" | "local";

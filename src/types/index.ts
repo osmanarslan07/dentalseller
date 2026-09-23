@@ -239,12 +239,15 @@ export interface ClinicConfig {
   clinicLogoUrl: string | null;
 }
 
+/** Only used when a clinic has no clinic_config row (every clinic gets one at creation).
+ * Deliberately blank: with multiple clinics, any real name/address here would print on some
+ * other clinic's letters and offers. */
 export const DEFAULT_CLINIC_CONFIG: ClinicConfig = {
   telegramGroupChatId: null,
-  clinicName: "Thera Dental Clinic Turkey",
-  clinicShortName: "Thera Dental Clinic",
-  clinicAddress: "Kasya Plaza, Göksu, 6806 Sok No:8-3, 07260 Kepez/Antalya",
-  clinicPhone: "+90 (544) 954 04 49",
-  clinicEmail: "info@theradentturkey.com",
+  clinicName: "",
+  clinicShortName: "",
+  clinicAddress: "",
+  clinicPhone: "",
+  clinicEmail: "",
   clinicLogoUrl: null,
 };

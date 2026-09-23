@@ -1,7 +1,9 @@
+import { cache } from "react";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 /** Cold-start Supabase reads occasionally flake with a network error; one retry clears it. */
 async function withRetry<T>(fn: () => PromiseLike<T>): Promise<T> {
@@ -13,11 +15,28 @@ async function withRetry<T>(fn: () => PromiseLike<T>): Promise<T> {
   }
 }
 
+/** The signed-in caller's clinic, resolved once per request (React cache) and used as an
+ * explicit filter on every clinic-scoped read below. RLS is the real boundary; this is
+ * defense in depth, so a policy regression can't silently widen what a page shows. No
+ * clinic (signed out, unassigned) means these reads return nothing. */
+const getMyClinicId = cache(async (): Promise<string | null> => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase.from("profiles").select("clinic_id").eq("id", user.id).maybeSingle();
+  return (data?.clinic_id as string | null) ?? null;
+});
+
 export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
   const { data, error } = await withRetry(() =>
     supabase
       .from("patients")
       .select("*, extra_visits:patient_visits(*)")
+      .eq("clinic_id", clinicId)
       .order("confirmation_date", { ascending: false, nullsFirst: false })
       .order("visit_date", { foreignTable: "patient_visits", ascending: true, nullsFirst: false })
   );
@@ -27,8 +46,15 @@ export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> 
 }
 
 export async function getPatient(supabase: SupabaseClient, id: string): Promise<Patient | null> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return null;
   const { data, error } = await withRetry(() =>
-    supabase.from("patients").select("*, extra_visits:patient_visits(*)").eq("id", id).maybeSingle()
+    supabase
+      .from("patients")
+      .select("*, extra_visits:patient_visits(*)")
+      .eq("id", id)
+      .eq("clinic_id", clinicId)
+      .maybeSingle()
   );
 
   if (error) throw error;
@@ -38,8 +64,10 @@ export async function getPatient(supabase: SupabaseClient, id: string): Promise<
 /** userId must be explicit: admin can now read every seller's settings row (for the team
  * breakdown view), so relying on RLS + maybeSingle() to mean "just mine" no longer holds. */
 export async function getSettings(supabase: SupabaseClient, userId: string): Promise<CommissionSettings> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return DEFAULT_SETTINGS;
   const { data, error } = await withRetry(() =>
-    supabase.from("settings").select("*").eq("user_id", userId).maybeSingle()
+    supabase.from("settings").select("*").eq("user_id", userId).eq("clinic_id", clinicId).maybeSingle()
   );
 
   if (error) throw error;
@@ -63,13 +91,15 @@ export async function getSettings(supabase: SupabaseClient, userId: string): Pro
   };
 }
 
-/** Singleton row — clinic-wide settings not tied to any one seller (the shared Telegram group
- * chat, confirmation-letter/quote-offer branding). Readable by any active seller; only admins
- * can write it (see the clinic_config RLS policies). */
+/** One row per clinic — clinic-wide settings not tied to any one seller (the shared Telegram
+ * group chat, confirmation-letter/quote-offer branding). Readable by any active seller of that
+ * clinic; only its admins can write it (see the clinic_config RLS policies). */
 export async function getClinicConfig(supabase: SupabaseClient): Promise<ClinicConfig> {
-  // RLS (clinic_config_select_active) already scopes this to the caller's own clinic —
-  // no need to filter by clinic_id here too.
-  const { data, error } = await withRetry(() => supabase.from("clinic_config").select("*").maybeSingle());
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return DEFAULT_CLINIC_CONFIG;
+  const { data, error } = await withRetry(() =>
+    supabase.from("clinic_config").select("*").eq("clinic_id", clinicId).maybeSingle()
+  );
 
   if (error) throw error;
   if (!data) return DEFAULT_CLINIC_CONFIG;
@@ -95,8 +125,10 @@ export async function getMyProfile(supabase: SupabaseClient, userId: string): Pr
 }
 
 export async function getProfiles(supabase: SupabaseClient): Promise<Profile[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
   const { data, error } = await withRetry(() =>
-    supabase.from("profiles").select("*").order("created_at", { ascending: true })
+    supabase.from("profiles").select("*").eq("clinic_id", clinicId).order("created_at", { ascending: true })
   );
 
   if (error) throw error;
@@ -138,8 +170,10 @@ export async function getTeamMembers(profiles: Profile[], isAdmin: boolean): Pro
 }
 
 export async function getQuotes(supabase: SupabaseClient): Promise<Quote[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
   const { data, error } = await withRetry(() =>
-    supabase.from("quotes").select("*").order("created_at", { ascending: false })
+    supabase.from("quotes").select("*").eq("clinic_id", clinicId).order("created_at", { ascending: false })
   );
 
   if (error) throw error;
@@ -147,8 +181,10 @@ export async function getQuotes(supabase: SupabaseClient): Promise<Quote[]> {
 }
 
 export async function getQuote(supabase: SupabaseClient, id: string): Promise<Quote | null> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return null;
   const { data, error } = await withRetry(() =>
-    supabase.from("quotes").select("*").eq("id", id).maybeSingle()
+    supabase.from("quotes").select("*").eq("id", id).eq("clinic_id", clinicId).maybeSingle()
   );
 
   if (error) throw error;
@@ -156,10 +192,13 @@ export async function getQuote(supabase: SupabaseClient, id: string): Promise<Qu
 }
 
 export async function getTasks(supabase: SupabaseClient): Promise<Task[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
   const { data, error } = await withRetry(() =>
     supabase
       .from("tasks")
       .select("*")
+      .eq("clinic_id", clinicId)
       .order("status", { ascending: true })
       .order("due_date", { ascending: true })
       .order("due_time", { ascending: true, nullsFirst: false })

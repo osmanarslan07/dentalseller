@@ -6,7 +6,7 @@ import { Badge, Button, Card, Input, Label, Select } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Transfer, TransferCompany, TransferKind, TransferStatus } from "@/types";
-import { addTransfer, deleteTransfer, suggestTransfers, updateTransfer } from "./transfer-actions";
+import { addTransfer, deleteTransfer, markTransferSent, suggestTransfers, updateTransfer } from "./transfer-actions";
 
 /** What the visit already knows — used to prefill new transfers and by "Suggest transfers". */
 export interface VisitTravel {
@@ -42,8 +42,32 @@ const STATUS_TONES: Record<TransferStatus, "slate" | "blue" | "green"> = {
   done: "green",
 };
 
+/** Digits only — the form wa.me links want ("+90 555 123 45 67" → "905551234567"). */
+function waDigits(phone: string | null | undefined): string {
+  return (phone ?? "").replace(/[^\d]/g, "");
+}
+
+/** The message a driver gets — in Turkish, since the drivers are local. Only what they need
+ * to do the job: when, where from/to, who (and how many), how to reach them, the flight. */
+function driverMessage(t: Transfer, patientName: string, patientPhone: string | null): string {
+  const date = t.transfer_date ? t.transfer_date.split("-").reverse().join(".") : "Tarih belirlenecek";
+  const lines = [
+    "🚗 *TRANSFER*",
+    `*Tarih:* ${date}${t.transfer_time ? ` saat ${t.transfer_time}` : " (saat belirlenecek)"}`,
+    `*Nereden:* ${t.from_place || "-"}`,
+    `*Nereye:* ${t.to_place || "-"}`,
+    `*Hasta:* ${patientName} (${t.pax} kişi)`,
+    patientPhone ? `*Hasta tel:* ${patientPhone}` : null,
+    t.flight_no ? `*Uçuş:* ${t.flight_no}` : null,
+    t.notes ? `*Not:* ${t.notes}` : null,
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
 export function TransfersSection({
   patientId,
+  patientName,
+  patientPhone,
   visitKey,
   travel,
   transfers,
@@ -51,6 +75,8 @@ export function TransfersSection({
   compact = false,
 }: {
   patientId: string;
+  patientName: string;
+  patientPhone: string | null;
   /** "visit1" | "visit2" | an extra visit's id */
   visitKey: string;
   travel: VisitTravel;
@@ -79,6 +105,21 @@ export function TransfersSection({
         router.refresh();
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to suggest transfers", "error");
+      }
+    });
+  }
+
+  /** Opens WhatsApp straight from the click (anything async first and browsers block the
+   * new tab), then records the send in the background. */
+  function handleSendWhatsApp(t: Transfer, driverPhone: string) {
+    const url = `https://wa.me/${waDigits(driverPhone)}?text=${encodeURIComponent(driverMessage(t, patientName, patientPhone))}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+    startTransition(async () => {
+      try {
+        await markTransferSent(t.id);
+        router.refresh();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Couldn't mark the transfer as sent", "error");
       }
     });
   }
@@ -175,6 +216,7 @@ export function TransfersSection({
                 transfer={t}
                 companies={companies}
                 busy={pending}
+                onSend={(phone) => handleSendWhatsApp(t, phone)}
                 onEdit={() => {
                   setEditingId(t.id);
                   setAdding(false);
@@ -195,12 +237,14 @@ function TransferRow({
   transfer: t,
   companies,
   busy,
+  onSend,
   onEdit,
   onDelete,
 }: {
   transfer: Transfer;
   companies: TransferCompany[];
   busy: boolean;
+  onSend: (driverPhone: string) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -226,6 +270,11 @@ function TransferRow({
             {t.from_place || "?"} → {t.to_place || "?"}
           </span>
           <Badge tone={STATUS_TONES[t.status]}>{STATUS_LABELS[t.status]}</Badge>
+          {t.status === "sent" && t.sent_at && (
+            <span className="text-xs text-slate-400">
+              {new Date(t.sent_at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
         </div>
         <div className="mt-1 text-xs text-slate-600">
           {driver ? (
@@ -243,6 +292,21 @@ function TransferRow({
         {details.length > 0 && <div className="mt-0.5 text-xs text-slate-400">{details.join(" · ")}</div>}
       </div>
       <div className="flex shrink-0 items-center gap-3 text-xs font-medium">
+        {driver && (
+          <button
+            type="button"
+            onClick={() => driver.phone && onSend(driver.phone)}
+            disabled={!driver.phone || waDigits(driver.phone).length < 8}
+            title={
+              driver.phone
+                ? `Open WhatsApp with the transfer details for ${driver.name}`
+                : `${driver.name} has no phone number — add it in Settings → Transfers`
+            }
+            className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {t.status === "planned" ? "WhatsApp driver" : "Resend"}
+          </button>
+        )}
         <button type="button" onClick={onEdit} className="text-teal-600 hover:underline">
           Edit
         </button>

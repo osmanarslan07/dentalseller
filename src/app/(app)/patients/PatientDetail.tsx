@@ -669,6 +669,8 @@ export function PatientDetail({
           <TransfersSection
             key={activeTab}
             patientId={patient.id}
+            patientName={patient.name}
+            patientPhone={patient.phone}
             visitKey={activeTab}
             travel={mainVisitTravel(patient, activeTab === "visit1" ? 1 : 2)}
             transfers={transfers.filter((t) => t.visit_number === (activeTab === "visit1" ? 1 : 2))}
@@ -889,6 +891,7 @@ function ExtraVisitsSection({
           <ExtraVisitRow
             key={v.id}
             visit={v}
+            patient={patient}
             transfers={transfers.filter((t) => t.extra_visit_id === v.id)}
             companies={companies}
           />
@@ -1076,10 +1079,12 @@ function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
 
 function ExtraVisitRow({
   visit,
+  patient,
   transfers,
   companies,
 }: {
   visit: PatientExtraVisit;
+  patient: Patient;
   transfers: Transfer[];
   companies: TransferCompany[];
 }) {
@@ -1207,6 +1212,8 @@ function ExtraVisitRow({
       <TransfersSection
         compact
         patientId={visit.patient_id}
+        patientName={patient.name}
+        patientPhone={patient.phone}
         visitKey={visit.id}
         travel={extraVisitTravel(visit)}
         transfers={transfers}

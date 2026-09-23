@@ -109,6 +109,10 @@ export function describeActivity(
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       return `${actor} deleted a transfer for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
     }
+    case "transfer_sent": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} sent a transfer to the driver for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
+    }
     case "visit_added": {
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       return `${actor} added a visit for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;

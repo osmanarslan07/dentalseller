@@ -223,3 +223,35 @@ export async function suggestTransfers(patientId: string, visitKey: string): Pro
   revalidate(patientId);
   return { created: rows.length };
 }
+
+/** Called right after the WhatsApp message to the driver is opened — the message itself is
+ * sent from the user's own WhatsApp, so this only records that it went out. A transfer
+ * already marked done stays done. */
+export async function markTransferSent(id: string) {
+  const supabase = await createClient();
+  const user = await getActingUser();
+
+  const { data: current, error: readError } = await supabase
+    .from("transfers")
+    .select("patient_id, status, from_place, to_place, transfer_date, transfer_time, driver:drivers(name)")
+    .eq("id", id)
+    .single();
+  if (readError) throw new Error(readError.message);
+
+  const { error } = await supabase
+    .from("transfers")
+    .update({ status: current.status === "done" ? "done" : "sent", sent_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  const driver = current.driver as unknown as { name: string } | null;
+  await logActivity(
+    supabase,
+    user.actorId,
+    "transfer_sent",
+    "patient",
+    current.patient_id,
+    `${describe(current)}${driver ? ` → ${driver.name}` : ""}`
+  );
+  revalidate(current.patient_id);
+}

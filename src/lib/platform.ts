@@ -10,9 +10,37 @@ import { JobDefinition, JobHealth, jobHealth, JOBS } from "@/lib/jobs";
 import { getEnvChatsClinicId } from "@/lib/telegram";
 import { ProfileRole } from "@/types";
 
+export type MfaState = "verified" | "needs_setup" | "needs_code";
+
+/** Where the superadmin's session stands on two-factor. aal2 = this session passed the
+ * authenticator-code step; nextLevel aal2 with currentLevel aal1 = a factor is enrolled but
+ * not used yet this session; nextLevel aal1 = nothing enrolled. */
+async function getMfaState(supabase: Awaited<ReturnType<typeof createClient>>): Promise<MfaState> {
+  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || !data) return "needs_code";
+  if (data.currentLevel === "aal2") return "verified";
+  return data.nextLevel === "aal2" ? "needs_code" : "needs_setup";
+}
+
+/** Signed-in superadmin, whether or not the second factor is done yet — only for the /mfa
+ * page itself. Everything else goes through requireSuperadmin / assertSuperadmin. */
+export async function getSuperadminForMfa() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (profile?.role !== "superadmin") redirect("/");
+
+  return { user, mfa: await getMfaState(supabase) };
+}
+
 /** Server-side gate for every /platform page and action. Platform reads go through the
  * service-role client (a superadmin has no RLS access to clinic data — deliberately), so
- * this check is the only thing standing between a caller and every clinic's numbers. */
+ * this check is the only thing standing between a caller and every clinic's numbers —
+ * which is why it also demands the second factor: a stolen password alone gets nowhere. */
 export async function requireSuperadmin() {
   const supabase = await createClient();
   const {
@@ -27,11 +55,14 @@ export async function requireSuperadmin() {
     .maybeSingle();
   if (profile?.role !== "superadmin") redirect("/");
 
+  if ((await getMfaState(supabase)) !== "verified") redirect("/mfa");
+
   return { supabase, user, displayName: (profile.display_name as string | null) ?? null };
 }
 
 /** Same check for server actions — throws instead of redirecting, so the calling form can
- * show the error. */
+ * show the error. Actions can be invoked directly, so the second-factor check matters here
+ * just as much as on the pages. */
 export async function assertSuperadmin() {
   const supabase = await createClient();
   const {
@@ -41,6 +72,8 @@ export async function assertSuperadmin() {
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "superadmin") throw new Error("Superadmin only");
+
+  if ((await getMfaState(supabase)) !== "verified") throw new Error("Two-factor verification required");
 
   return { supabase, user };
 }

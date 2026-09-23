@@ -62,6 +62,14 @@ function EarningsIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function TransfersIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M5 16V9l2-4h10l2 4v7M3 16h18M7 16v2M17 16v2M5 9h14" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function AccountingIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -101,6 +109,7 @@ const BASE_LINKS: { href: string; label: string; icon: (props: { className?: str
   { href: "/quotes", label: "Quotes", icon: QuotesIcon },
   { href: "/tasks", label: "Tasks", icon: TasksIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
+  { href: "/transfers", label: "Transfers", icon: TransfersIcon },
   { href: "/earnings", label: "Earnings", icon: EarningsIcon },
   { href: "/accounting", label: "Accounting", icon: AccountingIcon },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
@@ -207,9 +216,10 @@ export function Nav({
         className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden print:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        {/* Team and Accounting are desktop-nav only — an 8th column would cramp the mobile bar.
+        {/* Team, Transfers and Accounting are desktop-nav only — an 8th column would cramp the mobile
+            bar. Transfers is one tap away from the dashboard instead.
             Payments are still recorded from a patient's page on a phone. */}
-        {BASE_LINKS.filter((link) => link.href !== "/accounting").map((link) => {
+        {BASE_LINKS.filter((link) => link.href !== "/accounting" && link.href !== "/transfers").map((link) => {
           const active = pathname === link.href;
           const Icon = link.icon;
           return (

@@ -192,6 +192,34 @@ export async function getTransferCompanies(supabase: SupabaseClient): Promise<Tr
   return data as TransferCompany[];
 }
 
+/** A transfer with who it's for — the operations list across all patients. */
+export type TransferWithPatient = Transfer & {
+  patient: { id: string; name: string; phone: string | null; responsible_seller_id: string };
+};
+
+/** Every transfer dated from..to (inclusive, YYYY-MM-DD), in pickup order. */
+export async function getTransfersInRange(
+  supabase: SupabaseClient,
+  from: string,
+  to: string
+): Promise<TransferWithPatient[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from("transfers")
+      .select("*, patient:patients(id, name, phone, responsible_seller_id)")
+      .eq("clinic_id", clinicId)
+      .gte("transfer_date", from)
+      .lte("transfer_date", to)
+      .order("transfer_date", { ascending: true })
+      .order("transfer_time", { ascending: true, nullsFirst: false })
+  );
+
+  if (error) throw error;
+  return (data ?? []).map((t) => ({ ...t, cost: t.cost != null ? Number(t.cost) : null })) as TransferWithPatient[];
+}
+
 /** One patient's transfers across all visits, in the order they happen. */
 export async function getPatientTransfers(supabase: SupabaseClient, patientId: string): Promise<Transfer[]> {
   const clinicId = await getMyClinicId();

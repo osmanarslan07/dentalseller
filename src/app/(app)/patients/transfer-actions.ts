@@ -68,6 +68,7 @@ function describe(t: { from_place: string | null; to_place: string | null; trans
 
 function revalidate(patientId: string) {
   revalidatePath(`/patients/${patientId}`);
+  revalidatePath("/transfers");
   revalidatePath("/");
   revalidatePath("/calendar");
 }
@@ -263,4 +264,29 @@ export async function markTransferSent(id: string) {
     `${describe(current)}${driver ? ` → ${driver.name}` : ""}`
   );
   revalidate(current.patient_id);
+}
+
+/** Operations list: tick a transfer off once it's happened (or back to planned). */
+export async function setTransferStatus(id: string, status: TransferStatus) {
+  if (!STATUSES.includes(status)) throw new Error("Invalid status");
+  const supabase = await createClient();
+  const user = await getActingUser();
+
+  const { data, error } = await supabase
+    .from("transfers")
+    .update({ status })
+    .eq("id", id)
+    .select("patient_id, from_place, to_place, transfer_date, transfer_time")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.actorId, "transfer_updated", "patient", data.patient_id, `${describe(data)} → ${status}`);
+  revalidate(data.patient_id);
+  revalidatePath("/transfers");
+}
+
+/** After a driver's whole day went out in one WhatsApp message. Done stays done. */
+export async function markTransfersSent(ids: string[]) {
+  for (const id of ids) await markTransferSent(id);
+  revalidatePath("/transfers");
 }

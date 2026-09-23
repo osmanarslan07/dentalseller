@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Transfer, TransferCompany, TransferDefaults, TransferKind, TransferStatus } from "@/types";
 import { departurePickup, LOCAL_PICKUP_TIME } from "@/lib/transfer-times";
+import { driverMessage, isWhatsAppable, waLink } from "@/lib/transfer-message";
 import { addTransfer, deleteTransfer, markTransferSent, suggestTransfers, updateTransfer } from "./transfer-actions";
 
 /** What the visit already knows — used to prefill new transfers and by "Suggest transfers". */
@@ -42,28 +43,6 @@ const STATUS_TONES: Record<TransferStatus, "slate" | "blue" | "green"> = {
   sent: "blue",
   done: "green",
 };
-
-/** Digits only — the form wa.me links want ("+90 555 123 45 67" → "905551234567"). */
-function waDigits(phone: string | null | undefined): string {
-  return (phone ?? "").replace(/[^\d]/g, "");
-}
-
-/** The message a driver gets — in Turkish, since the drivers are local. Only what they need
- * to do the job: when, where from/to, who (and how many), how to reach them, the flight. */
-function driverMessage(t: Transfer, patientName: string, patientPhone: string | null): string {
-  const date = t.transfer_date ? t.transfer_date.split("-").reverse().join(".") : "Tarih belirlenecek";
-  const lines = [
-    "🚗 *TRANSFER*",
-    `*Tarih:* ${date}${t.transfer_time ? ` saat ${t.transfer_time}` : " (saat belirlenecek)"}`,
-    `*Nereden:* ${t.from_place || "-"}`,
-    `*Nereye:* ${t.to_place || "-"}`,
-    `*Hasta:* ${patientName} (${t.pax} kişi)`,
-    patientPhone ? `*Hasta tel:* ${patientPhone}` : null,
-    t.flight_no ? `*Uçuş:* ${t.flight_no}` : null,
-    t.notes ? `*Not:* ${t.notes}` : null,
-  ];
-  return lines.filter(Boolean).join("\n");
-}
 
 export function TransfersSection({
   patientId,
@@ -119,7 +98,7 @@ export function TransfersSection({
   /** Opens WhatsApp straight from the click (anything async first and browsers block the
    * new tab), then records the send in the background. */
   function handleSendWhatsApp(t: Transfer, driverPhone: string) {
-    const url = `https://wa.me/${waDigits(driverPhone)}?text=${encodeURIComponent(driverMessage(t, patientName, patientPhone))}`;
+    const url = waLink(driverPhone, driverMessage(t, patientName, patientPhone));
     window.open(url, "_blank", "noopener,noreferrer");
     startTransition(async () => {
       try {
@@ -307,7 +286,7 @@ function TransferRow({
           <button
             type="button"
             onClick={() => driver.phone && onSend(driver.phone)}
-            disabled={!driver.phone || waDigits(driver.phone).length < 8}
+            disabled={!isWhatsAppable(driver.phone)}
             title={
               driver.phone
                 ? `Open WhatsApp with the transfer details for ${driver.name}`

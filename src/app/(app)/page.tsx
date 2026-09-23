@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPatients, getProfiles, getSettings } from "@/lib/data";
 import { addMonths, currentMonthKey } from "@/lib/commission";
@@ -104,6 +105,12 @@ export default async function DashboardPage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-slate-500">Today&apos;s visits, follow-ups and logistics for the whole team.</p>
+        <Link
+          href="/transfers"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-teal-50 px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-100"
+        >
+          🚗 Today&apos;s &amp; tomorrow&apos;s transfers →
+        </Link>
       </div>
 
       {visibleCards.length > 0 && (

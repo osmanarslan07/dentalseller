@@ -16,6 +16,16 @@ import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
 import { deletePatient, sendPatientTelegramMessage } from "./actions";
+import { patientBalance } from "@/lib/balance";
+
+/** Money in vs money owed (price + extras) across all the patient's visits. */
+function BalanceBadge({ patient }: { patient: Patient }) {
+  const { owed, paid, due } = patientBalance(patient);
+  if (owed === 0 && paid === 0) return <span className="text-slate-300">—</span>;
+  if (due > 0) return <Badge tone="amber">{formatCurrency(due, "GBP")} due</Badge>;
+  if (due < 0) return <Badge tone="blue">Overpaid {formatCurrency(-due, "GBP")}</Badge>;
+  return <Badge tone="green">Paid</Badge>;
+}
 
 type SortKey = "name" | "confirmation_date" | "visit1_date" | "visit2_date" | "commission";
 type ViewMode = "list" | "kanban";
@@ -554,7 +564,10 @@ export function PatientsClient({
                   </div>
                 )}
               </div>
-              <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
+              <div className="flex flex-col items-end gap-1">
+                <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
+                <BalanceBadge patient={p} />
+              </div>
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -655,7 +668,7 @@ export function PatientsClient({
       {view === "list" && (
       <Card className="hidden overflow-hidden md:block">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          <table className="w-full min-w-[1000px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
                 <SortHeader label="Name" sortKeyValue="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="pl-4" />
@@ -664,6 +677,7 @@ export function PatientsClient({
                 <SortHeader label="Visit 1" sortKeyValue="visit1_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Visit 2" sortKeyValue="visit2_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <th className="py-3 pr-4 font-medium">Stage</th>
+                <th className="py-3 pr-4 font-medium">Balance</th>
                 <SortHeader label="Commission" sortKeyValue="commission" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <th className="py-3 pr-4 font-medium text-right">Actions</th>
               </tr>
@@ -713,6 +727,9 @@ export function PatientsClient({
                   </td>
                   <td className="py-3 pr-4">
                     <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
+                  </td>
+                  <td className="py-3 pr-4">
+                    <BalanceBadge patient={p} />
                   </td>
                   <td className="py-3 pr-4 font-medium text-slate-700">
                     {commission.actual > 0 || commission.expected > 0 ? (
@@ -774,7 +791,7 @@ export function PatientsClient({
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-slate-400">
+                  <td colSpan={9} className="py-10 text-center text-slate-400">
                     No patients match your filters.
                   </td>
                 </tr>

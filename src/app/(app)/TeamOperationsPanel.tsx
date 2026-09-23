@@ -14,6 +14,7 @@ import {
   setPatientLogisticsFlag,
 } from "./patients/actions";
 import { Patient, Profile } from "@/types";
+import { isMismatch, visitBalances } from "@/lib/balance";
 
 const EVENT_ICONS: Record<CalendarEventKind, string> = {
   visit1_arrival: "🛬",
@@ -65,9 +66,10 @@ type LogisticsItem = {
 type PaymentMismatch = {
   patient: Patient;
   visitLabel: string;
-  visitDate: string;
-  expected: number;
-  daysSince: number;
+  visitDate: string | null;
+  /** owed − paid: positive = still due, negative = overpaid */
+  due: number;
+  daysSince: number | null;
 };
 
 /** Everything here is operational (arrivals, follow-ups, logistics, unpaid amounts) — none of
@@ -185,22 +187,20 @@ export function TeamOperationsPanel({
       .sort((a, b) => (b.daysSince ?? 0) - (a.daysSince ?? 0));
   }, [patients, todayIso]);
 
+  // Visits whose money doesn't add up: already happened and still owed something (expected +
+  // extras vs payments), or overpaid. A zero-owed visit (e.g. a comped extra visit) never shows.
   const paymentMismatches = useMemo(() => {
     const list: PaymentMismatch[] = [];
     for (const p of patients) {
-      const mismatchEntries: readonly (readonly [string, string | null, number | null, number | null, boolean])[] = [
-        ["Visit 1", p.visit1_date, p.visit1_expected, p.visit1_actual, true],
-        ["Visit 2", p.visit2_date, p.visit2_expected, p.visit2_actual, p.needs_visit2],
-        ...p.extra_visits.map((v) => [v.label, v.visit_date, v.expected, v.actual, true] as const),
-      ];
-      for (const [visitLabel, date, expected, actual, applies] of mismatchEntries) {
-        // A zero-expected visit (e.g. a comped extra visit) isn't unpaid — it was never owed.
-        if (!applies || !date || !expected || actual != null || date >= todayIso) continue;
-        const daysSince = Math.round((new Date(todayIso).getTime() - new Date(date).getTime()) / (1000 * 60 * 60 * 24));
-        list.push({ patient: p, visitLabel, visitDate: date, expected, daysSince });
+      for (const b of visitBalances(p)) {
+        if (!isMismatch(b, todayIso)) continue;
+        const daysSince = b.date
+          ? Math.round((new Date(todayIso).getTime() - new Date(b.date).getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        list.push({ patient: p, visitLabel: b.label, visitDate: b.date, due: b.due, daysSince });
       }
     }
-    list.sort((a, b) => b.daysSince - a.daysSince);
+    list.sort((a, b) => (b.daysSince ?? -1) - (a.daysSince ?? -1));
     return list;
   }, [patients, todayIso]);
 
@@ -414,8 +414,8 @@ export function TeamOperationsPanel({
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Payment not logged</h2>
-              <p className="text-xs text-slate-500">Visit passed, no actual amount recorded</p>
+              <h2 className="text-base font-semibold text-slate-900">Payments don&apos;t match</h2>
+              <p className="text-xs text-slate-500">Visit passed and still owed (price + extras), or overpaid</p>
             </div>
             {paymentMismatches.length > 0 && (
               <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600">
@@ -424,7 +424,7 @@ export function TeamOperationsPanel({
             )}
           </div>
           {paymentMismatches.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">All payments logged ✓</p>
+            <p className="py-8 text-center text-sm text-slate-400">Every visit is paid in full ✓</p>
           ) : (
             <ul className="space-y-1">
               {paymentMismatches.map((m, i) => (
@@ -440,7 +440,8 @@ export function TeamOperationsPanel({
                     <div>
                       <p className="text-sm font-medium text-slate-800">{m.patient.name}</p>
                       <p className="text-xs text-slate-500">
-                        {m.visitLabel} · {formatDate(m.visitDate)}
+                        {m.visitLabel}
+                        {m.visitDate ? ` · ${formatDate(m.visitDate)}` : ""}
                       </p>
                       {scope === "team" && (
                         <p className="text-xs text-slate-400">
@@ -449,16 +450,18 @@ export function TeamOperationsPanel({
                       )}
                     </div>
                     <div className="text-right">
-                      <span className="block text-sm font-medium text-slate-700">
-                        {formatCurrency(m.expected, currency)}
+                      <span className={`block text-sm font-medium ${m.due > 0 ? "text-slate-700" : "text-blue-700"}`}>
+                        {m.due > 0 ? `${formatCurrency(m.due, currency)} due` : `Overpaid ${formatCurrency(-m.due, currency)}`}
                       </span>
-                      <span
-                        className={`block text-xs font-medium ${
-                          m.daysSince >= 30 ? "text-red-500" : m.daysSince >= 14 ? "text-amber-600" : "text-slate-400"
-                        }`}
-                      >
-                        {m.daysSince === 0 ? "Today" : m.daysSince === 1 ? "1 day ago" : `${m.daysSince} days ago`}
-                      </span>
+                      {m.daysSince != null && (
+                        <span
+                          className={`block text-xs font-medium ${
+                            m.daysSince >= 30 ? "text-red-500" : m.daysSince >= 14 ? "text-amber-600" : "text-slate-400"
+                          }`}
+                        >
+                          {m.daysSince === 0 ? "Today" : m.daysSince === 1 ? "1 day ago" : `${m.daysSince} days ago`}
+                        </span>
+                      )}
                     </div>
                   </Link>
                 </li>

@@ -16,7 +16,7 @@ const HEADERS = [
   "Notes",
 ];
 
-function escapeCsv(value: string | number | null): string {
+export function escapeCsv(value: string | number | null): string {
   const str = value == null ? "" : String(value);
   if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
   return str;

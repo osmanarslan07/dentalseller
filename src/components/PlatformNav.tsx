@@ -7,6 +7,7 @@ import { logout } from "@/lib/auth-actions";
 const LINKS = [
   { href: "/platform", label: "Overview" },
   { href: "/platform/clinics/new", label: "New clinic" },
+  { href: "/platform/people", label: "People" },
   { href: "/platform/announcements", label: "Announcements" },
   { href: "/platform/superadmins", label: "Superadmins" },
   { href: "/platform/audit", label: "Audit log" },
@@ -54,13 +55,21 @@ export function PlatformNav({ email, displayName }: { email: string; displayName
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="hidden text-right text-sm leading-tight lg:block">
-            <span className="block font-medium text-slate-900">{displayName || "Superadmin"}</span>
-            <span className="block text-xs text-slate-500">{email}</span>
-          </span>
+          {/* plain GET form: works before hydration, and lands on /platform/people?q=… */}
+          <form action="/platform/people" role="search" className="hidden md:block">
+            <input
+              type="search"
+              name="q"
+              placeholder="Find a person…"
+              aria-label="Find a person"
+              className="w-36 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:w-52 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
+            />
+          </form>
           <form action={logout}>
             <button
               type="submit"
+              // the header is too full for a name/email block; who you are is one hover away
+              title={`Signed in as ${displayName ? `${displayName} (${email})` : email}`}
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
             >
               Sign out

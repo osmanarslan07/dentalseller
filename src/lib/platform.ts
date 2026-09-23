@@ -328,6 +328,42 @@ export async function getSuperadmins(): Promise<ClinicMember[]> {
   return toMembers(data ?? []);
 }
 
+export interface PlatformPerson extends ClinicMember {
+  clinicId: string | null;
+  clinicName: string | null;
+  clinicActive: boolean;
+}
+
+/** Every account on the platform — staff identities only (name, email, role, clinic,
+ * presence), never anything from a clinic's records. For the People search page. */
+export async function getAllPeople(): Promise<PlatformPerson[]> {
+  const admin = createAdminClient();
+  const [{ data: profiles, error }, { data: clinics, error: cError }] = await Promise.all([
+    admin.from("profiles").select("id, display_name, role, is_active, created_at, clinic_id"),
+    admin.from("clinics").select("id, name, is_active"),
+  ]);
+  if (error) throw error;
+  if (cError) throw cError;
+
+  const rows = profiles ?? [];
+  const members = await toMembers(rows);
+  const clinicById = new Map((clinics ?? []).map((c) => [c.id as string, c]));
+  const clinicIdByPerson = new Map(rows.map((p) => [p.id, p.clinic_id as string | null]));
+
+  return members
+    .map((m) => {
+      const clinicId = clinicIdByPerson.get(m.id) ?? null;
+      const clinic = clinicId ? clinicById.get(clinicId) : undefined;
+      return {
+        ...m,
+        clinicId,
+        clinicName: clinic?.name ?? null,
+        clinicActive: clinic?.is_active ?? true,
+      };
+    })
+    .sort((a, b) => (a.displayName || a.email || "").localeCompare(b.displayName || b.email || ""));
+}
+
 export interface MonthlyUsage {
   /** "2026-09" */
   month: string;

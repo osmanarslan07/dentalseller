@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task, Transfer, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer } from "@/lib/viewer";
@@ -126,6 +126,25 @@ export async function getTransferCompanies(supabase: SupabaseClient): Promise<Tr
 
   if (error) throw error;
   return data as TransferCompany[];
+}
+
+/** One patient's transfers across all visits, in the order they happen. */
+export async function getPatientTransfers(supabase: SupabaseClient, patientId: string): Promise<Transfer[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from("transfers")
+      .select("*")
+      .eq("clinic_id", clinicId)
+      .eq("patient_id", patientId)
+      .order("transfer_date", { ascending: true, nullsFirst: false })
+      .order("transfer_time", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true })
+  );
+
+  if (error) throw error;
+  return (data ?? []).map((t) => ({ ...t, cost: t.cost != null ? Number(t.cost) : null })) as Transfer[];
 }
 
 export async function getMyProfile(supabase: SupabaseClient, userId: string): Promise<Profile | null> {

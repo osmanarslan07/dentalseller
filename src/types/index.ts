@@ -55,6 +55,7 @@ export interface PatientExtraVisit {
   departure_flight_no: string | null;
   hotel_name: string | null;
   room_type: string | null;
+  /** Derived (DB trigger): has an arrival / departure transfer with a driver assigned. */
   arrival_transfer_arranged: boolean;
   departure_transfer_arranged: boolean;
   hotel_arranged: boolean;
@@ -65,7 +66,13 @@ export interface PatientExtraVisit {
 
 export type PatientExtraVisitInput = Omit<
   PatientExtraVisit,
-  "id" | "patient_id" | "created_at" | "updated_at" | "earned_by_seller_id"
+  | "id"
+  | "patient_id"
+  | "created_at"
+  | "updated_at"
+  | "earned_by_seller_id"
+  | "arrival_transfer_arranged"
+  | "departure_transfer_arranged"
 >;
 
 export interface Patient {
@@ -143,6 +150,11 @@ export type PatientInput = Omit<
   | "extra_visits"
   | "visit1_earned_by_seller_id"
   | "visit2_earned_by_seller_id"
+  // derived from transfers by a DB trigger — never written by a patient save
+  | "visit1_arrival_transfer_arranged"
+  | "visit1_departure_transfer_arranged"
+  | "visit2_arrival_transfer_arranged"
+  | "visit2_departure_transfer_arranged"
 >;
 
 /** A transfer provider. Exactly one per clinic is internal — the clinic itself, with its own
@@ -168,6 +180,33 @@ export interface Driver {
   vehicle: string | null;
   is_active: boolean;
   created_at: string;
+}
+
+export type TransferKind = "arrival" | "departure" | "local";
+export type TransferStatus = "planned" | "sent" | "done";
+
+/** One car journey for one visit — visit 1/2 (visit_number) or an extra visit (extra_visit_id). */
+export interface Transfer {
+  id: string;
+  patient_id: string;
+  visit_number: 1 | 2 | null;
+  extra_visit_id: string | null;
+  kind: TransferKind;
+  transfer_date: string | null;
+  transfer_time: string | null;
+  from_place: string | null;
+  to_place: string | null;
+  pax: number;
+  company_id: string | null;
+  driver_id: string | null;
+  flight_no: string | null;
+  /** External companies only — always null for the clinic's own transport (DB-enforced). */
+  cost: number | null;
+  status: TransferStatus;
+  sent_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";

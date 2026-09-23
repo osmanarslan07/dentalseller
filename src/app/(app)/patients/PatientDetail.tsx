@@ -9,7 +9,8 @@ import { useCelebrationSound } from "@/components/celebration-sound";
 import { fireConfetti, playChime } from "@/lib/celebrate";
 import { formatDate } from "@/lib/format";
 import { describeActivity, formatActivityTime, ActivityLogRow } from "@/lib/activity-log";
-import { Patient, PatientExtraVisit, Profile } from "@/types";
+import { Patient, PatientExtraVisit, Profile, Transfer, TransferCompany } from "@/types";
+import { TransfersSection, VisitTravel } from "./TransfersSection";
 import {
   createPatient,
   updatePatient,
@@ -42,6 +43,34 @@ function collectFormData(container: HTMLElement): FormData {
     }
   }
   return formData;
+}
+
+function mainVisitTravel(p: Patient, n: 1 | 2): VisitTravel {
+  return {
+    date: p[`visit${n}_date`],
+    arrivalDate: p[`visit${n}_arrival_date`],
+    arrivalTime: p[`visit${n}_arrival_time`],
+    arrivalFlight: p[`visit${n}_arrival_flight_no`],
+    departureDate: p[`visit${n}_departure_date`],
+    departureTime: p[`visit${n}_departure_time`],
+    departureFlight: p[`visit${n}_departure_flight_no`],
+    hotel: p[`visit${n}_hotel_name`],
+    pax: p[`visit${n}_pax`],
+  };
+}
+
+function extraVisitTravel(v: PatientExtraVisit): VisitTravel {
+  return {
+    date: v.visit_date,
+    arrivalDate: v.arrival_date,
+    arrivalTime: v.arrival_time,
+    arrivalFlight: v.arrival_flight_no,
+    departureDate: v.departure_date,
+    departureTime: v.departure_time,
+    departureFlight: v.departure_flight_no,
+    hotel: v.hotel_name,
+    pax: v.pax,
+  };
 }
 
 /** Digits only, for wa.me links — "+44 7700 900123" → "447700900123". */
@@ -136,6 +165,8 @@ export function PatientDetail({
   currentUserId = "",
   isAdmin = false,
   existingPatients = [],
+  transfers = [],
+  companies = [],
 }: {
   patient?: Patient | null;
   /** Prefill a new (non-edit) patient from an existing one — for group bookings sharing a flight/hotel. */
@@ -149,6 +180,9 @@ export function PatientDetail({
   /** The shared roster, used to warn on create if the name matches someone already entered
    * (easy to do by accident now that multiple sellers add into the same pool). */
   existingPatients?: Pick<Patient, "id" | "name" | "confirmation_date" | "responsible_seller_id">[];
+  /** Every transfer of this patient, all visits. */
+  transfers?: Transfer[];
+  companies?: TransferCompany[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -594,8 +628,6 @@ export function PatientDetail({
             departureFlightNo={initial?.visit1_departure_flight_no}
             hotelName={initial?.visit1_hotel_name}
             roomType={initial?.visit1_room_type}
-            arrivalTransferArranged={initial?.visit1_arrival_transfer_arranged}
-            departureTransferArranged={initial?.visit1_departure_transfer_arranged}
             hotelArranged={initial?.visit1_hotel_arranged}
             hotelOptions={hotelOptions}
             roomTypeOptions={roomTypeOptions}
@@ -622,8 +654,6 @@ export function PatientDetail({
               departureFlightNo={initial?.visit2_departure_flight_no}
               hotelName={initial?.visit2_hotel_name}
               roomType={initial?.visit2_room_type}
-              arrivalTransferArranged={initial?.visit2_arrival_transfer_arranged}
-              departureTransferArranged={initial?.visit2_departure_transfer_arranged}
               hotelArranged={initial?.visit2_hotel_arranged}
               hotelOptions={hotelOptions}
               roomTypeOptions={roomTypeOptions}
@@ -634,9 +664,25 @@ export function PatientDetail({
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
       </form>
 
+      {(activeTab === "visit1" || (activeTab === "visit2" && needsVisit2)) &&
+        (isEdit && patient ? (
+          <TransfersSection
+            key={activeTab}
+            patientId={patient.id}
+            visitKey={activeTab}
+            travel={mainVisitTravel(patient, activeTab === "visit1" ? 1 : 2)}
+            transfers={transfers.filter((t) => t.visit_number === (activeTab === "visit1" ? 1 : 2))}
+            companies={companies}
+          />
+        ) : (
+          <p className="rounded-lg border border-dashed border-slate-200 py-4 text-center text-sm text-slate-400">
+            Add the patient first — transfers can be added right after.
+          </p>
+        ))}
+
       {isEdit && patient && (
         <div hidden={activeTab !== "extra"}>
-          <ExtraVisitsSection patient={patient} />
+          <ExtraVisitsSection patient={patient} transfers={transfers} companies={companies} />
         </div>
       )}
 
@@ -683,8 +729,6 @@ function TravelFields({
   departureFlightNo,
   hotelName,
   roomType,
-  arrivalTransferArranged,
-  departureTransferArranged,
   hotelArranged,
   hotelOptions = [],
   roomTypeOptions = [],
@@ -698,8 +742,6 @@ function TravelFields({
   departureFlightNo?: string | null;
   hotelName?: string | null;
   roomType?: string | null;
-  arrivalTransferArranged?: boolean;
-  departureTransferArranged?: boolean;
   hotelArranged?: boolean;
   hotelOptions?: string[];
   roomTypeOptions?: string[];
@@ -764,24 +806,6 @@ function TravelFields({
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input
             type="checkbox"
-            name={`visit${index}_arrival_transfer_arranged`}
-            defaultChecked={arrivalTransferArranged ?? false}
-            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
-          />
-          Arrival transfer arranged
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            name={`visit${index}_departure_transfer_arranged`}
-            defaultChecked={departureTransferArranged ?? false}
-            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
-          />
-          Departure transfer arranged
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
             name={`visit${index}_hotel_arranged`}
             defaultChecked={hotelArranged ?? false}
             className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
@@ -817,7 +841,15 @@ function TimeInput({
   );
 }
 
-function ExtraVisitsSection({ patient }: { patient: Patient }) {
+function ExtraVisitsSection({
+  patient,
+  transfers,
+  companies,
+}: {
+  patient: Patient;
+  transfers: Transfer[];
+  companies: TransferCompany[];
+}) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -854,7 +886,12 @@ function ExtraVisitsSection({ patient }: { patient: Patient }) {
 
       <div className="space-y-2">
         {patient.extra_visits.map((v) => (
-          <ExtraVisitRow key={v.id} visit={v} />
+          <ExtraVisitRow
+            key={v.id}
+            visit={v}
+            transfers={transfers.filter((t) => t.extra_visit_id === v.id)}
+            companies={companies}
+          />
         ))}
       </div>
 
@@ -1025,24 +1062,6 @@ function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
-              name="arrival_transfer_arranged"
-              defaultChecked={visit?.arrival_transfer_arranged ?? false}
-              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
-            />
-            Arrival transfer arranged
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              name="departure_transfer_arranged"
-              defaultChecked={visit?.departure_transfer_arranged ?? false}
-              className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
-            />
-            Departure transfer arranged
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
               name="hotel_arranged"
               defaultChecked={visit?.hotel_arranged ?? false}
               className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
@@ -1055,7 +1074,15 @@ function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
   );
 }
 
-function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
+function ExtraVisitRow({
+  visit,
+  transfers,
+  companies,
+}: {
+  visit: PatientExtraVisit;
+  transfers: Transfer[];
+  companies: TransferCompany[];
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -1114,67 +1141,77 @@ function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
   const flight = [visit.arrival_flight_no, visit.departure_flight_no].filter(Boolean).join(" / ");
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-slate-700">{visit.label}</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs ${
-              visit.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-            }`}
-          >
-            {visit.status}
-          </span>
-        </div>
-        <div className="mt-0.5 text-xs text-slate-400">
-          {visit.visit_date ?? "No date"}
-          {visit.actual != null
-            ? ` · £${visit.actual} paid`
-            : visit.expected != null
-            ? ` · £${visit.expected} expected`
-            : ""}
-          {` · ${visit.pax} pax`}
-          {visit.hotel_name ? ` · ${visit.hotel_name}` : ""}
-          {flight ? ` · ${flight}` : ""}
-        </div>
-        {(visit.arrival_date || visit.departure_date) && (
-          <div className="mt-0.5 flex flex-wrap gap-1.5 text-xs">
-            {visit.arrival_date && (
-              <span className={visit.arrival_transfer_arranged ? "text-emerald-600" : "text-amber-600"}>
-                {visit.arrival_transfer_arranged ? "✓ Arrival transfer" : "⚠ Arrival transfer"}
-              </span>
-            )}
-            {visit.departure_date && (
-              <span className={visit.departure_transfer_arranged ? "text-emerald-600" : "text-amber-600"}>
-                {visit.departure_transfer_arranged ? "✓ Departure transfer" : "⚠ Departure transfer"}
-              </span>
-            )}
-            {visit.arrival_date && (
-              <span className={visit.hotel_arranged ? "text-emerald-600" : "text-amber-600"}>
-                {visit.hotel_arranged ? "✓ Hotel" : "⚠ Hotel"}
-              </span>
-            )}
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-slate-700">{visit.label}</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs ${
+                visit.status === "completed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {visit.status}
+            </span>
           </div>
-        )}
-        {visit.treatment && <div className="mt-0.5 text-xs text-slate-500">{visit.treatment}</div>}
+          <div className="mt-0.5 text-xs text-slate-400">
+            {visit.visit_date ?? "No date"}
+            {visit.actual != null
+              ? ` · £${visit.actual} paid`
+              : visit.expected != null
+              ? ` · £${visit.expected} expected`
+              : ""}
+            {` · ${visit.pax} pax`}
+            {visit.hotel_name ? ` · ${visit.hotel_name}` : ""}
+            {flight ? ` · ${flight}` : ""}
+          </div>
+          {(visit.arrival_date || visit.departure_date) && (
+            <div className="mt-0.5 flex flex-wrap gap-1.5 text-xs">
+              {visit.arrival_date && (
+                <span className={visit.arrival_transfer_arranged ? "text-emerald-600" : "text-amber-600"}>
+                  {visit.arrival_transfer_arranged ? "✓ Arrival transfer" : "⚠ Arrival transfer"}
+                </span>
+              )}
+              {visit.departure_date && (
+                <span className={visit.departure_transfer_arranged ? "text-emerald-600" : "text-amber-600"}>
+                  {visit.departure_transfer_arranged ? "✓ Departure transfer" : "⚠ Departure transfer"}
+                </span>
+              )}
+              {visit.arrival_date && (
+                <span className={visit.hotel_arranged ? "text-emerald-600" : "text-amber-600"}>
+                  {visit.hotel_arranged ? "✓ Hotel" : "⚠ Hotel"}
+                </span>
+              )}
+            </div>
+          )}
+          {visit.treatment && <div className="mt-0.5 text-xs text-slate-500">{visit.treatment}</div>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-xs font-medium text-teal-600 hover:underline"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={pending}
+            className="text-xs font-medium text-red-600 hover:underline"
+          >
+            Delete
+          </button>
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="text-xs font-medium text-teal-600 hover:underline"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={pending}
-          className="text-xs font-medium text-red-600 hover:underline"
-        >
-          Delete
-        </button>
-      </div>
+      <TransfersSection
+        compact
+        patientId={visit.patient_id}
+        visitKey={visit.id}
+        travel={extraVisitTravel(visit)}
+        transfers={transfers}
+        companies={companies}
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { getPatientTransfers, getTransferCompanies } from "@/lib/data";
 import { PatientDetail } from "../PatientDetail";
 import { loadPatientPageContext } from "../detail-data";
 
@@ -7,17 +8,24 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
   const ctx = await loadPatientPageContext();
   const patient = ctx.patients.find((p) => p.id === id);
   if (!patient) notFound();
+  const [transfers, companies] = await Promise.all([
+    getPatientTransfers(ctx.supabase, patient.id),
+    getTransferCompanies(ctx.supabase),
+  ]);
 
   return (
     <PatientDetail
-      // remount on navigation between patients so every field starts from that patient's values
-      key={patient.id + patient.updated_at}
+      // remount when switching patients so every field starts from that patient's values — not on
+      // every update: adding a transfer touches the patient row (derived flags) and would reset the tab
+      key={patient.id}
       patient={patient}
       hotelOptions={ctx.hotelOptions}
       roomTypeOptions={ctx.roomTypeOptions}
       profiles={ctx.profiles}
       currentUserId={ctx.currentUserId}
       isAdmin={ctx.isAdmin}
+      transfers={transfers}
+      companies={companies}
     />
   );
 }

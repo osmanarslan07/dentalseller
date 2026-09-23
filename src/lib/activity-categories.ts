@@ -23,6 +23,10 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "visit_updated",
     "visit_deleted",
     "visit_logistics_toggled",
+    "transfer_added",
+    "transfer_updated",
+    "transfer_deleted",
+    "transfer_sent",
   ],
   transfers: [
     "transfer_company_added",

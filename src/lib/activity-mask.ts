@@ -100,6 +100,10 @@ const NAME_DETAIL_ACTIONS = new Set([
   "task_deleted",
   "visit_added",
   "visit_deleted",
+  "transfer_added",
+  "transfer_updated",
+  "transfer_deleted",
+  "transfer_sent",
 ]);
 
 /** Actions whose `detail` is a diffFields() string. */

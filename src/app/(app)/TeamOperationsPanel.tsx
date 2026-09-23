@@ -45,7 +45,9 @@ type LogisticsTarget =
   | { scope: "patient"; id: string; field: PatientLogisticsField }
   | { scope: "extra"; id: string; field: ExtraVisitLogisticsField };
 
-type LogisticsBadge = { label: string; ok: boolean; target: LogisticsTarget };
+/** `target` null = a transfer, which isn't ticked by hand: it counts as arranged once the
+ * visit has that transfer with a driver, so the badge links to the patient page instead. */
+type LogisticsBadge = { label: string; ok: boolean; target: LogisticsTarget | null };
 
 function logisticsTargetKey(t: LogisticsTarget): string {
   return `${t.scope}:${t.id}:${t.field}`;
@@ -228,52 +230,28 @@ export function TeamOperationsPanel({
     });
     for (const p of patients) {
       push(p.id, p.name, p.responsible_seller_id, "Visit 1 · arrival", p.visit1_arrival_date, [
-        {
-          label: "Arrival transfer",
-          ok: p.visit1_arrival_transfer_arranged,
-          target: patientField(p.id, "visit1_arrival_transfer_arranged"),
-        },
+        { label: "Arrival transfer", ok: p.visit1_arrival_transfer_arranged, target: null },
         { label: "Hotel", ok: p.visit1_hotel_arranged, target: patientField(p.id, "visit1_hotel_arranged") },
       ]);
       push(p.id, p.name, p.responsible_seller_id, "Visit 1 · departure", p.visit1_departure_date, [
-        {
-          label: "Departure transfer",
-          ok: p.visit1_departure_transfer_arranged,
-          target: patientField(p.id, "visit1_departure_transfer_arranged"),
-        },
+        { label: "Departure transfer", ok: p.visit1_departure_transfer_arranged, target: null },
       ]);
       if (p.needs_visit2) {
         push(p.id, p.name, p.responsible_seller_id, "Visit 2 · arrival", p.visit2_arrival_date, [
-          {
-            label: "Arrival transfer",
-            ok: p.visit2_arrival_transfer_arranged,
-            target: patientField(p.id, "visit2_arrival_transfer_arranged"),
-          },
+          { label: "Arrival transfer", ok: p.visit2_arrival_transfer_arranged, target: null },
           { label: "Hotel", ok: p.visit2_hotel_arranged, target: patientField(p.id, "visit2_hotel_arranged") },
         ]);
         push(p.id, p.name, p.responsible_seller_id, "Visit 2 · departure", p.visit2_departure_date, [
-          {
-            label: "Departure transfer",
-            ok: p.visit2_departure_transfer_arranged,
-            target: patientField(p.id, "visit2_departure_transfer_arranged"),
-          },
+          { label: "Departure transfer", ok: p.visit2_departure_transfer_arranged, target: null },
         ]);
       }
       for (const v of p.extra_visits) {
         push(p.id, p.name, p.responsible_seller_id, `${v.label} · arrival`, v.arrival_date, [
-          {
-            label: "Arrival transfer",
-            ok: v.arrival_transfer_arranged,
-            target: extraField(v.id, "arrival_transfer_arranged"),
-          },
+          { label: "Arrival transfer", ok: v.arrival_transfer_arranged, target: null },
           { label: "Hotel", ok: v.hotel_arranged, target: extraField(v.id, "hotel_arranged") },
         ]);
         push(p.id, p.name, p.responsible_seller_id, `${v.label} · departure`, v.departure_date, [
-          {
-            label: "Departure transfer",
-            ok: v.departure_transfer_arranged,
-            target: extraField(v.id, "departure_transfer_arranged"),
-          },
+          { label: "Departure transfer", ok: v.departure_transfer_arranged, target: null },
         ]);
       }
     }
@@ -525,7 +503,22 @@ export function TeamOperationsPanel({
                   </Link>
                   <div className="flex shrink-0 items-center gap-3">
                     {item.badges.map((b) => {
-                      const key = logisticsTargetKey(b.target);
+                      if (!b.target) {
+                        return (
+                          <Link
+                            key={b.label}
+                            href={`/patients/${item.patientId}`}
+                            title={b.ok ? "Transfer has a driver" : "Add the transfer and pick a driver"}
+                            className={`rounded-md px-1 py-0.5 text-xs font-medium hover:bg-slate-100 ${
+                              b.ok ? "text-emerald-700" : "text-amber-700"
+                            }`}
+                          >
+                            {b.ok ? "✓" : "＋"} {b.label}
+                          </Link>
+                        );
+                      }
+                      const target = b.target;
+                      const key = logisticsTargetKey(target);
                       const busy = busyTargetKey === key;
                       return (
                         <label
@@ -539,7 +532,7 @@ export function TeamOperationsPanel({
                             type="checkbox"
                             checked={b.ok}
                             disabled={busy}
-                            onChange={() => handleToggleLogistics(b.target, !b.ok)}
+                            onChange={() => handleToggleLogistics(target, !b.ok)}
                             className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
                           />
                           <span className={b.ok ? "text-emerald-700" : "text-amber-700"}>{b.label}</span>

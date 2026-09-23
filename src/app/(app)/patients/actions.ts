@@ -93,8 +93,6 @@ const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
   { key: "visit1_departure_flight_no", label: "visit1 departure flight" },
   { key: "visit1_hotel_name", label: "visit1 hotel" },
   { key: "visit1_room_type", label: "visit1 room type" },
-  { key: "visit1_arrival_transfer_arranged", label: "visit1 arrival transfer" },
-  { key: "visit1_departure_transfer_arranged", label: "visit1 departure transfer" },
   { key: "visit1_hotel_arranged", label: "visit1 hotel arranged" },
 
   { key: "visit2_date", label: "visit2 date" },
@@ -110,8 +108,6 @@ const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
   { key: "visit2_departure_flight_no", label: "visit2 departure flight" },
   { key: "visit2_hotel_name", label: "visit2 hotel" },
   { key: "visit2_room_type", label: "visit2 room type" },
-  { key: "visit2_arrival_transfer_arranged", label: "visit2 arrival transfer" },
-  { key: "visit2_departure_transfer_arranged", label: "visit2 departure transfer" },
   { key: "visit2_hotel_arranged", label: "visit2 hotel arranged" },
 ];
 
@@ -132,8 +128,6 @@ const EXTRA_VISIT_AUDIT_FIELDS: { key: keyof ReturnType<typeof parseExtraVisitIn
   { key: "departure_flight_no", label: "departure flight" },
   { key: "hotel_name", label: "hotel" },
   { key: "room_type", label: "room type" },
-  { key: "arrival_transfer_arranged", label: "arrival transfer" },
-  { key: "departure_transfer_arranged", label: "departure transfer" },
   { key: "hotel_arranged", label: "hotel arranged" },
 ];
 
@@ -326,8 +320,6 @@ function parseInput(formData: FormData): PatientInput {
     visit1_departure_flight_no: str("visit1_departure_flight_no"),
     visit1_hotel_name: str("visit1_hotel_name"),
     visit1_room_type: str("visit1_room_type"),
-    visit1_arrival_transfer_arranged: formData.get("visit1_arrival_transfer_arranged") === "on",
-    visit1_departure_transfer_arranged: formData.get("visit1_departure_transfer_arranged") === "on",
     visit1_hotel_arranged: formData.get("visit1_hotel_arranged") === "on",
     visit2_arrival_date: str("visit2_arrival_date"),
     visit2_arrival_time: str("visit2_arrival_time"),
@@ -337,8 +329,6 @@ function parseInput(formData: FormData): PatientInput {
     visit2_departure_flight_no: str("visit2_departure_flight_no"),
     visit2_hotel_name: str("visit2_hotel_name"),
     visit2_room_type: str("visit2_room_type"),
-    visit2_arrival_transfer_arranged: formData.get("visit2_arrival_transfer_arranged") === "on",
-    visit2_departure_transfer_arranged: formData.get("visit2_departure_transfer_arranged") === "on",
     visit2_hotel_arranged: formData.get("visit2_hotel_arranged") === "on",
   };
 }
@@ -528,8 +518,6 @@ function parseExtraVisitInput(formData: FormData) {
     departure_flight_no: str("departure_flight_no"),
     hotel_name: str("hotel_name"),
     room_type: str("room_type"),
-    arrival_transfer_arranged: formData.get("arrival_transfer_arranged") === "on",
-    departure_transfer_arranged: formData.get("departure_transfer_arranged") === "on",
     hotel_arranged: formData.get("hotel_arranged") === "on",
   };
 }
@@ -579,35 +567,20 @@ export async function updateExtraVisit(id: string, formData: FormData) {
   revalidatePath("/earnings");
 }
 
-const PATIENT_LOGISTICS_FIELDS = [
-  "visit1_arrival_transfer_arranged",
-  "visit1_departure_transfer_arranged",
-  "visit1_hotel_arranged",
-  "visit2_arrival_transfer_arranged",
-  "visit2_departure_transfer_arranged",
-  "visit2_hotel_arranged",
-] as const;
+// Transfer "arranged" flags aren't toggled by hand any more — they follow the transfers
+// themselves (DB trigger). Only the hotel booking is still a manual tick.
+const PATIENT_LOGISTICS_FIELDS = ["visit1_hotel_arranged", "visit2_hotel_arranged"] as const;
 export type PatientLogisticsField = (typeof PATIENT_LOGISTICS_FIELDS)[number];
 
 const PATIENT_LOGISTICS_FIELD_LABELS: Record<PatientLogisticsField, string> = {
-  visit1_arrival_transfer_arranged: "visit 1 arrival transfer",
-  visit1_departure_transfer_arranged: "visit 1 departure transfer",
   visit1_hotel_arranged: "visit 1 hotel",
-  visit2_arrival_transfer_arranged: "visit 2 arrival transfer",
-  visit2_departure_transfer_arranged: "visit 2 departure transfer",
   visit2_hotel_arranged: "visit 2 hotel",
 };
 
-const EXTRA_VISIT_LOGISTICS_FIELDS = [
-  "arrival_transfer_arranged",
-  "departure_transfer_arranged",
-  "hotel_arranged",
-] as const;
+const EXTRA_VISIT_LOGISTICS_FIELDS = ["hotel_arranged"] as const;
 export type ExtraVisitLogisticsField = (typeof EXTRA_VISIT_LOGISTICS_FIELDS)[number];
 
 const EXTRA_VISIT_LOGISTICS_FIELD_LABELS: Record<ExtraVisitLogisticsField, string> = {
-  arrival_transfer_arranged: "arrival transfer",
-  departure_transfer_arranged: "departure transfer",
   hotel_arranged: "hotel",
 };
 

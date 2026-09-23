@@ -1921,6 +1921,170 @@ begin
   end loop;
 end $$;
 
+-- ---------- transfers (one row per car journey, per visit) ----------
+-- A visit is visit 1/2 of the patient row (visit_number) or an extra visit (extra_visit_id).
+-- kind: arrival = airport pickup, departure = airport drop-off, local = anything in between
+-- (hotel -> clinic and back). Pax defaults from the visit. Cost only ever applies to an
+-- external company — an internal (clinic) transfer's cost is forced to null.
+create table if not exists public.transfers (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  visit_number smallint check (visit_number in (1, 2)),
+  extra_visit_id uuid references public.patient_visits(id) on delete cascade,
+  kind text not null default 'local' check (kind in ('arrival', 'departure', 'local')),
+  transfer_date date,
+  transfer_time text,
+  from_place text,
+  to_place text,
+  pax integer not null default 1 check (pax between 1 and 50),
+  company_id uuid references public.transfer_companies(id) on delete set null,
+  driver_id uuid references public.drivers(id) on delete set null,
+  flight_no text,
+  cost numeric(10,2) check (cost is null or cost >= 0),
+  status text not null default 'planned' check (status in ('planned', 'sent', 'done')),
+  sent_at timestamptz,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check ((visit_number is not null) <> (extra_visit_id is not null))
+);
+create index if not exists transfers_patient_idx on public.transfers (patient_id);
+create index if not exists transfers_date_idx on public.transfers (clinic_id, transfer_date);
+
+drop trigger if exists transfers_set_updated_at on public.transfers;
+create trigger transfers_set_updated_at before update on public.transfers
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists transfers_set_clinic_id on public.transfers;
+create trigger transfers_set_clinic_id before insert on public.transfers
+  for each row execute function public.set_row_clinic_id();
+
+-- Everything a transfer points at must be in its own clinic, the driver must work for the
+-- chosen company, and an internal transfer never costs anything. Sorts after
+-- transfers_set_clinic_id (BEFORE triggers fire alphabetically) so clinic_id is set.
+create or replace function public.validate_transfer()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  company_internal boolean;
+begin
+  if not exists (select 1 from public.patients where id = new.patient_id and clinic_id = new.clinic_id) then
+    raise exception 'Patient not found';
+  end if;
+  if new.extra_visit_id is not null
+     and not exists (select 1 from public.patient_visits where id = new.extra_visit_id and patient_id = new.patient_id) then
+    raise exception 'Visit not found';
+  end if;
+  if new.company_id is not null then
+    select is_internal into company_internal from public.transfer_companies
+      where id = new.company_id and clinic_id = new.clinic_id;
+    if not found then raise exception 'Company not found'; end if;
+    if company_internal then new.cost := null; end if;
+  else
+    new.cost := null;
+  end if;
+  if new.driver_id is not null
+     and not exists (select 1 from public.drivers where id = new.driver_id and company_id = new.company_id) then
+    raise exception 'That driver does not work for the chosen company';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists transfers_validate on public.transfers;
+create trigger transfers_validate before insert or update on public.transfers
+  for each row execute function public.validate_transfer();
+
+-- The old "arrival/departure transfer arranged" flags on patients / patient_visits are now
+-- derived: arranged = that visit has an arrival (or departure) transfer with a driver. Kept as
+-- columns so the dashboard and reminder job read them unchanged; only this trigger writes them.
+create or replace function public.sync_transfer_flags(p_patient uuid, p_visit smallint, p_extra uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  arr boolean;
+  dep boolean;
+begin
+  select
+    coalesce(bool_or(kind = 'arrival' and driver_id is not null), false),
+    coalesce(bool_or(kind = 'departure' and driver_id is not null), false)
+  into arr, dep
+  from public.transfers
+  where patient_id = p_patient
+    and visit_number is not distinct from p_visit
+    and extra_visit_id is not distinct from p_extra;
+
+  if p_extra is not null then
+    update public.patient_visits
+      set arrival_transfer_arranged = arr, departure_transfer_arranged = dep
+      where id = p_extra and (arrival_transfer_arranged, departure_transfer_arranged) is distinct from (arr, dep);
+  elsif p_visit = 1 then
+    update public.patients
+      set visit1_arrival_transfer_arranged = arr, visit1_departure_transfer_arranged = dep
+      where id = p_patient and (visit1_arrival_transfer_arranged, visit1_departure_transfer_arranged) is distinct from (arr, dep);
+  elsif p_visit = 2 then
+    update public.patients
+      set visit2_arrival_transfer_arranged = arr, visit2_departure_transfer_arranged = dep
+      where id = p_patient and (visit2_arrival_transfer_arranged, visit2_departure_transfer_arranged) is distinct from (arr, dep);
+  end if;
+end;
+$$;
+
+create or replace function public.transfers_sync_flags()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op in ('UPDATE', 'DELETE') then
+    perform public.sync_transfer_flags(old.patient_id, old.visit_number, old.extra_visit_id);
+  end if;
+  if tg_op in ('INSERT', 'UPDATE') then
+    perform public.sync_transfer_flags(new.patient_id, new.visit_number, new.extra_visit_id);
+  end if;
+  return null;
+end;
+$$;
+drop trigger if exists transfers_sync_flags on public.transfers;
+create trigger transfers_sync_flags after insert or update or delete on public.transfers
+  for each row execute function public.transfers_sync_flags();
+
+alter table public.transfers enable row level security;
+
+-- Transfers are part of the shared patient record: any active member reads and edits them
+-- (like extra visits); support is read-only until unlocked.
+drop policy if exists "transfers_select_active" on public.transfers;
+create policy "transfers_select_active" on public.transfers
+  for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "transfers_insert_active" on public.transfers;
+create policy "transfers_insert_active" on public.transfers
+  for insert with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "transfers_update_active" on public.transfers;
+create policy "transfers_update_active" on public.transfers
+  for update using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id())
+  with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "transfers_delete_active" on public.transfers;
+create policy "transfers_delete_active" on public.transfers
+  for delete using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "transfers_support_readonly_insert" on public.transfers;
+create policy "transfers_support_readonly_insert" on public.transfers
+  as restrictive for insert with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "transfers_support_readonly_update" on public.transfers;
+create policy "transfers_support_readonly_update" on public.transfers
+  as restrictive for update using (not public.is_superadmin(auth.uid()) or public.support_can_write())
+  with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "transfers_support_readonly_delete" on public.transfers;
+create policy "transfers_support_readonly_delete" on public.transfers
+  as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write());
+
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to

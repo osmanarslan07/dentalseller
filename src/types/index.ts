@@ -237,6 +237,10 @@ export interface ClinicConfig {
   clinicPhone: string;
   clinicEmail: string;
   clinicLogoUrl: string | null;
+  /** Hotel and external-transfer costs come off a visit's amount before commission. */
+  deductCostsFromCommission: boolean;
+  /** Optional card-payment surcharge, e.g. 0.03 = 3%. Never counts toward commission. */
+  cardSurchargeRate: number;
 }
 
 /** Only used when a clinic has no clinic_config row (every clinic gets one at creation).
@@ -250,4 +254,6 @@ export const DEFAULT_CLINIC_CONFIG: ClinicConfig = {
   clinicPhone: "",
   clinicEmail: "",
   clinicLogoUrl: null,
+  deductCostsFromCommission: false,
+  cardSurchargeRate: 0.03,
 };

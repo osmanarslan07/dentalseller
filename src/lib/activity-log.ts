@@ -135,6 +135,8 @@ export function describeActivity(
       return `${actor} changed commission settings${entry.detail ? ` — ${entry.detail}` : ""}`;
     case "clinic_branding_updated":
       return `${actor} updated clinic branding${entry.detail ? ` — ${entry.detail}` : ""}`;
+    case "system_settings_updated":
+      return `${actor} changed system settings${entry.detail ? ` — ${entry.detail}` : ""}`;
     case "dashboard_cards_updated":
       return `${actor} changed their dashboard cards`;
     case "task_created":

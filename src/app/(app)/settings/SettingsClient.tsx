@@ -14,18 +14,24 @@ import { AccountCard } from "./AccountCard";
 import { TeamCard } from "./TeamCard";
 import { TelegramCard } from "./TelegramCard";
 import { TelegramGroupCard } from "./TelegramGroupCard";
+import { SystemSettingsCard } from "./SystemSettingsCard";
 import { saveClinicBranding, saveDashboardCards, saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
 
-type TabId = "account" | "commission" | "cards" | "clinic" | "data";
+type TabId = "account" | "commission" | "cards" | "clinic" | "system" | "data";
 
 function tabsFor(isAdmin: boolean): { id: TabId; label: string }[] {
   return [
     { id: "account", label: "Account" },
     { id: "commission", label: "Commission" },
     { id: "cards", label: "Cards" },
-    ...(isAdmin ? [{ id: "clinic" as const, label: "Team & clinic" }] : []),
+    ...(isAdmin
+      ? [
+          { id: "clinic" as const, label: "Team & clinic" },
+          { id: "system" as const, label: "System" },
+        ]
+      : []),
     { id: "data", label: "Data" },
   ];
 }
@@ -464,6 +470,12 @@ export function SettingsClient({
               </div>
             </form>
           </Card>
+        </div>
+      )}
+
+      {activeTab === "system" && isAdmin && (
+        <div className="space-y-6">
+          <SystemSettingsCard clinicConfig={clinicConfig} />
         </div>
       )}
 

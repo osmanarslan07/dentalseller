@@ -1776,6 +1776,14 @@ drop trigger if exists activity_log_support_change on public.activity_log;
 create trigger activity_log_support_change after insert on public.activity_log
   for each row execute function public.log_support_change();
 
+-- ---------- system settings (clinic-wide, admin-only — Settings → System) ----------
+-- Whether hotel/external-transfer costs are deducted from a visit's amount before commission
+-- is worked out. Off by default: some clinics pay commission on the full amount.
+alter table public.clinic_config add column if not exists deduct_costs_from_commission boolean not null default false;
+-- The optional surcharge added to a card payment (e.g. 0.03 = 3%). Never counts toward commission.
+alter table public.clinic_config add column if not exists card_surcharge_rate numeric(5,4) not null default 0.03
+  check (card_surcharge_rate >= 0 and card_surcharge_rate <= 1);
+
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to

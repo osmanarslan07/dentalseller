@@ -105,6 +105,8 @@ export async function getClinicConfig(supabase: SupabaseClient): Promise<ClinicC
     clinicPhone: data.clinic_phone ?? DEFAULT_CLINIC_CONFIG.clinicPhone,
     clinicEmail: data.clinic_email ?? DEFAULT_CLINIC_CONFIG.clinicEmail,
     clinicLogoUrl: data.clinic_logo_url ?? null,
+    deductCostsFromCommission: data.deduct_costs_from_commission ?? false,
+    cardSurchargeRate: data.card_surcharge_rate != null ? Number(data.card_surcharge_rate) : DEFAULT_CLINIC_CONFIG.cardSurchargeRate,
   };
 }
 

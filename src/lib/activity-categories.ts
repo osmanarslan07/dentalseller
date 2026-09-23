@@ -37,6 +37,7 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
   settings: [
     "commission_settings_updated",
     "clinic_branding_updated",
+    "system_settings_updated",
     "dashboard_cards_updated",
     "telegram_group_chat_updated",
     "terms_accepted",

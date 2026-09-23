@@ -177,6 +177,46 @@ export async function saveTelegramGroupChat(formData: FormData) {
   revalidatePath("/settings");
 }
 
+/** Admin-only — enforced both here and by the clinic_config_update_admin RLS policy.
+ * Clinic-wide rules for how money is counted: whether hotel/transfer costs come off before
+ * commission, and the optional card surcharge rate. */
+export async function saveSystemSettings(formData: FormData) {
+  const supabase = await createClient();
+  const user = await getActingUser();
+
+  const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
+  if (myProfile?.role !== "admin") throw new Error("Admin only");
+
+  const deduct_costs_from_commission = formData.get("deduct_costs_from_commission") === "on";
+  const card_surcharge_rate = Number(formData.get("card_surcharge_rate")) / 100;
+  if (!Number.isFinite(card_surcharge_rate) || card_surcharge_rate < 0 || card_surcharge_rate > 1) {
+    throw new Error("Card surcharge must be between 0 and 100%");
+  }
+
+  const before = await getClinicConfig(supabase);
+
+  const { error } = await supabase
+    .from("clinic_config")
+    .upsert({ clinic_id: myProfile.clinic_id, deduct_costs_from_commission, card_surcharge_rate });
+  if (error) throw new Error(error.message);
+
+  const changes: string[] = [];
+  if (before.deductCostsFromCommission !== deduct_costs_from_commission) {
+    changes.push(`deduct costs from commission ${before.deductCostsFromCommission} → ${deduct_costs_from_commission}`);
+  }
+  if (before.cardSurchargeRate !== card_surcharge_rate) {
+    changes.push(`card surcharge ${before.cardSurchargeRate} → ${card_surcharge_rate}`);
+  }
+  if (changes.length > 0) {
+    await logActivity(supabase, user.actorId, "system_settings_updated", "settings", user.id, changes.join(", "));
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/");
+  revalidatePath("/patients");
+  revalidatePath("/earnings");
+}
+
 /** One saved column (`settings.dashboard_cards`) backs both pickers — Dashboard and Earnings
  * each only ever submit their own category's ids, so saving one must splice those in without
  * touching the other category's stored order. */

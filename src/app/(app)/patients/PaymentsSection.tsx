@@ -141,17 +141,19 @@ export function PaymentsSection({
             currentUserId={currentUserId}
             surchargeRate={surchargeRate}
             suggestedAmount={Math.max(0, (expected ?? 0) + extrasTotal - paid)}
+            remainingBefore={(expected ?? 0) + extrasTotal - paid}
             onCancel={() => setAdding(false)}
             onSave={async (formData) => {
               const { celebration } = await addPayment(patientId, visitKey, formData);
+              const left = Math.round(((expected ?? 0) + extrasTotal - paid - Number(formData.get("amount"))) * 100) / 100;
               if (celebration) {
                 if (celebration.kind === "confetti") {
                   fireConfetti();
                   if (soundEnabled) playChime();
                 }
-                showToast(celebration.message);
+                showToast(left > 0 ? `${celebration.message} ${gbp(left)} still due on this visit.` : celebration.message);
               } else {
-                showToast("Payment recorded ✓");
+                showToast(left > 0 ? `Payment recorded — ${gbp(left)} still due on this visit.` : "Payment recorded ✓");
               }
               setAdding(false);
               router.refresh();
@@ -241,9 +243,12 @@ function PaymentForm({
   currentUserId,
   surchargeRate,
   suggestedAmount,
+  remainingBefore,
   onCancel,
   onSave,
 }: {
+  /** Owed − paid before this payment (new payments only) — to show what would be left. */
+  remainingBefore?: number;
   payment?: PatientPayment;
   profiles: Profile[];
   currentUserId: string;
@@ -339,6 +344,27 @@ function PaymentForm({
           <Input name="note" defaultValue={payment?.note ?? ""} placeholder="Receipt no., deposit, balance…" />
         </div>
       </div>
+
+      {remainingBefore != null && amountNum > 0 && (
+        <p
+          className={`text-sm ${
+            Math.round((remainingBefore - amountNum) * 100) / 100 > 0
+              ? "text-amber-700"
+              : Math.round((remainingBefore - amountNum) * 100) / 100 < 0
+              ? "text-blue-700"
+              : "text-emerald-700"
+          }`}
+        >
+          {(() => {
+            const left = Math.round((remainingBefore - amountNum) * 100) / 100;
+            return left > 0
+              ? `After this payment: ${gbp(left)} still due on this visit.`
+              : left < 0
+              ? `This is ${gbp(-left)} more than owed (overpaid).`
+              : "This pays the visit in full.";
+          })()}
+        </p>
+      )}
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 

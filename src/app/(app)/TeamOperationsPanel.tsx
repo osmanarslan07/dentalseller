@@ -419,7 +419,7 @@ export function TeamOperationsPanel({
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Payments don&apos;t match</h2>
-              <p className="text-xs text-slate-500">Visit passed and still owed (price + extras), or overpaid</p>
+              <p className="text-xs text-slate-500">Paid into, completed or past its date — and still short (price + extras), or overpaid</p>
             </div>
             {paymentMismatches.length > 0 && (
               <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600">

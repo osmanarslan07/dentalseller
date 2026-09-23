@@ -17,7 +17,7 @@ import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
 import { deletePatient, sendPatientTelegramMessage } from "./actions";
-import { patientBalance } from "@/lib/balance";
+import { patientDueNow, todayIsoLocal } from "@/lib/balance";
 
 /** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. */
 function visitMoney(p: Patient, key: "visit1" | "visit2", currency: string): string {
@@ -27,12 +27,35 @@ function visitMoney(p: Patient, key: "visit1" | "visit2", currency: string): str
   return expected != null ? `${formatCurrency(expected, currency)} (exp.)` : "—";
 }
 
-/** Money in vs money owed (price + extras) across all the patient's visits. */
+/** What's short right now (price + extras vs payments on visits already under way), else
+ * whether the rest is simply not due yet. Hover lists which visit. */
 function BalanceBadge({ patient }: { patient: Patient }) {
-  const { owed, paid, due } = patientBalance(patient);
-  if (owed === 0 && paid === 0) return <span className="text-slate-300">—</span>;
-  if (due > 0) return <Badge tone="amber">{formatCurrency(due, "GBP")} due</Badge>;
-  if (due < 0) return <Badge tone="blue">Overpaid {formatCurrency(-due, "GBP")}</Badge>;
+  const { short, dueNow, overpaid, upcoming, anyOwed } = patientDueNow(patient, todayIsoLocal());
+  const detail = short
+    .map((b) => `${b.label}: ${b.due > 0 ? `${formatCurrency(b.due, "GBP")} due` : `overpaid ${formatCurrency(-b.due, "GBP")}`}`)
+    .join(" · ");
+  if (!anyOwed) return <span className="text-slate-300">—</span>;
+  if (dueNow > 0) {
+    return (
+      <span title={detail}>
+        <Badge tone="amber">{formatCurrency(dueNow, "GBP")} due</Badge>
+      </span>
+    );
+  }
+  if (overpaid > 0) {
+    return (
+      <span title={detail}>
+        <Badge tone="blue">Overpaid {formatCurrency(overpaid, "GBP")}</Badge>
+      </span>
+    );
+  }
+  if (upcoming > 0) {
+    return (
+      <span title={`${formatCurrency(upcoming, "GBP")} for visits not started yet`}>
+        <Badge tone="slate">Upcoming</Badge>
+      </span>
+    );
+  }
   return <Badge tone="green">Paid</Badge>;
 }
 

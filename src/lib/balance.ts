@@ -7,6 +7,7 @@ export interface VisitBalance {
   key: string;
   label: string;
   date: string | null;
+  status: "upcoming" | "completed";
   owed: number;
   paid: number;
   /** owed − paid: positive = still due, negative = overpaid. */
@@ -18,16 +19,22 @@ const round = (n: number) => Math.round(n * 100) / 100;
 export function visitBalances(p: Patient): VisitBalance[] {
   const paidFor = (key: string) =>
     p.payments.filter((x) => (x.extra_visit_id ?? `visit${x.visit_number}`) === key).reduce((s, x) => s + x.amount, 0);
-  const make = (key: string, label: string, date: string | null, expected: number | null): VisitBalance => {
+  const make = (
+    key: string,
+    label: string,
+    date: string | null,
+    status: "upcoming" | "completed",
+    expected: number | null
+  ): VisitBalance => {
     const owed = round((expected ?? 0) + extrasTotalFor(p, key));
     const paid = round(paidFor(key));
-    return { key, label, date, owed, paid, due: round(owed - paid) };
+    return { key, label, date, status, owed, paid, due: round(owed - paid) };
   };
 
   return [
-    make("visit1", "Visit 1", p.visit1_date, p.visit1_expected),
-    ...(p.needs_visit2 ? [make("visit2", "Visit 2", p.visit2_date, p.visit2_expected)] : []),
-    ...p.extra_visits.map((v) => make(v.id, v.label, v.visit_date, v.expected)),
+    make("visit1", "Visit 1", p.visit1_date, p.visit1_status, p.visit1_expected),
+    ...(p.needs_visit2 ? [make("visit2", "Visit 2", p.visit2_date, p.visit2_status, p.visit2_expected)] : []),
+    ...p.extra_visits.map((v) => make(v.id, v.label, v.visit_date, v.status, v.expected)),
   ].filter((b) => b.owed > 0 || b.paid > 0);
 }
 
@@ -38,11 +45,38 @@ export function patientBalance(p: Patient): { owed: number; paid: number; due: n
   return { owed, paid, due: round(owed - paid) };
 }
 
-/** A visit whose money doesn't add up and should be looked at: it has happened (dated on or
- * before `todayIso`) and is still owed something, or anything was overpaid. */
+/** Payment for this visit is under way: money has been taken, the visit is marked completed,
+ * or its date has come. From then on anything still owed is due now — before that, it's just
+ * what the patient will pay later. */
+export function isDueNow(b: VisitBalance, todayIso: string): boolean {
+  return b.paid > 0 || b.status === "completed" || (!!b.date && b.date <= todayIso);
+}
+
+/** A visit whose money doesn't add up and should be looked at: overpaid, or due now and
+ * still short (e.g. £3,000 taken on a £3,700 visit — flagged the moment it's recorded). */
 export function isMismatch(b: VisitBalance, todayIso: string): boolean {
   if (b.due < 0) return true;
-  return b.due > 0 && !!b.date && b.date <= todayIso;
+  return b.due > 0 && isDueNow(b, todayIso);
+}
+
+/** Across a patient's visits: what's short right now (the mismatched visits), and what's
+ * owed for visits that haven't started yet. */
+export function patientDueNow(p: Patient, todayIso: string) {
+  const all = visitBalances(p);
+  const short = all.filter((b) => isMismatch(b, todayIso));
+  return {
+    short,
+    dueNow: round(short.reduce((s, b) => s + Math.max(0, b.due), 0)),
+    overpaid: round(short.reduce((s, b) => s + Math.max(0, -b.due), 0)),
+    upcoming: round(all.filter((b) => !isDueNow(b, todayIso)).reduce((s, b) => s + Math.max(0, b.due), 0)),
+    anyOwed: all.length > 0,
+  };
+}
+
+/** Local-date "YYYY-MM-DD" for today. */
+export function todayIsoLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 /** Extras sold on one visit ("visit1" | "visit2" | an extra visit's id), oldest first. */

@@ -5,18 +5,13 @@ import Link from "next/link";
 import { Badge, Button, Card, Select } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { monthLabel } from "@/lib/commission";
-import { isMismatch, visitBalances } from "@/lib/balance";
+import { isMismatch, todayIsoLocal as todayIso, visitBalances } from "@/lib/balance";
 import { visitLabel } from "@/lib/visit-key";
 import { downloadCsv, escapeCsv } from "@/lib/csv";
 import { Patient, PatientPayment, PaymentMethod, Profile } from "@/types";
 
 const METHOD_LABELS: Record<PaymentMethod, string> = { cash: "Cash", card: "Card", bank: "Bank transfer" };
 const gbp = (n: number) => formatCurrency(n, "GBP");
-
-function todayIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 type LedgerRow = { payment: PatientPayment; patient: Patient; visit: string };
 
@@ -208,7 +203,8 @@ export function AccountingClient({ patients, profiles }: { patients: Patient[]; 
           <div>
             <h2 className="text-base font-semibold text-slate-900">Open balances</h2>
             <p className="text-xs text-slate-500">
-              Visits that already happened and are still owed (price + extras vs payments), or were overpaid — all months.
+              Visits already paid into, completed or past their date that are still short (price + extras vs payments), or
+              overpaid — all months.
             </p>
           </div>
           {outstanding > 0 && <Badge tone="amber">{gbp(outstanding)} outstanding</Badge>}

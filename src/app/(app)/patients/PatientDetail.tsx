@@ -14,6 +14,7 @@ import { TransfersSection, VisitTravel } from "./TransfersSection";
 import { ExtrasSection } from "./ExtrasSection";
 import { PaymentsSection } from "./PaymentsSection";
 import { extrasTotalFor, visitCosts } from "@/lib/commission";
+import { patientDueNow, todayIsoLocal } from "@/lib/balance";
 
 /** What a payments section needs besides the visit itself. */
 type PaymentContext = {
@@ -428,6 +429,12 @@ export function PatientDetail({
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <h1 className="truncate text-2xl font-semibold text-slate-900">{title}</h1>
             {patient && <Badge tone="slate">{patientStageLabel(patient)}</Badge>}
+            {patient &&
+              patientDueNow(patient, todayIsoLocal()).short.map((b) => (
+                <Badge key={b.key} tone={b.due > 0 ? "amber" : "blue"}>
+                  {b.label}: {b.due > 0 ? `£${b.due.toLocaleString("en-GB")} due` : `overpaid £${(-b.due).toLocaleString("en-GB")}`}
+                </Badge>
+              ))}
           </div>
           {patient?.treatment && <p className="mt-0.5 text-sm text-slate-500">{patient.treatment}</p>}
         </div>

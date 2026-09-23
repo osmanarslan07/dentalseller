@@ -6,6 +6,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity } from "@/lib/activity-log";
 import { assertSuperadmin } from "@/lib/platform";
 import { BILLING_CURRENCIES, formatPrice, Plan, PLAN_LABELS, PLANS } from "@/lib/clinic-billing";
+import {
+  ANNOUNCEMENT_LEVEL_LABELS,
+  ANNOUNCEMENT_LEVELS,
+  ANNOUNCEMENT_MAX_LENGTH,
+  AnnouncementLevel,
+} from "@/lib/announcements";
 
 function generateTempPassword(): string {
   return randomBytes(12).toString("base64url");
@@ -235,4 +241,102 @@ export async function updateClinicBilling(clinicId: string, formData: FormData):
 
   revalidatePath("/platform");
   revalidatePath(`/platform/clinics/${clinicId}`);
+}
+
+function excerpt(message: string): string {
+  const oneLine = message.replace(/\s+/g, " ").trim();
+  return oneLine.length > 80 ? `${oneLine.slice(0, 77)}…` : oneLine;
+}
+
+/** `starts_at` / `ends_at` arrive as ISO strings — the form converts the superadmin's local
+ * datetime-local input to UTC before submitting, so no time zone guessing happens here. */
+function optionalIso(formData: FormData, key: string, label: string): string | null {
+  const raw = String(formData.get(key) ?? "").trim();
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  if (Number.isNaN(ms)) throw new Error(`Enter a valid ${label}`);
+  return new Date(ms).toISOString();
+}
+
+export async function createAnnouncement(formData: FormData): Promise<void> {
+  const { supabase, user } = await assertSuperadmin();
+
+  const message = String(formData.get("message") ?? "").trim();
+  if (!message) throw new Error("Write a message");
+  if (message.length > ANNOUNCEMENT_MAX_LENGTH) throw new Error(`Keep it under ${ANNOUNCEMENT_MAX_LENGTH} characters`);
+
+  const level = String(formData.get("level") ?? "") as AnnouncementLevel;
+  if (!ANNOUNCEMENT_LEVELS.includes(level)) throw new Error("Choose a level");
+
+  let clinicIds: string[] | null = null;
+  if (formData.get("audience") === "selected") {
+    clinicIds = formData.getAll("clinic_ids").map(String).filter(Boolean);
+    if (clinicIds.length === 0) throw new Error("Pick at least one clinic, or send it to all clinics");
+  }
+
+  const startsAt = optionalIso(formData, "starts_at", "start time") ?? new Date().toISOString();
+  const endsAt = optionalIso(formData, "ends_at", "end time");
+  if (endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) throw new Error("The end time must be after the start time");
+  if (endsAt && Date.parse(endsAt) <= Date.now()) throw new Error("The end time is already in the past");
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("announcements")
+    .insert({ message, level, clinic_ids: clinicIds, starts_at: startsAt, ends_at: endsAt, created_by: user.id })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+
+  const audience = clinicIds ? `${clinicIds.length} clinic${clinicIds.length === 1 ? "" : "s"}` : "all clinics";
+  await logActivity(
+    supabase,
+    user.id,
+    "announcement_created",
+    "announcement",
+    data.id,
+    `${ANNOUNCEMENT_LEVEL_LABELS[level]} to ${audience}: "${excerpt(message)}"`
+  );
+
+  revalidatePath("/platform/announcements");
+}
+
+/** Takes a live or scheduled announcement down now; it stays in the list as ended. */
+export async function endAnnouncement(id: string): Promise<void> {
+  const { supabase, user } = await assertSuperadmin();
+
+  const admin = createAdminClient();
+  const { data: existing, error: fetchError } = await admin
+    .from("announcements")
+    .select("message, starts_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchError) throw new Error(fetchError.message);
+  if (!existing) throw new Error("Announcement not found");
+
+  const now = Date.now();
+  // A scheduled one that never started gets its start pulled back just before the end, so
+  // the ends_at > starts_at check still holds.
+  const update =
+    Date.parse(existing.starts_at) >= now
+      ? { starts_at: new Date(now - 1000).toISOString(), ends_at: new Date(now).toISOString() }
+      : { ends_at: new Date(now).toISOString() };
+  const { error } = await admin.from("announcements").update(update).eq("id", id);
+  if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.id, "announcement_ended", "announcement", id, `"${excerpt(existing.message)}"`);
+
+  revalidatePath("/platform/announcements");
+}
+
+export async function deleteAnnouncement(id: string): Promise<void> {
+  const { supabase, user } = await assertSuperadmin();
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("announcements").delete().eq("id", id).select("message").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Announcement not found");
+
+  await logActivity(supabase, user.id, "announcement_deleted", "announcement", id, `"${excerpt(data.message)}"`);
+
+  revalidatePath("/platform/announcements");
 }

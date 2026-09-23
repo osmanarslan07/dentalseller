@@ -5,6 +5,7 @@ import { currentMonthKey, monthLabel } from "@/lib/commission";
 import { computeHealthFlags, HealthFlag } from "@/lib/clinic-health";
 import { computeOnboarding, OnboardingStep } from "@/lib/clinic-onboarding";
 import { ClinicBilling, Plan } from "@/lib/clinic-billing";
+import { Announcement, AnnouncementLevel } from "@/lib/announcements";
 import { ProfileRole } from "@/types";
 
 /** Server-side gate for every /platform page and action. Platform reads go through the
@@ -395,6 +396,9 @@ export const PLATFORM_ACTION_LABELS: Record<string, string> = {
   password_reset: "Reset password",
   superadmin_added: "Added superadmin",
   clinic_billing_updated: "Updated plan",
+  announcement_created: "Posted announcement",
+  announcement_ended: "Ended announcement",
+  announcement_deleted: "Deleted announcement",
 };
 
 export const AUDIT_LOG_LIMIT = 200;
@@ -463,6 +467,8 @@ export async function getPlatformAuditLog(): Promise<{
       clinicId = person.get(r.target_id)?.clinic_id ?? null;
       const email = authById.get(r.target_id)?.email;
       targetLabel = email ?? nameOf(r.target_id);
+    } else if (r.target_type === "announcement") {
+      targetLabel = "Announcement";
     }
     return {
       id: r.id,
@@ -478,4 +484,43 @@ export async function getPlatformAuditLog(): Promise<{
   });
 
   return { entries: auditEntries, clinics: clinicList };
+}
+
+/** Every announcement, newest first (live, scheduled and ended) — the platform's full view.
+ * The clinic app reads the same table through RLS, which only returns what's live for it. */
+export async function getAnnouncements(): Promise<Announcement[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("announcements")
+    .select("id, message, level, clinic_ids, starts_at, ends_at, created_at, created_by")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = data ?? [];
+
+  const creatorIds = [...new Set(rows.map((r) => r.created_by).filter((id): id is string => !!id))];
+  const { data: creators } = creatorIds.length
+    ? await admin.from("profiles").select("id, display_name").in("id", creatorIds)
+    : { data: [] };
+  const authById = creatorIds.length ? await getAuthInfoById() : new Map<string, AuthInfo>();
+  const nameOf = (id: string) =>
+    (creators ?? []).find((c) => c.id === id)?.display_name || authById.get(id)?.email || null;
+
+  return rows.map((r) => ({
+    id: r.id,
+    message: r.message,
+    level: r.level as AnnouncementLevel,
+    clinicIds: r.clinic_ids,
+    startsAt: r.starts_at,
+    endsAt: r.ends_at,
+    createdAt: r.created_at,
+    createdByName: r.created_by ? nameOf(r.created_by) : null,
+  }));
+}
+
+/** [id, name] for every clinic, sorted by name — for pickers. */
+export async function getClinicNames(): Promise<[string, string][]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("clinics").select("id, name").order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((c) => [c.id, c.name]);
 }

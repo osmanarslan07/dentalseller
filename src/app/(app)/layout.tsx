@@ -8,6 +8,8 @@ import { CelebrationSoundProvider } from "@/components/celebration-sound";
 import { ToastProvider } from "@/components/Toast";
 import { PageTransition } from "@/components/PageTransition";
 import { PresenceHeartbeat } from "@/components/PresenceHeartbeat";
+import { AnnouncementBanner } from "@/components/AnnouncementBanner";
+import { LiveAnnouncement } from "@/lib/announcements";
 import { Button } from "@/components/ui";
 import { logout } from "@/lib/auth-actions";
 
@@ -29,7 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: clinic } = await supabase.from("clinics").select("is_active").eq("id", profile.clinic_id).maybeSingle();
   if (clinic && !clinic.is_active) return <ClinicSuspended />;
 
-  const settings = await getSettings(supabase, user.id);
+  const [settings, announcements] = await Promise.all([getSettings(supabase, user.id), getLiveAnnouncements(supabase)]);
   const tryRate =
     settings.show_try && settings.currency !== "TRY" ? await getTryRate(settings.currency) : null;
 
@@ -39,6 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <ToastProvider>
         <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
           <CelebrationSoundProvider initialEnabled={settings.celebration_sound}>
+            <AnnouncementBanner announcements={announcements} />
             <Nav email={user.email ?? ""} displayName={profile.display_name} isAdmin={profile.role === "admin"} />
             <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-8 lg:px-8">
               <PageTransition>{children}</PageTransition>
@@ -48,6 +51,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </ToastProvider>
     </div>
   );
+}
+
+/** RLS returns only what is live now and aimed at this clinic. Best-effort: a banner is
+ * never worth breaking the app over. */
+async function getLiveAnnouncements(supabase: Awaited<ReturnType<typeof createClient>>): Promise<LiveAnnouncement[]> {
+  const { data, error } = await supabase
+    .from("announcements")
+    .select("id, message, level")
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("Announcements fetch failed:", error.message);
+    return [];
+  }
+  return (data ?? []) as LiveAnnouncement[];
 }
 
 function ClinicSuspended() {

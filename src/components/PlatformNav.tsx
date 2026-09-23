@@ -7,6 +7,7 @@ import { logout } from "@/lib/auth-actions";
 const LINKS = [
   { href: "/platform", label: "Overview" },
   { href: "/platform/clinics/new", label: "New clinic" },
+  { href: "/platform/announcements", label: "Announcements" },
   { href: "/platform/superadmins", label: "Superadmins" },
   { href: "/platform/audit", label: "Audit log" },
 ];

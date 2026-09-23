@@ -1301,6 +1301,38 @@ create trigger clinic_billing_set_updated_at
   for each row execute function public.set_updated_at();
 
 -- =====================================================================
+-- PLATFORM: announcements (banner at the top of the clinic app). Idempotent/safe to re-run.
+-- =====================================================================
+
+create table if not exists public.announcements (
+  id uuid primary key default gen_random_uuid(),
+  message text not null check (length(trim(message)) between 1 and 500),
+  level text not null default 'info' check (level in ('info', 'warning', 'critical')),
+  -- null = every clinic; otherwise only these
+  clinic_ids uuid[] check (clinic_ids is null or cardinality(clinic_ids) > 0),
+  starts_at timestamptz not null default now(),
+  ends_at timestamptz,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (ends_at is null or ends_at > starts_at)
+);
+
+alter table public.announcements enable row level security;
+
+-- Clinic staff read only what's live right now and aimed at their clinic — the targeting
+-- happens here, so the app can simply select everything it's allowed to see. No write
+-- policies: announcements are created and ended by the platform area via the service role.
+drop policy if exists "announcements_select_live_for_my_clinic" on public.announcements;
+create policy "announcements_select_live_for_my_clinic" on public.announcements
+  for select using (
+    public.is_active_profile(auth.uid())
+    and public.my_clinic_id() is not null
+    and starts_at <= now()
+    and (ends_at is null or ends_at > now())
+    and (clinic_ids is null or public.my_clinic_id() = any(clinic_ids))
+  );
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

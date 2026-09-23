@@ -13,6 +13,8 @@ const ACTION_TONES: Record<string, "slate" | "green" | "amber" | "blue" | "red">
   password_reset: "amber",
   superadmin_added: "blue",
   clinic_billing_updated: "blue",
+  announcement_created: "blue",
+  announcement_deleted: "red",
 };
 
 export function AuditLogClient({
@@ -81,7 +83,7 @@ export function AuditLogClient({
                   {formatActivityTime(e.createdAt)}
                 </td>
                 <td className="py-3 pr-4 text-slate-900">{e.actorName}</td>
-                <td className="py-3 pr-4">
+                <td className="whitespace-nowrap py-3 pr-4">
                   <Badge tone={ACTION_TONES[e.action] ?? "slate"}>{e.actionLabel}</Badge>
                 </td>
                 <td className="py-3 pr-4">

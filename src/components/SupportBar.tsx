@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { SupportContext } from "@/lib/viewer";
 import { Button } from "@/components/ui";
@@ -25,8 +25,14 @@ export function SupportBar({ support, viewAsId }: { support: SupportContext; vie
   const router = useRouter();
   const pathname = usePathname();
 
-  // Every page opened in support mode goes into the support access log (path only).
+  // Every page opened in support mode goes into the support access log — the path only,
+  // never the query string (a search box's text could be a patient's name). The ref skips
+  // a repeat of the page just logged, so the evidence log doesn't depend on React running
+  // effects twice in development.
+  const lastLoggedPath = useRef<string | null>(null);
   useEffect(() => {
+    if (lastLoggedPath.current === pathname) return;
+    lastLoggedPath.current = pathname;
     logSupportPageView(pathname).catch(() => {
       // the log write is best-effort and the server already reports failures
     });

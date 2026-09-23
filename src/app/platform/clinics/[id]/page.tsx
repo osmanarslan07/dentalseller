@@ -8,6 +8,7 @@ import { Badge, StatCard } from "@/components/ui";
 import { ClinicDetailsCard } from "./ClinicDetailsCard";
 import { ClinicTeamCard } from "./ClinicTeamCard";
 import { HealthCard } from "../../HealthFlags";
+import { OnboardingCard } from "../../Onboarding";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,6 +46,8 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
       </div>
 
       <HealthCard flags={clinic.health} />
+
+      <OnboardingCard steps={clinic.onboarding} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <ClinicDetailsCard clinic={clinic} />

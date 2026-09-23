@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { currentMonthKey } from "@/lib/commission";
 import { computeHealthFlags, HealthFlag } from "@/lib/clinic-health";
+import { computeOnboarding, OnboardingStep } from "@/lib/clinic-onboarding";
 import { ProfileRole } from "@/types";
 
 /** Server-side gate for every /platform page and action. Platform reads go through the
@@ -66,6 +67,7 @@ export interface ClinicWithStats extends Clinic {
   stats: ClinicStats;
   /** Worst first; empty when the clinic is healthy (or suspended). */
   health: HealthFlag[];
+  onboarding: OnboardingStep[];
 }
 
 export interface ClinicMember {
@@ -112,9 +114,10 @@ function currentMonthRange(): { start: string; end: string } {
   return { start: `${year}-${pad(month)}-01`, end: `${next}-01` };
 }
 
-/** Head-only count queries (no rows transferred) — nothing identifying ever leaves the DB,
- * and no risk of PostgREST's default row cap silently truncating a big clinic's numbers. */
-async function computeClinicStatsAndHealth(
+/** Stats, health flags and onboarding for one clinic. Head-only count queries (no rows
+ * transferred) — nothing identifying ever leaves the DB, and no risk of PostgREST's default
+ * row cap silently truncating a big clinic's numbers. */
+async function summarizeClinic(
   clinic: Clinic,
   authById: Map<string, AuthInfo>
 ): Promise<ClinicWithStats> {
@@ -123,31 +126,34 @@ async function computeClinicStatsAndHealth(
   const { start, end } = currentMonthRange();
   const count = { count: "exact" as const, head: true };
 
-  const [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity, brandingRes] = await Promise.all([
-    admin.from("profiles").select("id, role, is_active").eq("clinic_id", clinicId),
-    admin.from("patients").select("id", count).eq("clinic_id", clinicId),
-    admin
-      .from("patients")
-      .select("id", count)
-      .eq("clinic_id", clinicId)
-      .gte("confirmation_date", start)
-      .lt("confirmation_date", end),
-    admin.from("quotes").select("id", count).eq("clinic_id", clinicId),
-    admin.from("quotes").select("id", count).eq("clinic_id", clinicId).gte("created_at", start).lt("created_at", end),
-    admin
-      .from("activity_log")
-      .select("created_at")
-      .eq("clinic_id", clinicId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    admin
-      .from("clinic_config")
-      .select("clinic_address, clinic_phone, clinic_email, clinic_logo_url")
-      .eq("clinic_id", clinicId)
-      .maybeSingle(),
-  ]);
-  for (const res of [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity, brandingRes]) {
+  const [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity, brandingRes, confirmedPatients] =
+    await Promise.all([
+      admin.from("profiles").select("id, role, is_active").eq("clinic_id", clinicId),
+      admin.from("patients").select("id", count).eq("clinic_id", clinicId),
+      admin
+        .from("patients")
+        .select("id", count)
+        .eq("clinic_id", clinicId)
+        .gte("confirmation_date", start)
+        .lt("confirmation_date", end),
+      admin.from("quotes").select("id", count).eq("clinic_id", clinicId),
+      admin.from("quotes").select("id", count).eq("clinic_id", clinicId).gte("created_at", start).lt("created_at", end),
+      admin
+        .from("activity_log")
+        .select("created_at")
+        .eq("clinic_id", clinicId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      admin
+        .from("clinic_config")
+        .select("clinic_address, clinic_phone, clinic_email, clinic_logo_url, telegram_group_chat_id")
+        .eq("clinic_id", clinicId)
+        .maybeSingle(),
+      admin.from("patients").select("id", count).eq("clinic_id", clinicId).not("confirmation_date", "is", null),
+    ]);
+  const results = [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity, brandingRes, confirmedPatients];
+  for (const res of results) {
     if (res.error) throw res.error;
   }
 
@@ -156,6 +162,14 @@ async function computeClinicStatsAndHealth(
   const onlineSince = Date.now() - ONLINE_WINDOW_MS;
   const lastActivityAt = lastActivity.data?.created_at ?? null;
   const branding = brandingRes.data;
+  const brandingInput = branding
+    ? {
+        address: branding.clinic_address ?? "",
+        phone: branding.clinic_phone ?? "",
+        email: branding.clinic_email ?? "",
+        logoUrl: branding.clinic_logo_url,
+      }
+    : null;
 
   return {
     ...clinic,
@@ -179,14 +193,13 @@ async function computeClinicStatsAndHealth(
         isActive: p.is_active,
         lastSignInAt: authById.get(p.id)?.lastSignInAt ?? null,
       })),
-      branding: branding
-        ? {
-            address: branding.clinic_address ?? "",
-            phone: branding.clinic_phone ?? "",
-            email: branding.clinic_email ?? "",
-            logoUrl: branding.clinic_logo_url,
-          }
-        : null,
+      branding: brandingInput,
+    }),
+    onboarding: computeOnboarding({
+      branding: brandingInput && { ...brandingInput, telegramGroupChatId: branding?.telegram_group_chat_id ?? null },
+      sellers: profiles.filter((p) => p.role === "seller").length,
+      quotes: quotes.count ?? 0,
+      confirmedPatients: confirmedPatients.count ?? 0,
     }),
   };
 }
@@ -201,7 +214,7 @@ export async function getClinicsWithStats(): Promise<ClinicWithStats[]> {
   ]);
   if (error) throw error;
 
-  return Promise.all(((data ?? []) as Clinic[]).map((clinic) => computeClinicStatsAndHealth(clinic, authById)));
+  return Promise.all(((data ?? []) as Clinic[]).map((clinic) => summarizeClinic(clinic, authById)));
 }
 
 export async function getClinicWithStats(id: string): Promise<ClinicWithStats | null> {
@@ -212,7 +225,7 @@ export async function getClinicWithStats(id: string): Promise<ClinicWithStats | 
   ]);
   if (error) throw error;
   if (!data) return null;
-  return computeClinicStatsAndHealth(data as Clinic, authById);
+  return summarizeClinic(data as Clinic, authById);
 }
 
 interface MemberProfileRow {

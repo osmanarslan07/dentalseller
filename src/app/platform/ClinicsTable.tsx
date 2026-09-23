@@ -9,6 +9,7 @@ import { formatActivityTime } from "@/lib/activity-log";
 import { Badge, Card, Input } from "@/components/ui";
 import { severityRank, worstSeverity } from "@/lib/clinic-health";
 import { HealthSummary } from "./HealthFlags";
+import { OnboardingTag } from "./Onboarding";
 
 type SortKey = "name" | "health" | "users" | "patients" | "activity" | "created";
 
@@ -115,6 +116,7 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
                     {clinic.slug && <span>{clinic.slug}</span>}
                     {!clinic.is_active && <Badge tone="amber">Suspended</Badge>}
+                    <OnboardingTag steps={clinic.onboarding} />
                   </div>
                 </td>
                 <td className="py-3 pr-4">

@@ -77,7 +77,7 @@ export function computeHealthFlags(input: ClinicHealthInput, now = Date.now()): 
       id: "branding_incomplete",
       severity: "info",
       label: "Branding incomplete",
-      detail: `Missing ${missing.join(", ")}, so confirmation letters and offers print without it. The clinic admin can fill this in under Settings.`,
+      detail: `Missing ${missing.join(", ")}, so confirmation letters and offers print without it. The clinic admin can fill this in under Settings → Confirmation letter branding.`,
     });
   }
 

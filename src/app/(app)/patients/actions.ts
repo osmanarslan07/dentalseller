@@ -708,7 +708,9 @@ export async function deleteExtraVisit(id: string) {
 /** Powers the patient modal's History tab. `activity_log` is admin-only under RLS (see
  * schema.sql), but any active seller can already edit any shared patient record — so seeing
  * that same patient's own audit trail isn't a bigger exposure. Runs with the service-role
- * client to read past RLS, but stays scoped to this one patient's rows only. */
+ * client to read past RLS, so it must first prove the caller can see this patient at all:
+ * the RLS-scoped lookup below returns nothing for another clinic's patient (or for a
+ * deactivated account), and the log read is pinned to that same clinic. */
 export async function getPatientActivity(patientId: string): Promise<ActivityLogRow[]> {
   const supabase = await createClient();
   const {
@@ -716,10 +718,14 @@ export async function getPatientActivity(patientId: string): Promise<ActivityLog
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  const { data: patient } = await supabase.from("patients").select("clinic_id").eq("id", patientId).maybeSingle();
+  if (!patient) throw new Error("Patient not found");
+
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("activity_log")
     .select("id, actor_id, action, target_type, target_id, detail, created_at")
+    .eq("clinic_id", patient.clinic_id)
     .eq("target_type", "patient")
     .eq("target_id", patientId)
     .order("created_at", { ascending: false })

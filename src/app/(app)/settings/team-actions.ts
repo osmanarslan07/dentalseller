@@ -1,6 +1,7 @@
 "use server";
 
 import { randomBytes } from "crypto";
+import { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -114,9 +115,22 @@ export async function setSellerRole(sellerId: string, role: SellerRole): Promise
   revalidatePath("/team");
 }
 
+/** For the two actions below that use the service-role client, which bypasses RLS: this JS
+ * check is the only thing keeping a clinic admin to their own clinic's accounts. The target
+ * must share the caller's clinic; any mismatch (another clinic, a superadmin, no such id)
+ * reads as "not found", so ids from other clinics can't even be probed for existence. */
+async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: string, targetId: string): Promise<void> {
+  const { data: me } = await supabase.from("profiles").select("role, clinic_id").eq("id", callerId).maybeSingle();
+  if (me?.role !== "admin" || !me.clinic_id) throw new Error("Admin only");
+
+  const admin = createAdminClient();
+  const { data: target } = await admin.from("profiles").select("clinic_id").eq("id", targetId).maybeSingle();
+  if (!target || target.clinic_id !== me.clinic_id) throw new Error("Seller not found");
+}
+
 /** Admin-only. Uses the service-role client (auth.admin.* isn't exposed to RLS-scoped
- * clients), so the admin check has to happen explicitly here — there's no DB trigger to
- * fall back on for this one. */
+ * clients), so the admin and same-clinic checks have to happen explicitly here — there's no
+ * DB trigger to fall back on for this one. */
 export async function adminResetPassword(sellerId: string): Promise<AddSellerResult> {
   const supabase = await createClient();
   const {
@@ -125,8 +139,7 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
   if (!user) throw new Error("Not authenticated");
   if (sellerId === user.id) throw new Error("Use 'Change password' in Your account instead");
 
-  const { data: myProfile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (myProfile?.role !== "admin") throw new Error("Admin only");
+  await assertAdminOfSameClinic(supabase, user.id, sellerId);
 
   const admin = createAdminClient();
   const {
@@ -157,8 +170,7 @@ export async function deleteSeller(sellerId: string): Promise<void> {
   if (!user) throw new Error("Not authenticated");
   if (sellerId === user.id) throw new Error("You can't delete your own account");
 
-  const { data: myProfile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (myProfile?.role !== "admin") throw new Error("Admin only");
+  await assertAdminOfSameClinic(supabase, user.id, sellerId);
 
   const admin = createAdminClient();
   const {

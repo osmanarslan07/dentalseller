@@ -40,7 +40,7 @@ export default async function PlatformOverviewPage() {
         <StatCard
           label="Active users"
           value={sum((c) => c.stats.activeUsers)}
-          sublabel={`${pluralize(sum((c) => c.stats.admins), "admin")}, ${pluralize(sum((c) => c.stats.sellers), "seller")}`}
+          sublabel={`${sum((c) => c.stats.onlineNow)} online now · ${pluralize(sum((c) => c.stats.admins), "admin")}, ${pluralize(sum((c) => c.stats.sellers), "seller")}`}
           icon={<PeopleIcon className="h-5 w-5" />}
         />
         <StatCard

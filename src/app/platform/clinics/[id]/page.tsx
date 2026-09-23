@@ -37,7 +37,7 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Active users" value={stats.activeUsers} sublabel={`${pluralize(stats.admins, "admin")}, ${pluralize(stats.sellers, "seller")}`} />
+        <StatCard label="Active users" value={stats.activeUsers} sublabel={`${stats.onlineNow} online now · ${pluralize(stats.admins, "admin")}, ${pluralize(stats.sellers, "seller")}`} />
         <StatCard label="Patients" value={stats.patients} sublabel="all-time" />
         <StatCard label="Confirmed this month" value={stats.patientsConfirmedThisMonth} sublabel={thisMonth} />
         <StatCard label="Quotes this month" value={stats.quotesThisMonth} sublabel={`${stats.quotes} all-time`} />

@@ -7,6 +7,7 @@ import { PrivacyProvider } from "@/components/privacy";
 import { CelebrationSoundProvider } from "@/components/celebration-sound";
 import { ToastProvider } from "@/components/Toast";
 import { PageTransition } from "@/components/PageTransition";
+import { PresenceHeartbeat } from "@/components/PresenceHeartbeat";
 import { Button } from "@/components/ui";
 import { logout } from "@/lib/auth-actions";
 
@@ -34,6 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen">
+      <PresenceHeartbeat />
       <ToastProvider>
         <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
           <CelebrationSoundProvider initialEnabled={settings.celebration_sound}>

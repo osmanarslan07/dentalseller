@@ -112,6 +112,9 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
                 </td>
                 <td className="py-3 pr-4 text-slate-600">
                   {pluralize(clinic.stats.admins, "admin")}, {pluralize(clinic.stats.sellers, "seller")}
+                  {clinic.stats.onlineNow > 0 && (
+                    <span className="ml-1 text-xs text-emerald-600">· {clinic.stats.onlineNow} online</span>
+                  )}
                 </td>
                 <td className="py-3 pr-4 text-slate-600">
                   {clinic.stats.patients}

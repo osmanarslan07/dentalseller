@@ -1184,6 +1184,39 @@ as $$
 $$;
 
 -- =====================================================================
+-- PLATFORM: presence (online / last seen). Idempotent/safe to re-run.
+-- =====================================================================
+
+-- Its own table rather than a profiles column: a heartbeat every minute would otherwise
+-- keep bumping profiles.updated_at and running profiles_guard_privilege on every tick.
+-- No RLS policies at all — written only through touch_presence() below, read only by the
+-- platform area via the service role.
+create table if not exists public.user_presence (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  last_seen_at timestamptz not null default now()
+);
+
+alter table public.user_presence enable row level security;
+
+-- Called by the app's heartbeat. Throttled here (at most one write per 30s per user), so a
+-- burst of calls from several open tabs costs nothing.
+create or replace function public.touch_presence()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.user_presence (user_id, last_seen_at)
+  select auth.uid(), now()
+  where auth.uid() is not null
+  on conflict (user_id) do update set last_seen_at = excluded.last_seen_at
+    where public.user_presence.last_seen_at < now() - interval '30 seconds';
+$$;
+
+revoke all on function public.touch_presence() from public, anon;
+grant execute on function public.touch_presence() to authenticated;
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

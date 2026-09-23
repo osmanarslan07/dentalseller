@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/format";
 import { Badge, Button, Card } from "@/components/ui";
 import { CredentialResult, resetClinicUserPassword } from "../../actions";
 import { CredentialNotice } from "../../CredentialNotice";
+import { LastSeen } from "@/components/LastSeen";
 
 /** Read-only directory: the clinic's own admin manages its team. The one thing done from
  * here is a password reset, for when the person locked out is the only one who could. */
@@ -54,6 +55,7 @@ export function ClinicTeamCard({ members }: { members: ClinicMember[] }) {
                 <span className="font-medium text-slate-900">{member.displayName || "Not signed in yet"}</span>
                 {member.role === "admin" && <Badge tone="blue">Admin</Badge>}
                 {!member.isActive && <Badge tone="amber">Deactivated</Badge>}
+                <LastSeen lastSeenAt={member.lastSeenAt} lastSignInAt={member.lastSignInAt} />
               </div>
               <p className="truncate text-xs text-slate-500">
                 {member.email ?? "—"} · joined {formatDate(member.createdAt.slice(0, 10))}

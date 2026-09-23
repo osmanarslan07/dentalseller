@@ -2,6 +2,7 @@ import { getSuperadmins, requireSuperadmin } from "@/lib/platform";
 import { formatDate } from "@/lib/format";
 import { Card } from "@/components/ui";
 import { AddSuperadminForm } from "./AddSuperadminForm";
+import { LastSeen } from "@/components/LastSeen";
 
 export default async function SuperadminsPage() {
   const [{ user }, superadmins] = await Promise.all([requireSuperadmin(), getSuperadmins()]);
@@ -26,7 +27,10 @@ export default async function SuperadminsPage() {
                 </p>
                 <p className="truncate text-xs text-slate-500">{s.email ?? "—"}</p>
               </div>
-              <span className="text-xs text-slate-400">since {formatDate(s.createdAt.slice(0, 10))}</span>
+              <div className="flex flex-col items-end gap-0.5">
+                <LastSeen lastSeenAt={s.lastSeenAt} lastSignInAt={s.lastSignInAt} />
+                <span className="text-xs text-slate-400">since {formatDate(s.createdAt.slice(0, 10))}</span>
+              </div>
             </li>
           ))}
         </ul>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getClinicsWithStats } from "@/lib/platform";
 import { monthLabel, currentMonthKey } from "@/lib/commission";
 import { StatCard } from "@/components/ui";
+import { pluralize } from "@/lib/format";
 import { CheckCircleIcon, LayersIcon, PeopleIcon, TagIcon } from "@/components/StatIcons";
 import { ClinicsTable } from "./ClinicsTable";
 
@@ -39,7 +40,7 @@ export default async function PlatformOverviewPage() {
         <StatCard
           label="Active users"
           value={sum((c) => c.stats.activeUsers)}
-          sublabel={`${sum((c) => c.stats.admins)} admins, ${sum((c) => c.stats.sellers)} sellers`}
+          sublabel={`${pluralize(sum((c) => c.stats.admins), "admin")}, ${pluralize(sum((c) => c.stats.sellers), "seller")}`}
           icon={<PeopleIcon className="h-5 w-5" />}
         />
         <StatCard

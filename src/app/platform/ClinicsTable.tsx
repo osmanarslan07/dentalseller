@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ClinicWithStats } from "@/lib/platform";
-import { formatDate } from "@/lib/format";
+import { formatDate, pluralize } from "@/lib/format";
 import { formatActivityTime } from "@/lib/activity-log";
 import { Badge, Card, Input } from "@/components/ui";
 
@@ -111,8 +111,7 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
                   </div>
                 </td>
                 <td className="py-3 pr-4 text-slate-600">
-                  {clinic.stats.admins} admin{clinic.stats.admins === 1 ? "" : "s"}, {clinic.stats.sellers} seller
-                  {clinic.stats.sellers === 1 ? "" : "s"}
+                  {pluralize(clinic.stats.admins, "admin")}, {pluralize(clinic.stats.sellers, "seller")}
                 </td>
                 <td className="py-3 pr-4 text-slate-600">
                   {clinic.stats.patients}

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getClinicMembers, getClinicWithStats } from "@/lib/platform";
 import { currentMonthKey, monthLabel } from "@/lib/commission";
 import { formatActivityTime } from "@/lib/activity-log";
-import { formatDate } from "@/lib/format";
+import { formatDate, pluralize } from "@/lib/format";
 import { Badge, StatCard } from "@/components/ui";
 import { ClinicDetailsCard } from "./ClinicDetailsCard";
 import { ClinicTeamCard } from "./ClinicTeamCard";
@@ -37,7 +37,7 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Active users" value={stats.activeUsers} sublabel={`${stats.admins} admins, ${stats.sellers} sellers`} />
+        <StatCard label="Active users" value={stats.activeUsers} sublabel={`${pluralize(stats.admins, "admin")}, ${pluralize(stats.sellers, "seller")}`} />
         <StatCard label="Patients" value={stats.patients} sublabel="all-time" />
         <StatCard label="Confirmed this month" value={stats.patientsConfirmedThisMonth} sublabel={thisMonth} />
         <StatCard label="Quotes this month" value={stats.quotesThisMonth} sublabel={`${stats.quotes} all-time`} />

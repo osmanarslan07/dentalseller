@@ -11,6 +11,8 @@ import { ActivityLogRow, diffFields, logActivity } from "@/lib/activity-log";
 import { detectTierJump } from "@/lib/commission";
 import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
 import { getActingUser } from "@/lib/viewer";
+import { recordSupportEvent } from "@/lib/support-log";
+import { recordRef } from "@/lib/activity-mask";
 
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
  * parses as UTC) so this can't drift a day depending on the server's timezone offset. */
@@ -684,10 +686,21 @@ export async function deleteExtraVisit(id: string) {
  * deactivated account), and the log read is pinned to that same clinic. */
 export async function getPatientActivity(patientId: string): Promise<ActivityLogRow[]> {
   const supabase = await createClient();
-  await getActingUser({ forRead: true }); // signed in, with a clinic context
+  const { viewer } = await getActingUser({ forRead: true });
 
   const { data: patient } = await supabase.from("patients").select("clinic_id").eq("id", patientId).maybeSingle();
   if (!patient) throw new Error("Patient not found");
+
+  // Reading a patient's history in support mode is part of the support access log.
+  if (viewer.support) {
+    await recordSupportEvent({
+      sessionId: viewer.support.sessionId,
+      superadminId: viewer.authUserId,
+      clinicId: viewer.clinicId,
+      event: "record_history_viewed",
+      detail: recordRef("patient", patientId) ?? undefined,
+    });
+  }
 
   const admin = createAdminClient();
   const { data, error } = await admin

@@ -53,7 +53,7 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
       {
         heading: "4. İşleme talimatları ve amaçlar",
         paragraphs: [
-          "Klinik, bu sözleşmeyi kabul ederek Sağlayıcı’ya Klinik verilerini yalnızca şu amaçlarla işleme talimatı verir: hizmetin sunulması ve işletilmesi; Klinik veya kullanıcılarının talebi üzerine destek verilmesi; hizmetin bakımı, güvenliği, yedeklenmesi, izlenmesi ve arızaların giderilmesi; yasal yükümlülüklerin yerine getirilmesi.",
+          "Klinik, bu sözleşmeyi kabul ederek Sağlayıcı’ya Klinik verilerini yalnızca şu amaçlarla işleme talimatı verir: hizmetin sunulması ve işletilmesi; Klinik veya kullanıcılarının talebi üzerine destek verilmesi; hizmetin bakımı, güvenliği, yedeklenmesi, izlenmesi ve arızaların giderilmesi; hizmetin performansının izlenmesi ve geliştirilmesi (yalnızca toplulaştırılmış veya kimliksizleştirilmiş veriler kullanılarak); yasal yükümlülüklerin yerine getirilmesi.",
           "Sağlayıcı, Klinik verilerini kendi amaçları için kullanmaz; pazarlama, satış, profilleme veya yapay zekâ modellerinin eğitimi amacıyla işlemez ve üçüncü kişilere satmaz.",
         ],
       },
@@ -150,7 +150,7 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
       {
         heading: "4. Processing instructions and purposes",
         paragraphs: [
-          "By accepting this agreement, the Clinic instructs the Provider to process Clinic data only to: provide and operate the service; give support at the request of the Clinic or its users; maintain, secure, back up, monitor and troubleshoot the service; and comply with legal obligations.",
+          "By accepting this agreement, the Clinic instructs the Provider to process Clinic data only to: provide and operate the service; give support at the request of the Clinic or its users; maintain, secure, back up, monitor and troubleshoot the service; monitor and improve the service's performance using aggregated or de-identified data only; and comply with legal obligations.",
           "The Provider does not use Clinic data for its own purposes: it does not process it for marketing, sale, profiling or training AI models, and does not sell it to third parties.",
         ],
       },

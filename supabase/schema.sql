@@ -1626,6 +1626,157 @@ revoke all on function public.platform_monthly_usage(int) from public, anon, aut
 grant execute on function public.platform_monthly_usage(int) to service_role;
 
 -- =====================================================================
+-- PLATFORM: support access log — tamper-evident. Idempotent/safe to re-run.
+-- =====================================================================
+-- Everything support does inside a clinic, kept as evidence that access stayed within the
+-- terms: session start/end, editing unlocked/locked, view-as changes, pages opened, patient
+-- histories viewed. No patient data — page paths and record references only. (The changes
+-- themselves are in activity_log with via_support = true.)
+--
+-- Tamper-evident: each row's hash covers its own content plus the previous row's hash, so
+-- editing, deleting or inserting a row anywhere breaks the chain from that point on —
+-- verify_support_access_log() recomputes it. Rows can't be updated or deleted at all, even
+-- by the service role, and there's no foreign key to clinics: the log outlives the clinic.
+create table if not exists public.support_access_log (
+  id bigint generated always as identity primary key,
+  session_id uuid,
+  superadmin_id uuid not null,
+  clinic_id uuid,
+  event text not null check (event in (
+    'session_started', 'session_ended', 'session_extended',
+    'editing_unlocked', 'editing_locked', 'view_as_changed',
+    'page_viewed', 'record_history_viewed', 'change_made'
+  )),
+  path text,
+  detail text,
+  created_at timestamptz not null default clock_timestamp(),
+  prev_hash text,
+  hash text
+);
+
+create index if not exists support_access_log_clinic_idx on public.support_access_log (clinic_id, created_at desc);
+create index if not exists support_access_log_session_idx on public.support_access_log (session_id, id);
+
+alter table public.support_access_log enable row level security;
+
+-- The content a row's hash covers — shared by the insert trigger and the verifier so the
+-- two can never disagree about the format.
+create or replace function public.support_log_row_digest(
+  p_prev_hash text, p_id bigint, p_session_id uuid, p_superadmin_id uuid, p_clinic_id uuid,
+  p_event text, p_path text, p_detail text, p_created_at timestamptz
+)
+returns text
+language sql
+stable
+set search_path = public, extensions
+as $$
+  select encode(
+    extensions.digest(
+      concat_ws('|', coalesce(p_prev_hash, 'genesis'), p_id::text, coalesce(p_session_id::text, ''),
+        p_superadmin_id::text, coalesce(p_clinic_id::text, ''), p_event, coalesce(p_path, ''),
+        coalesce(p_detail, ''), to_char(p_created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US')),
+      'sha256'),
+    'hex');
+$$;
+
+create or replace function public.chain_support_log_row()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  last_hash text;
+begin
+  -- one writer at a time, so two concurrent inserts can't both chain off the same row
+  perform pg_advisory_xact_lock(hashtext('support_access_log_chain'));
+  select l.hash into last_hash from public.support_access_log l order by l.id desc limit 1;
+  new.prev_hash := last_hash;
+  new.hash := public.support_log_row_digest(last_hash, new.id, new.session_id, new.superadmin_id,
+    new.clinic_id, new.event, new.path, new.detail, new.created_at);
+  return new;
+end;
+$$;
+
+drop trigger if exists support_access_log_chain on public.support_access_log;
+create trigger support_access_log_chain before insert on public.support_access_log
+  for each row execute function public.chain_support_log_row();
+
+drop trigger if exists support_access_log_no_update on public.support_access_log;
+create trigger support_access_log_no_update before update on public.support_access_log
+  for each row execute function public.forbid_row_change();
+
+drop trigger if exists support_access_log_no_delete on public.support_access_log;
+create trigger support_access_log_no_delete before delete on public.support_access_log
+  for each row execute function public.forbid_row_change();
+
+-- Recomputes the whole chain. Returns the first row whose stored hash or link doesn't match
+-- (null broken_id = intact), plus how many rows were checked.
+create or replace function public.verify_support_access_log()
+returns table (checked bigint, broken_id bigint)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  r record;
+  expected_prev text := null;
+  n bigint := 0;
+begin
+  for r in select * from public.support_access_log order by id loop
+    n := n + 1;
+    if r.prev_hash is distinct from expected_prev
+       or r.hash is distinct from public.support_log_row_digest(r.prev_hash, r.id, r.session_id,
+            r.superadmin_id, r.clinic_id, r.event, r.path, r.detail, r.created_at) then
+      checked := n;
+      broken_id := r.id;
+      return next;
+      return;
+    end if;
+    expected_prev := r.hash;
+  end loop;
+  checked := n;
+  broken_id := null;
+  return next;
+end;
+$$;
+
+revoke all on function public.verify_support_access_log() from public, anon, authenticated;
+grant execute on function public.verify_support_access_log() to service_role;
+
+-- Every change support makes also lands in the chained log (action + record reference only;
+-- the values stay in the clinic's own history), so views and changes are covered alike.
+create or replace function public.log_support_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.via_support then
+    insert into public.support_access_log (session_id, superadmin_id, clinic_id, event, detail)
+    select
+      (select s.id from public.support_sessions s
+        where s.superadmin_id = new.actor_id and s.ended_at is null
+        order by s.started_at desc limit 1),
+      new.actor_id,
+      new.clinic_id,
+      'change_made',
+      concat_ws(' ', new.action,
+        case when new.target_id is not null and new.target_type in ('patient', 'quote', 'task')
+          then '#' || upper(left(new.target_type, 1)) || '-' || upper(left(replace(new.target_id, '-', ''), 4))
+        end);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists activity_log_support_change on public.activity_log;
+create trigger activity_log_support_change after insert on public.activity_log
+  for each row execute function public.log_support_change();
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

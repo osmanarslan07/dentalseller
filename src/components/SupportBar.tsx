@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { SupportContext } from "@/lib/viewer";
 import { Button } from "@/components/ui";
 import { Modal } from "@/components/Modal";
@@ -9,6 +9,7 @@ import {
   endSupportSession,
   extendSupportSession,
   lockSupportEditing,
+  logSupportPageView,
   setSupportViewAs,
   unlockSupportEditing,
 } from "@/lib/support-actions";
@@ -22,6 +23,14 @@ export function SupportBar({ support, viewAsId }: { support: SupportContext; vie
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Every page opened in support mode goes into the support access log (path only).
+  useEffect(() => {
+    logSupportPageView(pathname).catch(() => {
+      // the log write is best-effort and the server already reports failures
+    });
+  }, [pathname]);
 
   function run(action: () => Promise<void>) {
     setError(null);

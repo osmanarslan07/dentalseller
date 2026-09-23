@@ -9,6 +9,9 @@ import { Announcement, AnnouncementLevel } from "@/lib/announcements";
 import { JobDefinition, JobHealth, jobHealth, JOBS } from "@/lib/jobs";
 import { getEnvChatsClinicId } from "@/lib/telegram";
 import { REQUIRE_TERMS_ACCEPTANCE, TERMS_VERSION } from "@/lib/terms";
+import { ActivityLogRow } from "@/lib/activity-log";
+import { describeMaskedActivity } from "@/lib/activity-mask";
+import { ACTIVITY_CATEGORY_ACTIONS, ACTIVITY_PAGE_SIZE, ActivityCategory } from "@/lib/activity-categories";
 import { ProfileRole } from "@/types";
 
 export type MfaState = "verified" | "needs_setup" | "needs_code";
@@ -755,4 +758,153 @@ export function countSystemProblems(status: { jobs: JobStatus[]; telegram: Teleg
   const t = status.telegram;
   const telegramProblem = !t.tokenConfigured || !t.botOk || !t.webhookUrl || (t.pendingUpdates ?? 0) > 20;
   return jobProblems + (telegramProblem ? 1 : 0);
+}
+
+export interface MaskedActivityEntry {
+  id: string;
+  createdAt: string;
+  text: string;
+  viaSupport: boolean;
+}
+
+export interface MaskedActivityFilters {
+  actor?: string;
+  category?: ActivityCategory | null;
+  from?: string;
+  to?: string;
+  page: number;
+}
+
+/** A clinic's own activity history, de-identified for the superadmin panel (see
+ * activity-mask.ts). Deliberately no free-text search: searching hidden details would reveal
+ * them ("is there a patient called …?"). */
+export async function getMaskedClinicActivity(
+  clinicId: string,
+  f: MaskedActivityFilters
+): Promise<{ entries: MaskedActivityEntry[]; hasMore: boolean; staff: [string, string][] }> {
+  const admin = createAdminClient();
+  let query = admin
+    .from("activity_log")
+    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support")
+    .eq("clinic_id", clinicId)
+    .order("created_at", { ascending: false })
+    .range((f.page - 1) * ACTIVITY_PAGE_SIZE, f.page * ACTIVITY_PAGE_SIZE);
+  if (f.actor === "support") query = query.eq("via_support", true);
+  else if (f.actor) query = query.eq("actor_id", f.actor).eq("via_support", false);
+  if (f.category) query = query.in("action", ACTIVITY_CATEGORY_ACTIONS[f.category]);
+  if (f.from) query = query.gte("created_at", `${f.from}T00:00:00`);
+  if (f.to) query = query.lte("created_at", `${f.to}T23:59:59.999`);
+
+  const [{ data, error }, { data: staffRows, error: staffError }] = await Promise.all([
+    query,
+    admin.from("profiles").select("id, display_name").eq("clinic_id", clinicId).order("created_at"),
+  ]);
+  if (error) throw error;
+  if (staffError) throw staffError;
+
+  const staff = (staffRows ?? []).map((p) => [p.id as string, (p.display_name as string | null) || "Unnamed seller"] as [string, string]);
+  const staffNameById = new Map(staff);
+  const rows = (data ?? []) as ActivityLogRow[];
+
+  return {
+    entries: rows.slice(0, ACTIVITY_PAGE_SIZE).map((r) => ({
+      id: r.id,
+      createdAt: r.created_at,
+      text: describeMaskedActivity(r, staffNameById),
+      viaSupport: !!r.via_support,
+    })),
+    hasMore: rows.length > ACTIVITY_PAGE_SIZE,
+    staff,
+  };
+}
+
+export interface SupportLogEvent {
+  id: number;
+  createdAt: string;
+  event: string;
+  path: string | null;
+  detail: string | null;
+}
+
+export interface SupportLogSession {
+  sessionId: string | null;
+  clinicId: string | null;
+  clinicName: string;
+  superadminName: string;
+  startedAt: string;
+  lastAt: string;
+  events: SupportLogEvent[];
+}
+
+export interface SupportLogFilters {
+  clinicId?: string;
+  from?: string;
+  to?: string;
+}
+
+export const SUPPORT_LOG_LIMIT = 1000;
+
+/** The support access log, grouped into sessions (newest first), with the chain's integrity
+ * check. Read with the service role — the table has no policies. */
+export async function getSupportLog(f: SupportLogFilters): Promise<{
+  sessions: SupportLogSession[];
+  truncated: boolean;
+  integrity: { checked: number; brokenId: number | null };
+  clinics: [string, string][];
+}> {
+  const admin = createAdminClient();
+  let query = admin
+    .from("support_access_log")
+    .select("id, session_id, superadmin_id, clinic_id, event, path, detail, created_at")
+    .order("id", { ascending: false })
+    .limit(SUPPORT_LOG_LIMIT + 1);
+  if (f.clinicId) query = query.eq("clinic_id", f.clinicId);
+  if (f.from) query = query.gte("created_at", `${f.from}T00:00:00`);
+  if (f.to) query = query.lte("created_at", `${f.to}T23:59:59.999`);
+
+  const [{ data, error }, verify, clinics, authById, { data: people }] = await Promise.all([
+    query,
+    admin.rpc("verify_support_access_log"),
+    getClinicNames(),
+    getAuthInfoById(),
+    admin.from("profiles").select("id, display_name").eq("role", "superadmin"),
+  ]);
+  if (error) throw error;
+  if (verify.error) throw verify.error;
+
+  const rows = data ?? [];
+  const truncated = rows.length > SUPPORT_LOG_LIMIT;
+  const clinicName = new Map(clinics);
+  const superName = new Map((people ?? []).map((p) => [p.id as string, p.display_name as string | null]));
+
+  const bySession = new Map<string, SupportLogSession>();
+  for (const r of rows.slice(0, SUPPORT_LOG_LIMIT)) {
+    const key = r.session_id ?? `none-${r.id}`;
+    let s = bySession.get(key);
+    if (!s) {
+      s = {
+        sessionId: r.session_id,
+        clinicId: r.clinic_id,
+        clinicName: (r.clinic_id && clinicName.get(r.clinic_id)) || "Deleted clinic",
+        superadminName: superName.get(r.superadmin_id) || authById.get(r.superadmin_id)?.email || "Unknown",
+        startedAt: r.created_at,
+        lastAt: r.created_at,
+        events: [],
+      };
+      bySession.set(key, s);
+    }
+    s.events.push({ id: r.id, createdAt: r.created_at, event: r.event, path: r.path, detail: r.detail });
+    if (r.created_at < s.startedAt) s.startedAt = r.created_at;
+    if (r.created_at > s.lastAt) s.lastAt = r.created_at;
+  }
+  // events oldest-first within a session reads as a timeline
+  for (const s of bySession.values()) s.events.reverse();
+
+  const v = (verify.data ?? [])[0] as { checked: number; broken_id: number | null } | undefined;
+  return {
+    sessions: [...bySession.values()],
+    truncated,
+    integrity: { checked: Number(v?.checked ?? 0), brokenId: v?.broken_id ?? null },
+    clinics,
+  };
 }

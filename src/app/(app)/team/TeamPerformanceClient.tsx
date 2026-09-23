@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Card, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
@@ -113,7 +114,12 @@ export function TeamPerformanceClient({
       </Card>
 
       <Card className="p-5">
-        <h2 className="mb-3 text-base font-semibold text-slate-900">Recent activity</h2>
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2 className="text-base font-semibold text-slate-900">Recent activity</h2>
+          <Link href="/activity" className="text-sm font-medium text-teal-700 hover:underline">
+            Full history →
+          </Link>
+        </div>
         {activity.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-400">Nothing logged yet.</p>
         ) : (

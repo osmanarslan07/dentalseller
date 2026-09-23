@@ -43,6 +43,10 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
           Created {formatDate(clinic.created_at.slice(0, 10))}
           {stats.lastActivityAt && <> · last activity {formatActivityTime(stats.lastActivityAt)}</>}
           {" · "}
+          <Link href={`/platform/clinics/${clinic.id}/activity`} className="text-teal-700 hover:underline">
+            Clinic activity
+          </Link>
+          {" · "}
           <Link href={`/platform/audit?clinic=${clinic.id}`} className="text-teal-700 hover:underline">
             Platform audit log
           </Link>

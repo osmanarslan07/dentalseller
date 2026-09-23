@@ -1,9 +1,8 @@
-import { cache } from "react";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getViewer } from "@/lib/viewer";
 
 /** Cold-start Supabase reads occasionally flake with a network error; one retry clears it. */
 async function withRetry<T>(fn: () => PromiseLike<T>): Promise<T> {
@@ -15,19 +14,13 @@ async function withRetry<T>(fn: () => PromiseLike<T>): Promise<T> {
   }
 }
 
-/** The signed-in caller's clinic, resolved once per request (React cache) and used as an
- * explicit filter on every clinic-scoped read below. RLS is the real boundary; this is
- * defense in depth, so a policy regression can't silently widen what a page shows. No
- * clinic (signed out, unassigned) means these reads return nothing. */
-const getMyClinicId = cache(async (): Promise<string | null> => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.from("profiles").select("clinic_id").eq("id", user.id).maybeSingle();
-  return (data?.clinic_id as string | null) ?? null;
-});
+/** The clinic being viewed — the caller's own, or the supported clinic in support mode —
+ * used as an explicit filter on every clinic-scoped read below. RLS is the real boundary;
+ * this is defense in depth, so a policy regression can't silently widen what a page shows.
+ * No clinic context (signed out, unassigned) means these reads return nothing. */
+async function getMyClinicId(): Promise<string | null> {
+  return (await getViewer())?.clinicId ?? null;
+}
 
 export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> {
   const clinicId = await getMyClinicId();
@@ -169,12 +162,23 @@ export async function getTeamMembers(profiles: Profile[], isAdmin: boolean): Pro
   }));
 }
 
+/** Quotes and tasks are private per seller. RLS already returns only the caller's own —
+ * except for support, which can read the whole clinic's so it can help anyone; there the
+ * list is narrowed to the member being viewed as, so the page shows exactly their view. */
+async function ownerFilter(): Promise<string | null> {
+  const viewer = await getViewer();
+  return viewer?.support ? viewer.userId : null;
+}
+
 export async function getQuotes(supabase: SupabaseClient): Promise<Quote[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
-  const { data, error } = await withRetry(() =>
-    supabase.from("quotes").select("*").eq("clinic_id", clinicId).order("created_at", { ascending: false })
-  );
+  const owner = await ownerFilter();
+  const { data, error } = await withRetry(() => {
+    let q = supabase.from("quotes").select("*").eq("clinic_id", clinicId);
+    if (owner) q = q.eq("user_id", owner);
+    return q.order("created_at", { ascending: false });
+  });
 
   if (error) throw error;
   return data as Quote[];
@@ -194,15 +198,15 @@ export async function getQuote(supabase: SupabaseClient, id: string): Promise<Qu
 export async function getTasks(supabase: SupabaseClient): Promise<Task[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
-  const { data, error } = await withRetry(() =>
-    supabase
-      .from("tasks")
-      .select("*")
-      .eq("clinic_id", clinicId)
+  const owner = await ownerFilter();
+  const { data, error } = await withRetry(() => {
+    let q = supabase.from("tasks").select("*").eq("clinic_id", clinicId);
+    if (owner) q = q.eq("user_id", owner);
+    return q
       .order("status", { ascending: true })
       .order("due_date", { ascending: true })
-      .order("due_time", { ascending: true, nullsFirst: false })
-  );
+      .order("due_time", { ascending: true, nullsFirst: false });
+  });
 
   if (error) throw error;
   return data as Task[];

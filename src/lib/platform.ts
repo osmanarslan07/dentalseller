@@ -195,6 +195,8 @@ async function summarizeClinic(
         .from("activity_log")
         .select("created_at")
         .eq("clinic_id", clinicId)
+        // a support visit isn't the clinic being active
+        .eq("via_support", false)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -530,6 +532,7 @@ export async function getPlatformAuditLog(): Promise<{
     .from("activity_log")
     .select("id, actor_id, action, target_type, target_id, detail, created_at")
     .in("actor_id", superadminIds)
+    .eq("via_support", false)
     .order("created_at", { ascending: false })
     .limit(AUDIT_LOG_LIMIT);
   if (error) throw error;

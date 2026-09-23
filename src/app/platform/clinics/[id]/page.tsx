@@ -12,6 +12,7 @@ import { OnboardingCard } from "../../Onboarding";
 import { UsageTrends } from "../../UsageTrends";
 import { TERMS_VERSION } from "@/lib/terms";
 import { BillingCard } from "./BillingCard";
+import { SupportModeButton } from "./SupportModeButton";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -34,6 +35,9 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{clinic.name}</h1>
           {clinic.is_active ? <Badge tone="green">Active</Badge> : <Badge tone="amber">Suspended</Badge>}
+          <div className="ml-auto">
+            <SupportModeButton clinicId={clinic.id} />
+          </div>
         </div>
         <p className="mt-1 text-sm text-slate-500">
           Created {formatDate(clinic.created_at.slice(0, 10))}

@@ -45,7 +45,7 @@ function friendlyClinicError(message: string): string {
  * can't share a transaction with the DB writes, so a failure part-way through is undone by
  * hand — no half-created clinic with no way in. */
 export async function createClinic(formData: FormData): Promise<CreateClinicResult> {
-  const { supabase, user } = await assertSuperadmin();
+  const { user } = await assertSuperadmin();
   const { name, slug } = parseClinicFields(formData);
   const adminName = String(formData.get("admin_name") ?? "").trim();
   const adminEmail = String(formData.get("admin_email") ?? "").trim().toLowerCase();
@@ -99,21 +99,21 @@ export async function createClinic(formData: FormData): Promise<CreateClinicResu
     throw new Error(profileError.message);
   }
 
-  await logActivity(supabase, user.id, "clinic_created", "clinic", clinic.id, `${name} — first admin ${adminEmail}`);
+  await logActivity(createAdminClient(), user.id, "clinic_created", "clinic", clinic.id, `${name} — first admin ${adminEmail}`);
 
   revalidatePath("/platform");
   return { clinicId: clinic.id, email: adminEmail, tempPassword };
 }
 
 export async function updateClinic(clinicId: string, formData: FormData): Promise<void> {
-  const { supabase, user } = await assertSuperadmin();
+  const { user } = await assertSuperadmin();
   const { name, slug } = parseClinicFields(formData);
 
   const admin = createAdminClient();
   const { error } = await admin.from("clinics").update({ name, slug }).eq("id", clinicId);
   if (error) throw new Error(friendlyClinicError(error.message));
 
-  await logActivity(supabase, user.id, "clinic_updated", "clinic", clinicId, `${name} (${slug})`);
+  await logActivity(createAdminClient(), user.id, "clinic_updated", "clinic", clinicId, `${name} (${slug})`);
 
   revalidatePath("/platform");
   revalidatePath(`/platform/clinics/${clinicId}`);
@@ -122,13 +122,13 @@ export async function updateClinic(clinicId: string, formData: FormData): Promis
 /** Suspending locks the clinic's whole team out at the RLS level (is_active_profile) — their
  * data stays untouched and comes straight back on reactivation. */
 export async function setClinicActive(clinicId: string, active: boolean): Promise<void> {
-  const { supabase, user } = await assertSuperadmin();
+  const { user } = await assertSuperadmin();
 
   const admin = createAdminClient();
   const { error } = await admin.from("clinics").update({ is_active: active }).eq("id", clinicId);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, active ? "clinic_reactivated" : "clinic_suspended", "clinic", clinicId);
+  await logActivity(createAdminClient(), user.id, active ? "clinic_reactivated" : "clinic_suspended", "clinic", clinicId);
 
   revalidatePath("/platform");
   revalidatePath(`/platform/clinics/${clinicId}`);
@@ -137,7 +137,7 @@ export async function setClinicActive(clinicId: string, active: boolean): Promis
 /** For a clinic user locked out with nobody at their clinic able to help (e.g. its only
  * admin). Same temp-password handoff as adminResetPassword. */
 export async function resetClinicUserPassword(userId: string): Promise<CredentialResult> {
-  const { supabase, user } = await assertSuperadmin();
+  const { user } = await assertSuperadmin();
   if (userId === user.id) throw new Error("Change your own password from your account instead");
 
   const admin = createAdminClient();
@@ -154,13 +154,13 @@ export async function resetClinicUserPassword(userId: string): Promise<Credentia
   const { error } = await admin.auth.admin.updateUserById(userId, { password: tempPassword });
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "password_reset", "profile", userId);
+  await logActivity(createAdminClient(), user.id, "password_reset", "profile", userId);
 
   return { email: targetUser.email, tempPassword };
 }
 
 export async function addSuperadmin(rawEmail: string, rawName: string): Promise<CredentialResult> {
-  const { supabase, user } = await assertSuperadmin();
+  const { user } = await assertSuperadmin();
   const email = rawEmail.trim().toLowerCase();
   const displayName = rawName.trim();
   if (!EMAIL_RE.test(email)) throw new Error("Enter a valid email address");
@@ -183,7 +183,7 @@ export async function addSuperadmin(rawEmail: string, rawName: string): Promise<
     throw new Error(profileError.message);
   }
 
-  await logActivity(supabase, user.id, "superadmin_added", "profile", data.user.id, email);
+  await logActivity(createAdminClient(), user.id, "superadmin_added", "profile", data.user.id, email);
 
   revalidatePath("/platform/superadmins");
   return { email, tempPassword };
@@ -202,7 +202,7 @@ function optionalNumber(formData: FormData, key: string, label: string, { intege
 /** Record-keeping only — no payment is taken. Upserted: a clinic has no row until its first
  * plan is saved. */
 export async function updateClinicBilling(clinicId: string, formData: FormData): Promise<void> {
-  const { supabase, user } = await assertSuperadmin();
+  const { user } = await assertSuperadmin();
 
   const plan = String(formData.get("plan") ?? "") as Plan;
   if (!PLANS.includes(plan)) throw new Error("Choose a plan");
@@ -237,7 +237,7 @@ export async function updateClinicBilling(clinicId: string, formData: FormData):
   ]
     .filter(Boolean)
     .join(" · ");
-  await logActivity(supabase, user.id, "clinic_billing_updated", "clinic", clinicId, summary);
+  await logActivity(createAdminClient(), user.id, "clinic_billing_updated", "clinic", clinicId, summary);
 
   revalidatePath("/platform");
   revalidatePath(`/platform/clinics/${clinicId}`);
@@ -302,7 +302,7 @@ export async function createAnnouncement(formData: FormData): Promise<void> {
 
 /** Takes a live or scheduled announcement down now; it stays in the list as ended. */
 export async function endAnnouncement(id: string): Promise<void> {
-  const { supabase, user } = await assertSuperadmin();
+  const { user } = await assertSuperadmin();
 
   const admin = createAdminClient();
   const { data: existing, error: fetchError } = await admin
@@ -323,20 +323,20 @@ export async function endAnnouncement(id: string): Promise<void> {
   const { error } = await admin.from("announcements").update(update).eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "announcement_ended", "announcement", id, `"${excerpt(existing.message)}"`);
+  await logActivity(createAdminClient(), user.id, "announcement_ended", "announcement", id, `"${excerpt(existing.message)}"`);
 
   revalidatePath("/platform/announcements");
 }
 
 export async function deleteAnnouncement(id: string): Promise<void> {
-  const { supabase, user } = await assertSuperadmin();
+  const { user } = await assertSuperadmin();
 
   const admin = createAdminClient();
   const { data, error } = await admin.from("announcements").delete().eq("id", id).select("message").maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Announcement not found");
 
-  await logActivity(supabase, user.id, "announcement_deleted", "announcement", id, `"${excerpt(data.message)}"`);
+  await logActivity(createAdminClient(), user.id, "announcement_deleted", "announcement", id, `"${excerpt(data.message)}"`);
 
   revalidatePath("/platform/announcements");
 }

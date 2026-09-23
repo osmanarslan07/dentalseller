@@ -6,13 +6,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { EARNINGS_CARD_IDS, OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
 import { getClinicConfig, getSettings } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
+import { assertViewerCanWrite, getActingUser } from "@/lib/viewer";
 
 export async function saveSettings(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const tier1_threshold = Number(formData.get("tier1_threshold"));
   const tier1_rate = Number(formData.get("tier1_rate")) / 100;
@@ -64,7 +62,7 @@ export async function saveSettings(formData: FormData) {
   if (before.show_try !== show_try) changes.push(`show TRY ${before.show_try} → ${show_try}`);
   if (before.currency !== currency) changes.push(`currency ${before.currency} → ${currency}`);
   if (changes.length > 0) {
-    await logActivity(supabase, user.id, "commission_settings_updated", "settings", user.id, changes.join(", "));
+    await logActivity(supabase, user.actorId, "commission_settings_updated", "settings", user.id, changes.join(", "));
   }
 
   revalidatePath("/settings");
@@ -78,13 +76,12 @@ export async function saveSettings(formData: FormData) {
  * offers use this one shared identity, not whatever their own `settings` row had. */
 export async function saveClinicBranding(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
   if (myProfile?.role !== "admin") throw new Error("Admin only");
+  // the logo upload below uses the service role, which the DB's read-only rule can't see
+  assertViewerCanWrite(user.viewer);
 
   const clinic_name = String(formData.get("clinic_name") ?? "").trim();
   const clinic_short_name = String(formData.get("clinic_short_name") ?? "").trim();
@@ -138,7 +135,7 @@ export async function saveClinicBranding(formData: FormData) {
   if (before.clinicEmail !== clinic_email) changes.push("email changed");
   if (clinic_logo_url) changes.push("logo changed");
   if (changes.length > 0) {
-    await logActivity(supabase, user.id, "clinic_branding_updated", "settings", user.id, changes.join(", "));
+    await logActivity(supabase, user.actorId, "clinic_branding_updated", "settings", user.id, changes.join(", "));
   }
 
   revalidatePath("/settings");
@@ -151,10 +148,7 @@ export async function saveClinicBranding(formData: FormData) {
  * singleton table rather than a per-seller `settings` row. */
 export async function saveTelegramGroupChat(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
   if (myProfile?.role !== "admin") throw new Error("Admin only");
@@ -172,7 +166,7 @@ export async function saveTelegramGroupChat(formData: FormData) {
   if (before.telegramGroupChatId !== telegram_group_chat_id) {
     await logActivity(
       supabase,
-      user.id,
+      user.actorId,
       "telegram_group_chat_updated",
       "settings",
       user.id,
@@ -188,10 +182,7 @@ export async function saveTelegramGroupChat(formData: FormData) {
  * touching the other category's stored order. */
 export async function saveDashboardCards(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const category = formData.get("category");
   const categoryIds = category === "earnings" ? EARNINGS_CARD_IDS : OPERATIONAL_CARD_IDS;
@@ -212,7 +203,7 @@ export async function saveDashboardCards(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/earnings");
-  await logActivity(supabase, user.id, "dashboard_cards_updated", "settings", user.id, dashboard_cards.join(", "));
+  await logActivity(supabase, user.actorId, "dashboard_cards_updated", "settings", user.id, dashboard_cards.join(", "));
 
   revalidatePath("/settings");
   revalidatePath("/");

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { diffFields, logActivity } from "@/lib/activity-log";
 import { Celebration, TaskInput, TaskStatus } from "@/types";
+import { getActingUser } from "@/lib/viewer";
 
 const TASK_AUDIT_FIELDS: { key: keyof TaskInput; label: string }[] = [
   { key: "title", label: "title" },
@@ -33,10 +34,7 @@ function parseInput(formData: FormData): TaskInput {
 
 export async function createTask(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const input = parseInput(formData);
   if (!input.title) throw new Error("Title is required");
@@ -45,17 +43,14 @@ export async function createTask(formData: FormData) {
   const { data, error } = await supabase.from("tasks").insert({ ...input, user_id: user.id }).select("id").single();
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "task_created", "task", data.id, input.title);
+  await logActivity(supabase, user.actorId, "task_created", "task", data.id, input.title);
 
   revalidatePath("/tasks");
 }
 
 export async function updateTask(id: string, formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const input = parseInput(formData);
   if (!input.title) throw new Error("Title is required");
@@ -73,7 +68,7 @@ export async function updateTask(id: string, formData: FormData) {
 
   if (before) {
     const changes = diffFields(before, input, TASK_AUDIT_FIELDS);
-    if (changes) await logActivity(supabase, user.id, "task_updated", "task", id, changes);
+    if (changes) await logActivity(supabase, user.actorId, "task_updated", "task", id, changes);
   }
 
   revalidatePath("/tasks");
@@ -81,15 +76,12 @@ export async function updateTask(id: string, formData: FormData) {
 
 export async function setTaskStatus(id: string, status: TaskStatus) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { error } = await supabase.from("tasks").update({ status }).eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "task_status_changed", "task", id, status);
+  await logActivity(supabase, user.actorId, "task_status_changed", "task", id, status);
 
   revalidatePath("/tasks");
 
@@ -99,10 +91,7 @@ export async function setTaskStatus(id: string, status: TaskStatus) {
 
 export async function deleteTask(id: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   // Grab the title before it's gone — the log has to be self-contained since the task row won't exist anymore.
   const { data: task } = await supabase.from("tasks").select("title").eq("id", id).maybeSingle();
@@ -110,7 +99,7 @@ export async function deleteTask(id: string) {
   const { error } = await supabase.from("tasks").delete().eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "task_deleted", "task", id, task?.title ?? undefined);
+  await logActivity(supabase, user.actorId, "task_deleted", "task", id, task?.title ?? undefined);
 
   revalidatePath("/tasks");
 }

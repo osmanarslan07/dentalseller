@@ -27,6 +27,7 @@ import {
   TagIcon,
   TrophyIcon,
 } from "@/components/StatIcons";
+import { getViewerUser } from "@/lib/viewer";
 
 function tierTone(total: number, settings: CommissionSettings): "slate" | "amber" | "green" {
   if (total <= settings.tier1_threshold) return "slate";
@@ -37,9 +38,8 @@ function tierTone(total: number, settings: CommissionSettings): "slate" | "amber
 export default async function EarningsPage() {
   const updatedAt = Date.now();
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // in support mode this is the member being viewed as — every "my …" view is theirs
+  const user = await getViewerUser();
   const [allPatients, settings] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, user?.id ?? ""),

@@ -1,12 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getPatients, getProfiles, getRateHistory, getSettings, getTeamMembers } from "@/lib/data";
 import { SettingsClient } from "./SettingsClient";
+import { getViewerUser } from "@/lib/viewer";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // in support mode this is the member being viewed as — every "my …" view is theirs
+  const user = await getViewerUser();
   const [patients, settings, profiles, clinicConfig] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, user?.id ?? ""),

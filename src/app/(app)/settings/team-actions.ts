@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity } from "@/lib/activity-log";
 import { assertSeatAvailable } from "@/lib/seats";
+import { assertViewerCanWrite, getActingUser } from "@/lib/viewer";
 import { SellerRole } from "@/types";
 
 function generateTempPassword(): string {
@@ -27,10 +28,7 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { data: myProfile, error: profileError } = await supabase
     .from("profiles")
@@ -39,6 +37,8 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
     .maybeSingle();
   if (profileError) throw new Error(profileError.message);
   if (!myProfile?.is_active) throw new Error("Your account isn't active");
+  // creating the login uses the service role, which the DB's read-only rule can't see
+  assertViewerCanWrite(user.viewer);
   await assertSeatAvailable(myProfile.clinic_id);
 
   const tempPassword = generateTempPassword();
@@ -66,7 +66,7 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
     .eq("id", data.user.id);
   if (clinicIdError) throw new Error(clinicIdError.message);
 
-  await logActivity(supabase, user.id, "seller_added", "profile", null, email);
+  await logActivity(supabase, user.actorId, "seller_added", "profile", null, email);
 
   revalidatePath("/settings");
   revalidatePath("/team");
@@ -76,10 +76,7 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
 /** Admin-only — enforced both here and by the profiles_guard_privilege DB trigger. */
 export async function setSellerActive(sellerId: string, active: boolean): Promise<void> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
   if (sellerId === user.id) throw new Error("You can't deactivate your own account");
 
   // Reactivating takes a seat back; RLS already confines this to the caller's own clinic.
@@ -91,7 +88,7 @@ export async function setSellerActive(sellerId: string, active: boolean): Promis
   const { error } = await supabase.from("profiles").update({ is_active: active }).eq("id", sellerId);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, active ? "seller_activated" : "seller_deactivated", "profile", sellerId);
+  await logActivity(supabase, user.actorId, active ? "seller_activated" : "seller_deactivated", "profile", sellerId);
 
   revalidatePath("/settings");
   revalidatePath("/team");
@@ -100,16 +97,13 @@ export async function setSellerActive(sellerId: string, active: boolean): Promis
 /** Admin-only — enforced both here and by the profiles_guard_privilege DB trigger. */
 export async function setSellerRole(sellerId: string, role: SellerRole): Promise<void> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
   if (sellerId === user.id) throw new Error("You can't change your own role");
 
   const { error } = await supabase.from("profiles").update({ role }).eq("id", sellerId);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, role === "admin" ? "seller_promoted" : "seller_demoted", "profile", sellerId);
+  await logActivity(supabase, user.actorId, role === "admin" ? "seller_promoted" : "seller_demoted", "profile", sellerId);
 
   revalidatePath("/settings");
   revalidatePath("/team");
@@ -133,13 +127,11 @@ async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: strin
  * DB trigger to fall back on for this one. */
 export async function adminResetPassword(sellerId: string): Promise<AddSellerResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
   if (sellerId === user.id) throw new Error("Use 'Change password' in Your account instead");
 
   await assertAdminOfSameClinic(supabase, user.id, sellerId);
+  assertViewerCanWrite(user.viewer);
 
   const admin = createAdminClient();
   const {
@@ -152,7 +144,7 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
   const { error } = await admin.auth.admin.updateUserById(sellerId, { password: tempPassword });
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "password_reset", "profile", sellerId);
+  await logActivity(supabase, user.actorId, "password_reset", "profile", sellerId);
 
   return { email: targetUser.email, tempPassword };
 }
@@ -164,13 +156,11 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
  * own-row-only, with no admin carve-out, so the RLS-scoped client can't do this reassignment). */
 export async function deleteSeller(sellerId: string): Promise<void> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
   if (sellerId === user.id) throw new Error("You can't delete your own account");
 
   await assertAdminOfSameClinic(supabase, user.id, sellerId);
+  assertViewerCanWrite(user.viewer);
 
   const admin = createAdminClient();
   const {
@@ -192,7 +182,7 @@ export async function deleteSeller(sellerId: string): Promise<void> {
 
   await logActivity(
     supabase,
-    user.id,
+    user.actorId,
     "seller_deleted",
     "profile",
     null,

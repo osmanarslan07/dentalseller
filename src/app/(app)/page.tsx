@@ -7,12 +7,12 @@ import { CountUp } from "@/components/CountUp";
 import { OPERATIONAL_CARD_IDS, DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
 import { TeamOperationsPanel } from "./TeamOperationsPanel";
 import { CheckCircleIcon, PeopleIcon, UserPlusIcon } from "@/components/StatIcons";
+import { getViewerUser } from "@/lib/viewer";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // in support mode this is the member being viewed as — every "my …" view is theirs
+  const user = await getViewerUser();
   const [allPatients, settings, profiles] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, user?.id ?? ""),

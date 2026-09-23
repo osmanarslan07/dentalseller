@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { computeQuoteSplit } from "@/lib/quote-templates";
 import { diffFields, logActivity } from "@/lib/activity-log";
 import { Celebration, QuoteInput } from "@/types";
+import { getActingUser } from "@/lib/viewer";
 
 const QUOTE_AUDIT_FIELDS: { key: keyof QuoteInput; label: string }[] = [
   { key: "name", label: "name" },
@@ -55,10 +56,7 @@ function parseInput(formData: FormData): QuoteInput {
 
 export async function createQuote(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
@@ -70,7 +68,7 @@ export async function createQuote(formData: FormData) {
     .single();
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "quote_created", "quote", data.id, input.name);
+  await logActivity(supabase, user.actorId, "quote_created", "quote", data.id, input.name);
 
   revalidatePath("/quotes");
   return data.id as string;
@@ -78,10 +76,7 @@ export async function createQuote(formData: FormData) {
 
 export async function updateQuote(id: string, formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
@@ -93,7 +88,7 @@ export async function updateQuote(id: string, formData: FormData) {
 
   if (before) {
     const changes = diffFields(before, input, QUOTE_AUDIT_FIELDS);
-    if (changes) await logActivity(supabase, user.id, "quote_updated", "quote", id, changes);
+    if (changes) await logActivity(supabase, user.actorId, "quote_updated", "quote", id, changes);
   }
 
   revalidatePath("/quotes");
@@ -102,10 +97,7 @@ export async function updateQuote(id: string, formData: FormData) {
 
 export async function duplicateQuote(id: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { data: quote, error: fetchError } = await supabase.from("quotes").select("*").eq("id", id).single();
   if (fetchError) throw new Error(fetchError.message);
@@ -131,7 +123,7 @@ export async function duplicateQuote(id: string) {
     .single();
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "quote_duplicated", "quote", data.id, quote.name);
+  await logActivity(supabase, user.actorId, "quote_duplicated", "quote", data.id, quote.name);
 
   revalidatePath("/quotes");
   return data.id as string;
@@ -139,10 +131,7 @@ export async function duplicateQuote(id: string) {
 
 export async function deleteQuote(id: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   // Grab the name before it's gone — the log has to be self-contained since the quote row won't exist anymore.
   const { data: quote } = await supabase.from("quotes").select("name").eq("id", id).maybeSingle();
@@ -150,7 +139,7 @@ export async function deleteQuote(id: string) {
   const { error } = await supabase.from("quotes").delete().eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "quote_deleted", "quote", id, quote?.name ?? undefined);
+  await logActivity(supabase, user.actorId, "quote_deleted", "quote", id, quote?.name ?? undefined);
 
   revalidatePath("/quotes");
 }
@@ -158,10 +147,7 @@ export async function deleteQuote(id: string) {
 /** Turns an accepted quote into a real patient record once travel gets scheduled — quote stays as a record of the offer sent. */
 export async function convertQuoteToPatient(id: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { data: quote, error: quoteError } = await supabase
     .from("quotes")
@@ -215,8 +201,8 @@ export async function convertQuoteToPatient(id: string) {
     .neq("id", id)
     .in("status", ["draft", "sent"]);
 
-  await logActivity(supabase, user.id, "patient_created", "patient", patient.id, quote.name);
-  await logActivity(supabase, user.id, "quote_converted", "quote", id, patient.id);
+  await logActivity(supabase, user.actorId, "patient_created", "patient", patient.id, quote.name);
+  await logActivity(supabase, user.actorId, "quote_converted", "quote", id, patient.id);
 
   revalidatePath("/quotes");
   revalidatePath("/patients");

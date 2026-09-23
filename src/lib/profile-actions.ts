@@ -4,12 +4,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
+import { assertNotSupportMode } from "@/lib/viewer";
 
 export interface NameState {
   error: string | null;
 }
 
 export async function setMyDisplayName(_prevState: NameState, formData: FormData): Promise<NameState> {
+  await assertNotSupportMode();
   const supabase = await createClient();
   const {
     data: { user },
@@ -28,6 +30,7 @@ export async function setMyDisplayName(_prevState: NameState, formData: FormData
 
 /** Settings-page version: updates in place, no redirect (the welcome flow uses setMyDisplayName instead). */
 export async function updateDisplayName(name: string): Promise<void> {
+  await assertNotSupportMode();
   const supabase = await createClient();
   const {
     data: { user },
@@ -59,6 +62,7 @@ export async function updateDisplayName(name: string): Promise<void> {
 /** Re-authenticates with the current password before allowing the change, so a left-open
  * session alone isn't enough to take over the account. */
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await assertNotSupportMode();
   const supabase = await createClient();
   const {
     data: { user },

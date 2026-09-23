@@ -10,6 +10,7 @@ import { getEnvChatsClinicId, getFallbackChatId, sendTelegramMessageToMany } fro
 import { ActivityLogRow, diffFields, logActivity } from "@/lib/activity-log";
 import { detectTierJump } from "@/lib/commission";
 import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
+import { getActingUser } from "@/lib/viewer";
 
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
  * parses as UTC) so this can't drift a day depending on the server's timezone offset. */
@@ -329,10 +330,7 @@ function parseInput(formData: FormData): PatientInput {
 
 export async function createPatient(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
@@ -344,7 +342,7 @@ export async function createPatient(formData: FormData) {
     .single();
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "patient_created", "patient", created?.id ?? null, input.name);
+  await logActivity(supabase, user.actorId, "patient_created", "patient", created?.id ?? null, input.name);
 
   if (created?.id) await maybeCreateFollowUpTask(created.id, user.id, input);
 
@@ -374,10 +372,7 @@ export async function createPatient(formData: FormData) {
 
 export async function updatePatient(id: string, formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
@@ -393,7 +388,7 @@ export async function updatePatient(id: string, formData: FormData) {
 
   if (before) {
     const changes = diffFields(before, input, PATIENT_AUDIT_FIELDS);
-    if (changes) await logActivity(supabase, user.id, "patient_updated", "patient", id, changes);
+    if (changes) await logActivity(supabase, user.actorId, "patient_updated", "patient", id, changes);
 
     // Only on the actual upcoming → completed transition — not on every subsequent save of
     // an already-completed visit 1, which would otherwise re-check (and re-skip) every time.
@@ -437,10 +432,7 @@ export async function updatePatient(id: string, formData: FormData) {
 
 export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const patient = await getPatient(supabase, id);
   if (!patient) throw new Error("Patient not found");
@@ -449,7 +441,7 @@ export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   if (chatIds.length === 0) throw new Error("No Telegram chat linked for this patient's seller");
   await sendTelegramMessageToMany(chatIds, buildVisitMessage(patient, visitKey));
 
-  await logActivity(supabase, user.id, "patient_telegram_sent", "patient", id, visitKey);
+  await logActivity(supabase, user.actorId, "patient_telegram_sent", "patient", id, visitKey);
 }
 
 /** Hands the patient to another seller — they earn commission on any visit not yet paid.
@@ -459,10 +451,7 @@ export async function sendPatientTelegramMessage(id: string, visitKey: string) {
  * reassign at all. */
 export async function reassignPatient(id: string, newSellerId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { error } = await supabase
     .from("patients")
@@ -470,7 +459,7 @@ export async function reassignPatient(id: string, newSellerId: string) {
     .eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "patient_reassigned", "patient", id, newSellerId);
+  await logActivity(supabase, user.actorId, "patient_reassigned", "patient", id, newSellerId);
 
   revalidatePath("/patients");
   revalidatePath("/");
@@ -479,10 +468,7 @@ export async function reassignPatient(id: string, newSellerId: string) {
 
 export async function deletePatient(id: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   // Grab the name before it's gone — the log has to be self-contained since the patient
   // row (and any later name lookup by id) won't exist anymore.
@@ -491,7 +477,7 @@ export async function deletePatient(id: string) {
   const { error } = await supabase.from("patients").delete().eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "patient_deleted", "patient", id, patient?.name ?? undefined);
+  await logActivity(supabase, user.actorId, "patient_deleted", "patient", id, patient?.name ?? undefined);
 
   revalidatePath("/patients");
   revalidatePath("/");
@@ -534,10 +520,7 @@ function parseExtraVisitInput(formData: FormData) {
 
 export async function addExtraVisit(patientId: string, formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const input = parseExtraVisitInput(formData);
   if (!input.label) throw new Error("Reason is required");
@@ -547,7 +530,7 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
     .insert({ ...input, patient_id: patientId, created_by_seller_id: user.id });
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.id, "visit_added", "patient", patientId, input.label);
+  await logActivity(supabase, user.actorId, "visit_added", "patient", patientId, input.label);
 
   revalidatePath("/patients");
   revalidatePath("/");
@@ -556,10 +539,7 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
 
 export async function updateExtraVisit(id: string, formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const input = parseExtraVisitInput(formData);
   if (!input.label) throw new Error("Reason is required");
@@ -575,7 +555,7 @@ export async function updateExtraVisit(id: string, formData: FormData) {
 
   if (before) {
     const changes = diffFields(before, input, EXTRA_VISIT_AUDIT_FIELDS);
-    if (changes) await logActivity(supabase, user.id, "visit_updated", "patient", before.patient_id, changes);
+    if (changes) await logActivity(supabase, user.actorId, "visit_updated", "patient", before.patient_id, changes);
   }
 
   revalidatePath("/patients");
@@ -622,17 +602,14 @@ const EXTRA_VISIT_LOGISTICS_FIELD_LABELS: Record<ExtraVisitLogisticsField, strin
 export async function setPatientLogisticsFlag(patientId: string, field: PatientLogisticsField, value: boolean) {
   if (!PATIENT_LOGISTICS_FIELDS.includes(field)) throw new Error("Invalid field");
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { error } = await supabase.from("patients").update({ [field]: value }).eq("id", patientId);
   if (error) throw new Error(error.message);
 
   await logActivity(
     supabase,
-    user.id,
+    user.actorId,
     "patient_logistics_toggled",
     "patient",
     patientId,
@@ -651,10 +628,7 @@ export async function setExtraVisitLogisticsFlag(
 ) {
   if (!EXTRA_VISIT_LOGISTICS_FIELDS.includes(field)) throw new Error("Invalid field");
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { data: visit } = await supabase
     .from("patient_visits")
@@ -668,7 +642,7 @@ export async function setExtraVisitLogisticsFlag(
   if (visit) {
     await logActivity(
       supabase,
-      user.id,
+      user.actorId,
       "visit_logistics_toggled",
       "patient",
       visit.patient_id,
@@ -682,10 +656,7 @@ export async function setExtraVisitLogisticsFlag(
 
 export async function deleteExtraVisit(id: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getActingUser();
 
   const { data: before } = await supabase
     .from("patient_visits")
@@ -697,7 +668,7 @@ export async function deleteExtraVisit(id: string) {
   if (error) throw new Error(error.message);
 
   if (before) {
-    await logActivity(supabase, user.id, "visit_deleted", "patient", before.patient_id, before.label);
+    await logActivity(supabase, user.actorId, "visit_deleted", "patient", before.patient_id, before.label);
   }
 
   revalidatePath("/patients");
@@ -713,10 +684,7 @@ export async function deleteExtraVisit(id: string) {
  * deactivated account), and the log read is pinned to that same clinic. */
 export async function getPatientActivity(patientId: string): Promise<ActivityLogRow[]> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  await getActingUser({ forRead: true }); // signed in, with a clinic context
 
   const { data: patient } = await supabase.from("patients").select("clinic_id").eq("id", patientId).maybeSingle();
   if (!patient) throw new Error("Patient not found");
@@ -724,7 +692,7 @@ export async function getPatientActivity(patientId: string): Promise<ActivityLog
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("activity_log")
-    .select("id, actor_id, action, target_type, target_id, detail, created_at")
+    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support")
     .eq("clinic_id", patient.clinic_id)
     .eq("target_type", "patient")
     .eq("target_id", patientId)

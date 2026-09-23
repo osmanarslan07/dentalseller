@@ -11,14 +11,14 @@ import {
 import { describeActivity } from "@/lib/activity-log";
 import { Profile } from "@/types";
 import { TeamPerformanceClient } from "./TeamPerformanceClient";
+import { getViewerUser } from "@/lib/viewer";
 
 const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
 
 export default async function TeamPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // in support mode this is the member being viewed as — every "my …" view is theirs
+  const user = await getViewerUser();
 
   const profiles = await getProfiles(supabase);
   const me = profiles.find((p) => p.id === user?.id);
@@ -57,7 +57,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
 
   const { data: logData } = await supabase
     .from("activity_log")
-    .select("id, actor_id, action, target_type, target_id, detail, created_at")
+    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support")
     .order("created_at", { ascending: false })
     .limit(50);
 

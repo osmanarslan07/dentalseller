@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getBotUsername } from "@/lib/telegram";
 import { logActivity } from "@/lib/activity-log";
+import { assertNotSupportMode } from "@/lib/viewer";
 
 const CODE_TTL_MINUTES = 10;
 
@@ -16,6 +17,7 @@ export interface TelegramLinkInfo {
 
 /** Generates a one-time code the user sends to the bot as `/start <code>` to link their chat. */
 export async function generateTelegramLinkCode(): Promise<TelegramLinkInfo> {
+  await assertNotSupportMode();
   const supabase = await createClient();
   const {
     data: { user },

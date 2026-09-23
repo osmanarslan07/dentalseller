@@ -50,6 +50,8 @@ export interface ActivityLogRow {
   target_id: string | null;
   detail: string | null;
   created_at: string;
+  /** Done by DentalSeller support (a superadmin in support mode) — set by the database. */
+  via_support?: boolean;
 }
 
 /** Shared between the team page's full activity feed and a single patient's History tab —
@@ -60,7 +62,7 @@ export function describeActivity(
   nameById: Map<string, string>,
   patientNameById: Map<string, string>
 ): string {
-  const actor = (entry.actor_id && nameById.get(entry.actor_id)) || "Someone";
+  const actor = entry.via_support ? "DentalSeller support" : (entry.actor_id && nameById.get(entry.actor_id)) || "Someone";
   const target = (entry.target_id && nameById.get(entry.target_id)) || "a seller";
 
   switch (entry.action) {

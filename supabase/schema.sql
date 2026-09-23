@@ -1410,6 +1410,222 @@ create trigger terms_acceptances_append_only before update on public.terms_accep
   for each row execute function public.forbid_row_change();
 
 -- =====================================================================
+-- PLATFORM: support mode — a superadmin working inside one clinic. Idempotent/safe to re-run.
+-- =====================================================================
+-- Model: the superadmin keeps their own identity (never a member of the clinic, never in its
+-- team list) and, while a session is open, the database treats them as an admin of that one
+-- clinic. Every existing clinic-scoped policy keys off my_clinic_id()/is_admin(), so extending
+-- those two helpers is what grants access — no per-table rewrite. Writes stay impossible
+-- until editing is explicitly unlocked (restrictive policies below). Sessions are created,
+-- extended and ended only by the platform area through the service role.
+
+create table if not exists public.support_sessions (
+  id uuid primary key default gen_random_uuid(),
+  superadmin_id uuid not null references auth.users(id) on delete cascade,
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+  -- whose view the clinic app renders (their "me": dashboard, quotes, tasks, role)
+  view_as_user_id uuid references auth.users(id) on delete set null,
+  note text,
+  started_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  -- writes allowed only while this is in the future
+  editing_until timestamptz,
+  ended_at timestamptz
+);
+
+create index if not exists support_sessions_superadmin_idx on public.support_sessions (superadmin_id, started_at desc);
+create index if not exists support_sessions_clinic_idx on public.support_sessions (clinic_id, started_at desc);
+
+alter table public.support_sessions enable row level security;
+
+-- The clinic of the caller's open support session — only for a superadmin whose current
+-- login passed two-factor (aal2), so a stolen password alone can never open a clinic.
+create or replace function public.support_clinic_id()
+returns uuid
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select s.clinic_id
+  from public.support_sessions s
+  where s.superadmin_id = auth.uid()
+    and s.ended_at is null
+    and s.expires_at > now()
+    and coalesce(auth.jwt() ->> 'aal', '') = 'aal2'
+    and public.is_superadmin(auth.uid())
+  order by s.started_at desc
+  limit 1;
+$$;
+
+-- True only while the caller's open session has editing unlocked.
+create or replace function public.support_can_write()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.support_sessions s
+    where s.superadmin_id = auth.uid()
+      and s.ended_at is null
+      and s.expires_at > now()
+      and s.editing_until > now()
+      and s.clinic_id = public.support_clinic_id()
+  );
+$$;
+
+-- A clinic member's own clinic, or — for a superadmin in support mode — the supported clinic.
+create or replace function public.my_clinic_id()
+returns uuid
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce((select clinic_id from public.profiles where id = auth.uid()), public.support_clinic_id());
+$$;
+
+-- Admin of their clinic, or a superadmin acting in support mode (only ever for the caller
+-- themselves — support never makes *another* user an admin).
+create or replace function public.is_admin(uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce((select role = 'admin' from public.profiles where id = uid), false)
+      or (uid = auth.uid() and public.is_superadmin(uid) and public.support_clinic_id() is not null);
+$$;
+
+-- Quotes, tasks and settings are private per seller (own-row policies), and new patients /
+-- visits must be owned by the inserting user. Support works on behalf of whichever member
+-- it's viewing as, so it gets clinic-wide policies on these — still limited to the one
+-- supported clinic, and still read-only until unlocked (restrictive policies below).
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['quotes', 'tasks', 'settings'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_support_select', t);
+    execute format('create policy %I on public.%I for select using (clinic_id = public.support_clinic_id())', t || '_support_select', t);
+    execute format('drop policy if exists %I on public.%I', t || '_support_update', t);
+    execute format('create policy %I on public.%I for update using (clinic_id = public.support_clinic_id()) with check (clinic_id = public.support_clinic_id())', t || '_support_update', t);
+    execute format('drop policy if exists %I on public.%I', t || '_support_delete', t);
+    execute format('create policy %I on public.%I for delete using (clinic_id = public.support_clinic_id())', t || '_support_delete', t);
+  end loop;
+  foreach t in array array['quotes', 'tasks', 'settings', 'patients', 'patient_visits'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_support_insert', t);
+    execute format('create policy %I on public.%I for insert with check (clinic_id = public.support_clinic_id())', t || '_support_insert', t);
+  end loop;
+end $$;
+
+-- Read-only until unlocked: RESTRICTIVE policies are ANDed with every permissive one, so a
+-- superadmin's insert/update/delete on clinic data fails unless editing is unlocked right
+-- now. For everyone else `not is_superadmin(...)` is true and nothing changes.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['patients', 'patient_visits', 'quotes', 'tasks', 'settings', 'profiles', 'clinic_config'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_support_readonly_insert', t);
+    execute format(
+      'create policy %I on public.%I as restrictive for insert with check (not public.is_superadmin(auth.uid()) or public.support_can_write())',
+      t || '_support_readonly_insert', t);
+    execute format('drop policy if exists %I on public.%I', t || '_support_readonly_update', t);
+    execute format(
+      'create policy %I on public.%I as restrictive for update using (not public.is_superadmin(auth.uid()) or public.support_can_write()) with check (not public.is_superadmin(auth.uid()) or public.support_can_write())',
+      t || '_support_readonly_update', t);
+    execute format('drop policy if exists %I on public.%I', t || '_support_readonly_delete', t);
+    execute format(
+      'create policy %I on public.%I as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write())',
+      t || '_support_readonly_delete', t);
+  end loop;
+end $$;
+
+-- Things support must never do on a clinic's behalf, unlocked or not: accept its terms, or
+-- link its members' Telegram.
+drop policy if exists "terms_acceptances_no_support" on public.terms_acceptances;
+create policy "terms_acceptances_no_support" on public.terms_acceptances
+  as restrictive for insert with check (not public.is_superadmin(auth.uid()));
+
+drop policy if exists "telegram_link_codes_no_support" on public.telegram_link_codes;
+create policy "telegram_link_codes_no_support" on public.telegram_link_codes
+  as restrictive for insert with check (not public.is_superadmin(auth.uid()));
+
+-- Support's changes show in the clinic's own history as "DentalSeller support" rather than
+-- as an unknown actor — marked here, where it can't be forgotten by any code path.
+alter table public.activity_log add column if not exists via_support boolean not null default false;
+
+create or replace function public.mark_support_activity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.via_support := auth.uid() is not null and public.is_superadmin(auth.uid());
+  return new;
+end;
+$$;
+
+drop trigger if exists activity_log_mark_support on public.activity_log;
+create trigger activity_log_mark_support before insert on public.activity_log
+  for each row execute function public.mark_support_activity();
+
+-- Support's own actions aren't the clinic's usage: redefine the usage trends (first defined
+-- above, before via_support existed) so a support visit never counts as an active team
+-- member — it would inflate the numbers and mask an inactive clinic.
+create or replace function public.platform_monthly_usage(p_months int default 12)
+returns table (clinic_id uuid, month date, quotes_created int, patients_confirmed int, active_users int)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with bounds as (
+    select
+      (date_trunc('month', now() at time zone 'utc') - make_interval(months => greatest(p_months, 1) - 1))::date as first_month,
+      (date_trunc('month', now() at time zone 'utc') + interval '1 month')::date as end_month
+  ),
+  months as (
+    select generate_series(b.first_month, b.end_month - 1, interval '1 month')::date as month from bounds b
+  ),
+  q as (
+    select t.clinic_id, date_trunc('month', t.created_at at time zone 'utc')::date as m, count(*) as n
+    from public.quotes t, bounds b
+    where t.created_at >= b.first_month and t.created_at < b.end_month
+    group by 1, 2
+  ),
+  p as (
+    select t.clinic_id, date_trunc('month', t.confirmation_date)::date as m, count(*) as n
+    from public.patients t, bounds b
+    where t.confirmation_date >= b.first_month and t.confirmation_date < b.end_month
+    group by 1, 2
+  ),
+  a as (
+    select t.clinic_id, date_trunc('month', t.created_at at time zone 'utc')::date as m, count(distinct t.actor_id) as n
+    from public.activity_log t, bounds b
+    where t.clinic_id is not null and not t.via_support
+      and t.created_at >= b.first_month and t.created_at < b.end_month
+    group by 1, 2
+  )
+  select c.id, mo.month, coalesce(q.n, 0)::int, coalesce(p.n, 0)::int, coalesce(a.n, 0)::int
+  from public.clinics c
+  cross join months mo
+  left join q on q.clinic_id = c.id and q.m = mo.month
+  left join p on p.clinic_id = c.id and p.m = mo.month
+  left join a on a.clinic_id = c.id and a.m = mo.month
+  order by c.id, mo.month;
+$$;
+
+revoke all on function public.platform_monthly_usage(int) from public, anon, authenticated;
+grant execute on function public.platform_monthly_usage(int) to service_role;
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

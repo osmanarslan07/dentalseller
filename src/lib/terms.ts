@@ -1,12 +1,12 @@
 /** Terms of Service & Data Processing Agreement, in Turkish and English. Versioned: bumping
  * TERMS_VERSION makes every clinic admin accept again on their next visit (when acceptance
- * is enforced). Text in [square brackets] is a placeholder to be completed before clinics
- * are asked to accept — this is a draft for legal review, not legal advice. */
+ * is enforced). Details were filled in by the owner; the text is still a draft for legal review, not
+ * legal advice. */
 
 export const TERMS_VERSION = "1.0";
 export const TERMS_EFFECTIVE_DATE = "2026-09-23";
 
-/** Off until the text has been reviewed and the [placeholders] filled in: while false,
+/** Off until the text has been reviewed by a lawyer: while false,
  * /terms is published but clinic admins aren't stopped to accept it. */
 export const REQUIRE_TERMS_ACCEPTANCE = false;
 
@@ -33,7 +33,7 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
       {
         heading: "1. Taraflar ve kapsam",
         paragraphs: [
-          "Bu sözleşme, [DentalSeller hizmetini sunan tüzel kişi / şahıs adı] (“Sağlayıcı”) ile DentalSeller’ı kullanan klinik (“Klinik”) arasında akdedilir. Sözleşme, Klinik adına yetkili bir yönetici (admin) tarafından elektronik olarak kabul edilir.",
+          "Bu sözleşme, Dental Seller (adres: Muratpaşa, Antalya; vergi no: 0000000000) (“Sağlayıcı”) ile DentalSeller’ı kullanan klinik (“Klinik”) arasında akdedilir. Sözleşme, Klinik adına yetkili bir yönetici (admin) tarafından elektronik olarak kabul edilir.",
           "Bu metnin Türkçe ve İngilizce sürümleri arasında bir uyuşmazlık olması halinde Türkçe sürüm esas alınır.",
         ],
       },
@@ -62,7 +62,7 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
         paragraphs: [
           "Sağlayıcı’nın yetkilendirilmiş personeli, 4. maddedeki amaçlarla sınırlı olarak ve her erişim için ayrıca önceden bildirim veya onay gerekmeksizin, Klinik hesabına ve verilerine erişebilir; bir sorunun giderilmesi için gerekli olduğu hallerde veriler üzerinde değişiklik yapabilir. Erişim, amaç için gerekli olanla sınırlı tutulur.",
           "Her destek oturumu; erişimi yapan kişi, tarih ve saat, görüntülenen bölümler ve yapılan değişiklikler bakımından bir erişim kaydına işlenir. Destek sırasında yapılan değişiklikler, Klinik’in kayıt geçmişinde “DentalSeller destek” olarak görünür.",
-          "Klinik, kendi hesabına ilişkin erişim kayıtlarını her zaman talep edebilir; Sağlayıcı bu kayıtları makul bir süre içinde ([15] gün) iletir. Erişim kayıtları [6] yıl süreyle saklanır.",
+          "Klinik, kendi hesabına ilişkin erişim kayıtlarını her zaman talep edebilir; Sağlayıcı bu kayıtları makul bir süre içinde (15 gün) iletir. Erişim kayıtları 10 yıl süreyle saklanır.",
         ],
       },
       {
@@ -82,13 +82,13 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
         heading: "8. Alt işleyenler ve verilerin bulunduğu yer",
         paragraphs: [
           "Sağlayıcı, hizmetin sunulması için şu alt işleyenlerden yararlanır: Supabase (veritabanı, kimlik doğrulama ve dosya depolama; veriler İsveç, Stockholm’deki AB veri merkezinde saklanır); Vercel (uygulama barındırma; İsveç, Stockholm, AB); Telegram (Klinik’in etkinleştirdiği bildirimler).",
-          "Kişisel verilerin yurt dışına aktarımı, KVKK’nın 9. maddesinde öngörülen mekanizmalar (ör. standart sözleşme) ve uygulanabildiği ölçüde GDPR’ın V. Bölümü çerçevesinde gerçekleştirilir. Sağlayıcı, alt işleyen değişikliklerini Klinik yöneticilerine en az [30] gün önceden bildirir; Klinik bu değişikliğe itiraz edebilir.",
+          "Kişisel verilerin yurt dışına aktarımı, KVKK’nın 9. maddesinde öngörülen mekanizmalar (ör. standart sözleşme) ve uygulanabildiği ölçüde GDPR’ın V. Bölümü çerçevesinde gerçekleştirilir. Sağlayıcı, alt işleyen değişikliklerini Klinik yöneticilerine en az 30 gün önceden bildirir; Klinik bu değişikliğe itiraz edebilir.",
         ],
       },
       {
         heading: "9. Veri ihlalleri",
         paragraphs: [
-          "Sağlayıcı, Klinik verilerini etkileyen bir kişisel veri ihlalini öğrendiğinde Klinik’i gecikmeksizin ve mümkünse [24] saat içinde bilgilendirir ve Klinik’in Kişisel Verileri Koruma Kurulu’na ve ilgili kişilere yapacağı bildirim için gerekli bilgileri sağlar.",
+          "Sağlayıcı, Klinik verilerini etkileyen bir kişisel veri ihlalini öğrendiğinde Klinik’i gecikmeksizin ve mümkünse 24 saat içinde bilgilendirir ve Klinik’in Kişisel Verileri Koruma Kurulu’na ve ilgili kişilere yapacağı bildirim için gerekli bilgileri sağlar.",
         ],
       },
       {
@@ -100,7 +100,7 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
       {
         heading: "11. Hizmetin sona ermesi ve verilerin silinmesi",
         paragraphs: [
-          "Klinik, hizmet süresince verilerini dışa aktarabilir. Hizmetin sona ermesinden sonra Sağlayıcı, yasal saklama yükümlülükleri saklı kalmak kaydıyla Klinik verilerini [90] gün içinde siler. Erişim kayıtları 5. maddedeki süre boyunca saklanır.",
+          "Klinik, hizmet süresince verilerini dışa aktarabilir. Hizmetin sona ermesinden sonra Sağlayıcı, yasal saklama yükümlülükleri saklı kalmak kaydıyla Klinik verilerini 90 gün içinde siler. Erişim kayıtları 5. maddedeki süre boyunca saklanır.",
         ],
       },
       {
@@ -111,11 +111,11 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
       },
       {
         heading: "13. Uygulanacak hukuk",
-        paragraphs: ["Bu sözleşmeye Türk hukuku uygulanır. Uyuşmazlıklarda [şehir] mahkemeleri ve icra daireleri yetkilidir."],
+        paragraphs: ["Bu sözleşmeye Türk hukuku uygulanır. Uyuşmazlıklarda Antalya mahkemeleri ve icra daireleri yetkilidir."],
       },
       {
         heading: "14. İletişim",
-        paragraphs: ["Bu şartlar ve veri koruma ile ilgili talepler için: [iletişim e-postası]."],
+        paragraphs: ["Bu şartlar ve veri koruma ile ilgili talepler için: osman07arslann@gmail.com."],
       },
     ],
     acceptLabel: (clinicName) =>
@@ -130,7 +130,7 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
       {
         heading: "1. Parties and scope",
         paragraphs: [
-          "This agreement is between [legal name of the entity or person providing DentalSeller] (the “Provider”) and the clinic using DentalSeller (the “Clinic”). It is accepted electronically on the Clinic's behalf by one of its authorised administrators.",
+          "This agreement is between Dental Seller (address: Muratpaşa, Antalya, Türkiye; tax number: 0000000000) (the “Provider”) and the clinic using DentalSeller (the “Clinic”). It is accepted electronically on the Clinic's behalf by one of its authorised administrators.",
           "If the Turkish and English versions of this text conflict, the Turkish version prevails.",
         ],
       },
@@ -159,7 +159,7 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
         paragraphs: [
           "Authorised Provider personnel may access the Clinic's account and data for the purposes in section 4 without prior notice or separate approval for each access, and may change data where necessary to resolve an issue. Access is limited to what the purpose requires.",
           "Every support session is recorded in an access log: who accessed, when, which areas were viewed and what was changed. Changes made during support appear in the Clinic's history as “DentalSeller support”.",
-          "The Clinic may request the access log for its account at any time; the Provider will provide it within a reasonable time ([15] days). Access logs are kept for [6] years.",
+          "The Clinic may request the access log for its account at any time; the Provider will provide it within a reasonable time (15 days). Access logs are kept for 10 years.",
         ],
       },
       {
@@ -179,13 +179,13 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
         heading: "8. Sub-processors and data location",
         paragraphs: [
           "The Provider uses these sub-processors to deliver the service: Supabase (database, authentication and file storage; data is stored in the EU data centre in Stockholm, Sweden); Vercel (application hosting; Stockholm, Sweden, EU); Telegram (notifications the Clinic enables).",
-          "Transfers of personal data abroad take place under the mechanisms in Article 9 of the KVKK (such as standard contracts) and, where applicable, Chapter V of the GDPR. The Provider will notify Clinic administrators of changes to sub-processors at least [30] days in advance, and the Clinic may object.",
+          "Transfers of personal data abroad take place under the mechanisms in Article 9 of the KVKK (such as standard contracts) and, where applicable, Chapter V of the GDPR. The Provider will notify Clinic administrators of changes to sub-processors at least 30 days in advance, and the Clinic may object.",
         ],
       },
       {
         heading: "9. Personal data breaches",
         paragraphs: [
-          "If the Provider becomes aware of a personal data breach affecting Clinic data, it will notify the Clinic without undue delay and, where feasible, within [24] hours, and provide the information the Clinic needs to notify the Personal Data Protection Board and data subjects.",
+          "If the Provider becomes aware of a personal data breach affecting Clinic data, it will notify the Clinic without undue delay and, where feasible, within 24 hours, and provide the information the Clinic needs to notify the Personal Data Protection Board and data subjects.",
         ],
       },
       {
@@ -197,7 +197,7 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
       {
         heading: "11. End of service and deletion",
         paragraphs: [
-          "The Clinic may export its data while the service is active. After the service ends, the Provider will delete Clinic data within [90] days, except where the law requires it to be kept. Access logs are kept for the period in section 5.",
+          "The Clinic may export its data while the service is active. After the service ends, the Provider will delete Clinic data within 90 days, except where the law requires it to be kept. Access logs are kept for the period in section 5.",
         ],
       },
       {
@@ -208,11 +208,11 @@ export const TERMS: Record<TermsLanguage, TermsDocument> = {
       },
       {
         heading: "13. Governing law",
-        paragraphs: ["This agreement is governed by Turkish law. The courts and enforcement offices of [city] have jurisdiction over disputes."],
+        paragraphs: ["This agreement is governed by Turkish law. The courts and enforcement offices of Antalya have jurisdiction over disputes."],
       },
       {
         heading: "14. Contact",
-        paragraphs: ["For questions about these terms or data protection: [contact email]."],
+        paragraphs: ["For questions about these terms or data protection: osman07arslann@gmail.com."],
       },
     ],
     acceptLabel: (clinicName) =>

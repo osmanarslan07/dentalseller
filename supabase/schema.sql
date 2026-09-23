@@ -2162,6 +2162,171 @@ drop policy if exists "patient_extras_support_readonly_delete" on public.patient
 create policy "patient_extras_support_readonly_delete" on public.patient_extras
   as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write());
 
+-- ---------- payments (pre-accounting: what was actually collected, per visit) ----------
+-- `amount` is what counts as treatment revenue. A card payment can carry an optional
+-- surcharge (the clinic's card rate, snapshotted at the time) that the patient pays on top —
+-- it's recorded separately and never counts toward commission.
+create table if not exists public.patient_payments (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  visit_number smallint check (visit_number in (1, 2)),
+  extra_visit_id uuid references public.patient_visits(id) on delete cascade,
+  amount numeric(10,2) not null check (amount > 0),
+  method text not null default 'cash' check (method in ('cash', 'card', 'bank')),
+  surcharge_rate numeric(5,4) check (surcharge_rate is null or (surcharge_rate >= 0 and surcharge_rate <= 1)),
+  surcharge_amount numeric(10,2) not null default 0 check (surcharge_amount >= 0),
+  paid_on date not null default current_date,
+  received_by uuid references auth.users(id) on delete set null default auth.uid(),
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check ((visit_number is not null) <> (extra_visit_id is not null)),
+  check (method = 'card' or (surcharge_rate is null and surcharge_amount = 0))
+);
+create index if not exists patient_payments_patient_idx on public.patient_payments (patient_id);
+create index if not exists patient_payments_date_idx on public.patient_payments (clinic_id, paid_on);
+
+drop trigger if exists patient_payments_set_updated_at on public.patient_payments;
+create trigger patient_payments_set_updated_at before update on public.patient_payments
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists patient_payments_set_clinic_id on public.patient_payments;
+create trigger patient_payments_set_clinic_id before insert on public.patient_payments
+  for each row execute function public.set_row_clinic_id();
+
+-- Same-clinic checks, and the surcharge is always rate × amount (computed here, not trusted
+-- from the client). Sorts after set_clinic_id.
+create or replace function public.validate_patient_payment()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from public.patients where id = new.patient_id and clinic_id = new.clinic_id) then
+    raise exception 'Patient not found';
+  end if;
+  if new.extra_visit_id is not null
+     and not exists (select 1 from public.patient_visits where id = new.extra_visit_id and patient_id = new.patient_id) then
+    raise exception 'Visit not found';
+  end if;
+  if new.received_by is not null
+     and not exists (select 1 from public.profiles where id = new.received_by and clinic_id = new.clinic_id) then
+    raise exception 'The person who received it must be on the clinic team';
+  end if;
+  if new.method = 'card' and new.surcharge_rate is not null then
+    new.surcharge_amount := round(new.amount * new.surcharge_rate, 2);
+  else
+    new.surcharge_rate := null;
+    new.surcharge_amount := 0;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists patient_payments_validate on public.patient_payments;
+create trigger patient_payments_validate before insert or update on public.patient_payments
+  for each row execute function public.validate_patient_payment();
+
+-- A visit's `actual` (visit1_actual / visit2_actual / patient_visits.actual) is now the sum of
+-- its payments — null when there are none — kept here so commission, "earned by", Telegram
+-- messages and every report keep reading the same column they always have.
+create or replace function public.sync_visit_actual(p_patient uuid, p_visit smallint, p_extra uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  paid numeric(10,2);
+begin
+  select sum(amount) into paid
+  from public.patient_payments
+  where patient_id = p_patient
+    and visit_number is not distinct from p_visit
+    and extra_visit_id is not distinct from p_extra;
+
+  if p_extra is not null then
+    update public.patient_visits set actual = paid where id = p_extra and actual is distinct from paid;
+  elsif p_visit = 1 then
+    update public.patients set visit1_actual = paid where id = p_patient and visit1_actual is distinct from paid;
+  elsif p_visit = 2 then
+    update public.patients set visit2_actual = paid where id = p_patient and visit2_actual is distinct from paid;
+  end if;
+end;
+$$;
+
+create or replace function public.patient_payments_sync_actual()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op in ('UPDATE', 'DELETE') then
+    perform public.sync_visit_actual(old.patient_id, old.visit_number, old.extra_visit_id);
+  end if;
+  if tg_op in ('INSERT', 'UPDATE') then
+    perform public.sync_visit_actual(new.patient_id, new.visit_number, new.extra_visit_id);
+  end if;
+  return null;
+end;
+$$;
+drop trigger if exists patient_payments_sync_actual on public.patient_payments;
+create trigger patient_payments_sync_actual after insert or update or delete on public.patient_payments
+  for each row execute function public.patient_payments_sync_actual();
+
+alter table public.patient_payments enable row level security;
+
+drop policy if exists "patient_payments_select_active" on public.patient_payments;
+create policy "patient_payments_select_active" on public.patient_payments
+  for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "patient_payments_insert_active" on public.patient_payments;
+create policy "patient_payments_insert_active" on public.patient_payments
+  for insert with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "patient_payments_update_active" on public.patient_payments;
+create policy "patient_payments_update_active" on public.patient_payments
+  for update using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id())
+  with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+drop policy if exists "patient_payments_delete_active" on public.patient_payments;
+create policy "patient_payments_delete_active" on public.patient_payments
+  for delete using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+drop policy if exists "patient_payments_support_readonly_insert" on public.patient_payments;
+create policy "patient_payments_support_readonly_insert" on public.patient_payments
+  as restrictive for insert with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "patient_payments_support_readonly_update" on public.patient_payments;
+create policy "patient_payments_support_readonly_update" on public.patient_payments
+  as restrictive for update using (not public.is_superadmin(auth.uid()) or public.support_can_write())
+  with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "patient_payments_support_readonly_delete" on public.patient_payments;
+create policy "patient_payments_support_readonly_delete" on public.patient_payments
+  as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write());
+
+-- One-time backfill: every actual typed in before payments existed becomes a single cash
+-- payment of the same amount (dated on the visit, received by whoever earned it), so no
+-- total or commission changes. Only visits with no payments yet — safe to re-run.
+insert into public.patient_payments (clinic_id, patient_id, visit_number, amount, method, paid_on, received_by, note)
+select p.clinic_id, p.id, 1, p.visit1_actual, 'cash', coalesce(p.visit1_date, p.created_at::date),
+       coalesce(p.visit1_earned_by_seller_id, p.responsible_seller_id), 'Recorded before payments were tracked'
+from public.patients p
+where p.visit1_actual is not null and p.visit1_actual > 0
+  and not exists (select 1 from public.patient_payments x where x.patient_id = p.id and x.visit_number = 1);
+
+insert into public.patient_payments (clinic_id, patient_id, visit_number, amount, method, paid_on, received_by, note)
+select p.clinic_id, p.id, 2, p.visit2_actual, 'cash', coalesce(p.visit2_date, p.created_at::date),
+       coalesce(p.visit2_earned_by_seller_id, p.responsible_seller_id), 'Recorded before payments were tracked'
+from public.patients p
+where p.visit2_actual is not null and p.visit2_actual > 0
+  and not exists (select 1 from public.patient_payments x where x.patient_id = p.id and x.visit_number = 2);
+
+insert into public.patient_payments (clinic_id, patient_id, extra_visit_id, amount, method, paid_on, received_by, note)
+select v.clinic_id, v.patient_id, v.id, v.actual, 'cash', coalesce(v.visit_date, v.created_at::date),
+       coalesce(v.earned_by_seller_id, p.responsible_seller_id), 'Recorded before payments were tracked'
+from public.patient_visits v join public.patients p on p.id = v.patient_id
+where v.actual is not null and v.actual > 0
+  and not exists (select 1 from public.patient_payments x where x.extra_visit_id = v.id);
+
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to

@@ -71,6 +71,7 @@ export type PatientExtraVisitInput = Omit<
   | "created_at"
   | "updated_at"
   | "earned_by_seller_id"
+  | "actual"
   | "arrival_transfer_arranged"
   | "departure_transfer_arranged"
 >;
@@ -138,6 +139,8 @@ export interface Patient {
   extra_visits: PatientExtraVisit[];
   /** Extras sold on any of this patient's visits — see PatientExtra. */
   extras: PatientExtra[];
+  /** Every payment recorded on any of this patient's visits. */
+  payments: PatientPayment[];
 
   created_at: string;
   updated_at: string;
@@ -151,6 +154,10 @@ export type PatientInput = Omit<
   | "updated_at"
   | "extra_visits"
   | "extras"
+  | "payments"
+  // the sum of the visit's payments, kept by a DB trigger — never typed in
+  | "visit1_actual"
+  | "visit2_actual"
   | "visit1_earned_by_seller_id"
   | "visit2_earned_by_seller_id"
   // derived from transfers by a DB trigger — never written by a patient save
@@ -200,6 +207,28 @@ export interface PatientExtra {
   unit_price: number;
   /** quantity × unit_price, computed by the database */
   total: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PaymentMethod = "cash" | "card" | "bank";
+
+/** Money actually collected on a visit. `amount` is what counts (it sums into the visit's
+ * actual); a card surcharge the patient paid on top is kept apart and never counts toward
+ * commission. */
+export interface PatientPayment {
+  id: string;
+  patient_id: string;
+  visit_number: 1 | 2 | null;
+  extra_visit_id: string | null;
+  amount: number;
+  method: PaymentMethod;
+  /** Card only: the clinic's surcharge rate at the time, e.g. 0.03 — null when none was added. */
+  surcharge_rate: number | null;
+  surcharge_amount: number;
+  paid_on: string;
+  received_by: string | null;
+  note: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -7,7 +7,23 @@ export function monthKey(dateStr: string): string {
 
 export function treatmentTotal(p: Patient): number {
   const extra = p.extra_visits.reduce((sum, v) => sum + (v.expected ?? 0), 0);
-  return (p.visit1_expected ?? 0) + (p.visit2_expected ?? 0) + extra;
+  const extras = p.extras.reduce((sum, e) => sum + e.total, 0);
+  return (p.visit1_expected ?? 0) + (p.visit2_expected ?? 0) + extra + extras;
+}
+
+/** Total of the extras sold on one visit ("visit1" | "visit2" | an extra visit's id). */
+export function extrasTotalFor(p: Patient, visitKey: string): number {
+  return p.extras
+    .filter((e) => (e.extra_visit_id ?? `visit${e.visit_number}`) === visitKey)
+    .reduce((sum, e) => sum + e.total, 0);
+}
+
+/** What the patient is expected to pay for a visit: the agreed treatment price plus any
+ * extras sold on it. Null only when neither exists. */
+export function visitExpectedTotal(p: Patient, visitKey: string, expected: number | null): number | null {
+  const extras = extrasTotalFor(p, visitKey);
+  if (expected == null && extras === 0) return null;
+  return (expected ?? 0) + extras;
 }
 
 export function monthLabel(key: string): string {
@@ -76,21 +92,21 @@ function patientVisits(p: Patient): Visit[] {
   return [
     {
       date: p.visit1_date,
-      expected: p.visit1_expected,
+      expected: visitExpectedTotal(p, "visit1", p.visit1_expected),
       actual: p.visit1_actual,
       status: p.visit1_status,
       ownerId: p.visit1_actual != null ? p.visit1_earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,
     },
     {
       date: p.visit2_date,
-      expected: p.visit2_expected,
+      expected: visitExpectedTotal(p, "visit2", p.visit2_expected),
       actual: p.visit2_actual,
       status: p.visit2_status,
       ownerId: p.visit2_actual != null ? p.visit2_earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,
     },
     ...p.extra_visits.map((v) => ({
       date: v.visit_date,
-      expected: v.expected,
+      expected: visitExpectedTotal(p, v.id, v.expected),
       actual: v.actual,
       status: v.status,
       ownerId: v.actual != null ? v.earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,

@@ -12,6 +12,11 @@ import { describeActivity, formatActivityTime, ActivityLogRow } from "@/lib/acti
 import { Patient, PatientExtraVisit, Profile, Transfer, TransferCompany } from "@/types";
 import { TransfersSection, VisitTravel } from "./TransfersSection";
 import { ExtrasSection } from "./ExtrasSection";
+import { PaymentsSection } from "./PaymentsSection";
+import { extrasTotalFor } from "@/lib/commission";
+
+/** What a payments section needs besides the visit itself. */
+type PaymentContext = { profiles: Profile[]; currentUserId: string; surchargeRate: number };
 import {
   createPatient,
   updatePatient,
@@ -168,6 +173,7 @@ export function PatientDetail({
   existingPatients = [],
   transfers = [],
   companies = [],
+  surchargeRate = 0.03,
 }: {
   patient?: Patient | null;
   /** Prefill a new (non-edit) patient from an existing one — for group bookings sharing a flight/hotel. */
@@ -184,6 +190,8 @@ export function PatientDetail({
   /** Every transfer of this patient, all visits. */
   transfers?: Transfer[];
   companies?: TransferCompany[];
+  /** The clinic's card surcharge rate (System settings). */
+  surchargeRate?: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -320,16 +328,8 @@ export function PatientDetail({
     startTransition(async () => {
       try {
         if (isEdit && patient) {
-          const { celebration } = await updatePatient(patient.id, formData);
-          if (celebration) {
-            if (celebration.kind === "confetti") {
-              fireConfetti();
-              if (soundEnabled) playChime();
-            }
-            showToast(celebration.message);
-          } else {
-            showToast("Patient saved ✓");
-          }
+          await updatePatient(patient.id, formData);
+          showToast("Patient saved ✓");
           setIsDirty(false);
           router.refresh();
         } else {
@@ -668,6 +668,17 @@ export function PatientDetail({
       {(activeTab === "visit1" || (activeTab === "visit2" && needsVisit2)) &&
         (isEdit && patient ? (
           <>
+            <PaymentsSection
+              key={`payments-${activeTab}`}
+              patientId={patient.id}
+              visitKey={activeTab}
+              payments={patient.payments.filter((p) => p.visit_number === (activeTab === "visit1" ? 1 : 2))}
+              expected={activeTab === "visit1" ? patient.visit1_expected : patient.visit2_expected}
+              extrasTotal={extrasTotalFor(patient, activeTab)}
+              profiles={profiles}
+              currentUserId={currentUserId}
+              surchargeRate={surchargeRate}
+            />
             <ExtrasSection
               key={`extras-${activeTab}`}
               patientId={patient.id}
@@ -694,7 +705,12 @@ export function PatientDetail({
 
       {isEdit && patient && (
         <div hidden={activeTab !== "extra"}>
-          <ExtraVisitsSection patient={patient} transfers={transfers} companies={companies} />
+          <ExtraVisitsSection
+            patient={patient}
+            transfers={transfers}
+            companies={companies}
+            pay={{ profiles, currentUserId, surchargeRate }}
+          />
         </div>
       )}
 
@@ -857,10 +873,12 @@ function ExtraVisitsSection({
   patient,
   transfers,
   companies,
+  pay,
 }: {
   patient: Patient;
   transfers: Transfer[];
   companies: TransferCompany[];
+  pay: PaymentContext;
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -904,6 +922,7 @@ function ExtraVisitsSection({
             patient={patient}
             transfers={transfers.filter((t) => t.extra_visit_id === v.id)}
             companies={companies}
+            pay={pay}
           />
         ))}
       </div>
@@ -1006,8 +1025,10 @@ function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
           <Input type="number" step="0.01" min="0" name="expected" defaultValue={visit?.expected ?? ""} />
         </div>
         <div>
-          <Label>Actual (£)</Label>
-          <Input type="number" step="0.01" min="0" name="actual" defaultValue={visit?.actual ?? ""} />
+          <Label>Paid (£)</Label>
+          <p className="py-2 text-sm text-slate-500" title="The sum of this visit's payments — record them under the visit">
+            {visit?.actual != null ? `£${visit.actual}` : "—"}
+          </p>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -1092,9 +1113,11 @@ function ExtraVisitRow({
   patient,
   transfers,
   companies,
+  pay,
 }: {
   visit: PatientExtraVisit;
   patient: Patient;
+  pay: PaymentContext;
   transfers: Transfer[];
   companies: TransferCompany[];
 }) {
@@ -1219,6 +1242,17 @@ function ExtraVisitRow({
           </button>
         </div>
       </div>
+      <PaymentsSection
+        compact
+        patientId={visit.patient_id}
+        visitKey={visit.id}
+        payments={patient.payments.filter((p) => p.extra_visit_id === visit.id)}
+        expected={visit.expected}
+        extrasTotal={extrasTotalFor(patient, visit.id)}
+        profiles={pay.profiles}
+        currentUserId={pay.currentUserId}
+        surchargeRate={pay.surchargeRate}
+      />
       <ExtrasSection
         compact
         patientId={visit.patient_id}
@@ -1268,8 +1302,10 @@ function VisitFields({
           <Input type="number" step="0.01" min="0" name={`visit${index}_expected`} defaultValue={expected ?? ""} />
         </div>
         <div>
-          <Label>Actual (£)</Label>
-          <Input type="number" step="0.01" min="0" name={`visit${index}_actual`} defaultValue={actual ?? ""} />
+          <Label>Paid (£)</Label>
+          <p className="py-2 text-sm text-slate-500" title="The sum of this visit's payments — record them in Payments below">
+            {actual != null ? `£${actual}` : "—"}
+          </p>
         </div>
         <div>
           <Label>Status</Label>

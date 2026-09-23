@@ -23,7 +23,8 @@ async function getMyClinicId(): Promise<string | null> {
 }
 
 /** A patient with everything hanging off their visits that money or operations reads. */
-const PATIENT_SELECT = "*, extra_visits:patient_visits(*), extras:patient_extras(*)";
+const PATIENT_SELECT =
+  "*, extra_visits:patient_visits(*), extras:patient_extras(*), payments:patient_payments(*)";
 
 /** Postgres numerics can arrive as strings — make the money fields plain numbers once, here. */
 function normalizePatient(row: Record<string, unknown>): Patient {
@@ -33,6 +34,24 @@ function normalizePatient(row: Record<string, unknown>): Patient {
     extras: (p.extras ?? [])
       .map((e) => ({ ...e, quantity: Number(e.quantity), unit_price: Number(e.unit_price), total: Number(e.total) }))
       .sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    payments: (p.payments ?? [])
+      .map((x) => ({
+        ...x,
+        amount: Number(x.amount),
+        surcharge_rate: x.surcharge_rate != null ? Number(x.surcharge_rate) : null,
+        surcharge_amount: Number(x.surcharge_amount),
+      }))
+      .sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at)),
+    // numerics arrive as strings — every commission sum below relies on these being numbers
+    visit1_expected: p.visit1_expected != null ? Number(p.visit1_expected) : null,
+    visit1_actual: p.visit1_actual != null ? Number(p.visit1_actual) : null,
+    visit2_expected: p.visit2_expected != null ? Number(p.visit2_expected) : null,
+    visit2_actual: p.visit2_actual != null ? Number(p.visit2_actual) : null,
+    extra_visits: (p.extra_visits ?? []).map((v) => ({
+      ...v,
+      expected: v.expected != null ? Number(v.expected) : null,
+      actual: v.actual != null ? Number(v.actual) : null,
+    })),
   };
 }
 

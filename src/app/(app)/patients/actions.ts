@@ -5,10 +5,9 @@ import { revalidatePath } from "next/cache";
 import { addMonths, format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPatient, getPatients, getSettings } from "@/lib/data";
+import { getPatient } from "@/lib/data";
 import { getEnvChatsClinicId, getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { ActivityLogRow, diffFields, logActivity } from "@/lib/activity-log";
-import { detectTierJump } from "@/lib/commission";
 import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
 import { getActingUser } from "@/lib/viewer";
 import { recordSupportEvent } from "@/lib/support-log";
@@ -82,7 +81,6 @@ const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
 
   { key: "visit1_date", label: "visit1 date" },
   { key: "visit1_expected", label: "visit1 expected" },
-  { key: "visit1_actual", label: "visit1 actual" },
   { key: "visit1_status", label: "visit1 status" },
   { key: "visit1_pax", label: "visit1 pax" },
   { key: "visit1_arrival_date", label: "visit1 arrival date" },
@@ -97,7 +95,6 @@ const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
 
   { key: "visit2_date", label: "visit2 date" },
   { key: "visit2_expected", label: "visit2 expected" },
-  { key: "visit2_actual", label: "visit2 actual" },
   { key: "visit2_status", label: "visit2 status" },
   { key: "visit2_pax", label: "visit2 pax" },
   { key: "visit2_arrival_date", label: "visit2 arrival date" },
@@ -115,7 +112,6 @@ const EXTRA_VISIT_AUDIT_FIELDS: { key: keyof ReturnType<typeof parseExtraVisitIn
   { key: "label", label: "label" },
   { key: "visit_date", label: "date" },
   { key: "expected", label: "expected" },
-  { key: "actual", label: "actual" },
   { key: "status", label: "status" },
   { key: "pax", label: "pax" },
   { key: "treatment", label: "treatment" },
@@ -302,12 +298,10 @@ function parseInput(formData: FormData): PatientInput {
     })(),
     visit1_date: str("visit1_date"),
     visit1_expected: num("visit1_expected"),
-    visit1_actual: num("visit1_actual"),
     visit1_status: (formData.get("visit1_status") as "upcoming" | "completed") || "upcoming",
     visit1_pax: parsePax(formData.get("visit1_pax")),
     visit2_date: str("visit2_date"),
     visit2_expected: num("visit2_expected"),
-    visit2_actual: num("visit2_actual"),
     visit2_status: (formData.get("visit2_status") as "upcoming" | "completed") || "upcoming",
     visit2_pax: parsePax(formData.get("visit2_pax")),
     notes: str("notes"),
@@ -389,8 +383,6 @@ export async function updatePatient(id: string, formData: FormData) {
   const { error } = await supabase.from("patients").update(input).eq("id", id);
   if (error) throw new Error(error.message);
 
-  let celebration: Celebration | null = null;
-
   if (before) {
     const changes = diffFields(before, input, PATIENT_AUDIT_FIELDS);
     if (changes) await logActivity(supabase, user.actorId, "patient_updated", "patient", id, changes);
@@ -401,38 +393,13 @@ export async function updatePatient(id: string, formData: FormData) {
       await maybeCreateFollowUpTask(id, before.responsible_seller_id, input);
     }
 
-    const visit1PaymentReceived = before.visit1_actual == null && input.visit1_actual != null;
-    const visit2PaymentReceived = before.visit2_actual == null && input.visit2_actual != null;
-
-    if (visit1PaymentReceived || visit2PaymentReceived) {
-      const visitDate = visit1PaymentReceived ? input.visit1_date : input.visit2_date;
-      const newAmount = (visit1PaymentReceived ? input.visit1_actual : input.visit2_actual) ?? 0;
-
-      // Tier jump takes priority — it means every pound for the rest of this month now
-      // earns more, not just the one just paid.
-      if (visitDate) {
-        const settings = await getSettings(supabase, before.responsible_seller_id);
-        const allPatients = await getPatients(supabase);
-        celebration = detectTierJump(allPatients, before.responsible_seller_id, settings, visitDate, newAmount);
-      }
-
-      if (!celebration) {
-        const wasFullyPaid = before.visit1_actual != null && (!before.needs_visit2 || before.visit2_actual != null);
-        const isFullyPaid = input.visit1_actual != null && (!input.needs_visit2 || input.visit2_actual != null);
-        celebration =
-          !wasFullyPaid && isFullyPaid
-            ? { kind: "confetti", message: `🏁 ${input.name} is fully paid off — treatment complete!` }
-            : { kind: "confetti", message: `💰 Payment received for ${input.name}!` };
-      }
-    }
+    // payments (and their celebrations) are recorded separately now — see payment-actions
   }
 
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath("/earnings");
-
-  return { celebration };
 }
 
 export async function sendPatientTelegramMessage(id: string, visitKey: string) {
@@ -505,7 +472,6 @@ function parseExtraVisitInput(formData: FormData) {
     label: String(formData.get("label") ?? "").trim(),
     visit_date: str("visit_date"),
     expected: num("expected"),
-    actual: num("actual"),
     status: (formData.get("status") as "upcoming" | "completed") || "upcoming",
     pax: parsePax(formData.get("pax")),
     treatment: str("treatment"),

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getPatientTransfers, getTransferCompanies } from "@/lib/data";
+import { getClinicConfig, getPatientTransfers, getTransferCompanies } from "@/lib/data";
 import { PatientDetail } from "../PatientDetail";
 import { loadPatientPageContext } from "../detail-data";
 
@@ -8,9 +8,10 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
   const ctx = await loadPatientPageContext();
   const patient = ctx.patients.find((p) => p.id === id);
   if (!patient) notFound();
-  const [transfers, companies] = await Promise.all([
+  const [transfers, companies, clinicConfig] = await Promise.all([
     getPatientTransfers(ctx.supabase, patient.id),
     getTransferCompanies(ctx.supabase),
+    getClinicConfig(ctx.supabase),
   ]);
 
   return (
@@ -26,6 +27,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
       isAdmin={ctx.isAdmin}
       transfers={transfers}
       companies={companies}
+      surchargeRate={clinicConfig.cardSurchargeRate}
     />
   );
 }

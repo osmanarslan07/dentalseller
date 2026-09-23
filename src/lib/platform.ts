@@ -6,6 +6,7 @@ import { computeHealthFlags, HealthFlag } from "@/lib/clinic-health";
 import { computeOnboarding, OnboardingStep } from "@/lib/clinic-onboarding";
 import { ClinicBilling, Plan } from "@/lib/clinic-billing";
 import { Announcement, AnnouncementLevel } from "@/lib/announcements";
+import { JobDefinition, JobHealth, jobHealth, JOBS } from "@/lib/jobs";
 import { ProfileRole } from "@/types";
 
 /** Server-side gate for every /platform page and action. Platform reads go through the
@@ -523,4 +524,127 @@ export async function getClinicNames(): Promise<[string, string][]> {
   const { data, error } = await admin.from("clinics").select("id, name").order("name", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((c) => [c.id, c.name]);
+}
+
+export interface JobRun {
+  startedAt: string;
+  finishedAt: string;
+  ok: boolean;
+  statusCode: number | null;
+  summary: string | null;
+  error: string | null;
+}
+
+export interface JobStatus extends JobDefinition {
+  health: JobHealth;
+  lastRun: JobRun | null;
+  lastSuccessAt: string | null;
+  /** Newest first, most recent 10. */
+  recentRuns: JobRun[];
+}
+
+export interface TelegramStatus {
+  tokenConfigured: boolean;
+  /** getMe succeeded — the token is valid and the bot exists. */
+  botOk: boolean;
+  botUsername: string | null;
+  webhookUrl: string | null;
+  pendingUpdates: number | null;
+  lastWebhookErrorAt: string | null;
+  lastWebhookError: string | null;
+  webhookSecretConfigured: boolean;
+  fallbackChatConfigured: boolean;
+  error: string | null;
+}
+
+const RECENT_RUNS = 10;
+
+async function getJobStatuses(): Promise<JobStatus[]> {
+  const admin = createAdminClient();
+  return Promise.all(
+    JOBS.map(async (job) => {
+      const [recent, lastSuccess] = await Promise.all([
+        admin
+          .from("job_runs")
+          .select("started_at, finished_at, ok, status_code, summary, error")
+          .eq("job", job.id)
+          .order("started_at", { ascending: false })
+          .limit(RECENT_RUNS),
+        admin
+          .from("job_runs")
+          .select("started_at")
+          .eq("job", job.id)
+          .eq("ok", true)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      if (recent.error) throw recent.error;
+      if (lastSuccess.error) throw lastSuccess.error;
+
+      const recentRuns: JobRun[] = (recent.data ?? []).map((r) => ({
+        startedAt: r.started_at,
+        finishedAt: r.finished_at,
+        ok: r.ok,
+        statusCode: r.status_code,
+        summary: r.summary,
+        error: r.error,
+      }));
+      const lastRun = recentRuns[0] ?? null;
+      const lastSuccessAt = lastSuccess.data?.started_at ?? null;
+      return { ...job, health: jobHealth(job, lastRun, lastSuccessAt), lastRun, lastSuccessAt, recentRuns };
+    })
+  );
+}
+
+/** Live checks against the Bot API. The token itself never leaves the server. */
+async function getTelegramStatus(): Promise<TelegramStatus> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const base: TelegramStatus = {
+    tokenConfigured: !!token,
+    botOk: false,
+    botUsername: null,
+    webhookUrl: null,
+    pendingUpdates: null,
+    lastWebhookErrorAt: null,
+    lastWebhookError: null,
+    webhookSecretConfigured: !!process.env.TELEGRAM_WEBHOOK_SECRET,
+    fallbackChatConfigured: !!process.env.TELEGRAM_CHAT_ID,
+    error: null,
+  };
+  if (!token) return base;
+
+  try {
+    const call = async (method: string) => {
+      const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(`${method}: ${json.description ?? res.status}`);
+      return json.result;
+    };
+    const [me, hook] = await Promise.all([call("getMe"), call("getWebhookInfo")]);
+    return {
+      ...base,
+      botOk: true,
+      botUsername: me.username ?? null,
+      webhookUrl: hook.url || null,
+      pendingUpdates: typeof hook.pending_update_count === "number" ? hook.pending_update_count : null,
+      lastWebhookErrorAt: hook.last_error_date ? new Date(hook.last_error_date * 1000).toISOString() : null,
+      lastWebhookError: hook.last_error_message ?? null,
+    };
+  } catch (err) {
+    return { ...base, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function getSystemStatus(): Promise<{ jobs: JobStatus[]; telegram: TelegramStatus }> {
+  const [jobs, telegram] = await Promise.all([getJobStatuses(), getTelegramStatus()]);
+  return { jobs, telegram };
+}
+
+/** Count of problems for the Overview's one-line system indicator. */
+export function countSystemProblems(status: { jobs: JobStatus[]; telegram: TelegramStatus }): number {
+  const jobProblems = status.jobs.filter((j) => j.health !== "ok").length;
+  const t = status.telegram;
+  const telegramProblem = !t.tokenConfigured || !t.botOk || !t.webhookUrl || (t.pendingUpdates ?? 0) > 20;
+  return jobProblems + (telegramProblem ? 1 : 0);
 }

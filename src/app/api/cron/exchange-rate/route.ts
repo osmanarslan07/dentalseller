@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { monitoredCron } from "@/lib/job-runs";
 import { getTryRate } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 
 const BASES = ["GBP", "USD", "EUR"];
 
-export async function GET(request: NextRequest) {
+export const GET = monitoredCron("exchange-rate", async (request: NextRequest) => {
   const auth = request.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -39,4 +40,4 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ saved: rows });
-}
+});

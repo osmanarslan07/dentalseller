@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addDays, format } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { monitoredCron } from "@/lib/job-runs";
 import { getClinicConfig } from "@/lib/data";
 import { getFallbackChatId, getGroupChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 
@@ -52,7 +53,7 @@ function card(header: string, fields: (string | null)[]): string {
   return [header, ...fields.filter((f): f is string => f != null)].join("\n");
 }
 
-export async function GET(request: NextRequest) {
+export const GET = monitoredCron("visit-reminders", async (request: NextRequest) => {
   const auth = request.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -259,4 +260,4 @@ export async function GET(request: NextRequest) {
   );
 
   return NextResponse.json({ sent: true, count: totalCount });
-}
+});

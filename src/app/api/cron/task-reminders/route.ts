@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { monitoredCron } from "@/lib/job-runs";
 import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ interface TaskRow {
   patients: { name: string } | null;
 }
 
-export async function GET(request: NextRequest) {
+export const GET = monitoredCron("task-reminders", async (request: NextRequest) => {
   const auth = request.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -94,4 +95,4 @@ export async function GET(request: NextRequest) {
     );
 
   return NextResponse.json({ sent: true, count: due.length });
-}
+});

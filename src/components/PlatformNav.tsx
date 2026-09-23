@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/platform/announcements", label: "Announcements" },
   { href: "/platform/superadmins", label: "Superadmins" },
   { href: "/platform/audit", label: "Audit log" },
+  { href: "/platform/status", label: "Status" },
 ];
 
 /** Deliberately separate from Nav.tsx — the superadmin link set shares nothing with the

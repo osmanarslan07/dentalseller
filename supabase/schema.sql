@@ -1333,6 +1333,28 @@ create policy "announcements_select_live_for_my_clinic" on public.announcements
   );
 
 -- =====================================================================
+-- PLATFORM: scheduled job runs, for the system status page. Idempotent/safe to re-run.
+-- =====================================================================
+
+-- One row per cron run (written by the route wrapper in src/lib/job-runs.ts), so a job
+-- that stops running or starts failing is visible instead of silent. RLS on with no
+-- policies = service role only. Old rows are pruned by the wrapper (30 days).
+create table if not exists public.job_runs (
+  id bigint generated always as identity primary key,
+  job text not null,
+  started_at timestamptz not null,
+  finished_at timestamptz not null default now(),
+  ok boolean not null,
+  status_code int,
+  summary text,
+  error text
+);
+
+create index if not exists job_runs_job_started_idx on public.job_runs (job, started_at desc);
+
+alter table public.job_runs enable row level security;
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

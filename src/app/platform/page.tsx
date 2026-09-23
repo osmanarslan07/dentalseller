@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getClinicsWithStats, getMonthlyUsage } from "@/lib/platform";
+import { countSystemProblems, getClinicsWithStats, getMonthlyUsage, getSystemStatus } from "@/lib/platform";
 import { monthLabel, currentMonthKey } from "@/lib/commission";
 import { StatCard } from "@/components/ui";
 import { pluralize } from "@/lib/format";
@@ -9,7 +9,8 @@ import { NeedsAttentionPanel } from "./HealthFlags";
 import { UsageTrends } from "./UsageTrends";
 
 export default async function PlatformOverviewPage() {
-  const [clinics, usage] = await Promise.all([getClinicsWithStats(), getMonthlyUsage()]);
+  const [clinics, usage, system] = await Promise.all([getClinicsWithStats(), getMonthlyUsage(), getSystemStatus()]);
+  const systemProblems = countSystemProblems(system);
   const thisMonth = monthLabel(currentMonthKey());
 
   const sum = (pick: (c: (typeof clinics)[number]) => number) => clinics.reduce((acc, c) => acc + pick(c), 0);
@@ -23,6 +24,17 @@ export default async function PlatformOverviewPage() {
           <p className="mt-1 text-sm text-slate-500">
             Every clinic on DentalSeller. Counts only: patient details stay inside each clinic.
           </p>
+          <Link
+            href="/platform/status"
+            className={`mt-2 inline-flex items-center gap-1.5 text-xs font-medium hover:underline ${
+              systemProblems ? "text-amber-700" : "text-emerald-700"
+            }`}
+          >
+            <span className={`h-2 w-2 rounded-full ${systemProblems ? "bg-amber-500" : "bg-emerald-500"}`} />
+            {systemProblems
+              ? `System: ${systemProblems} problem${systemProblems === 1 ? "" : "s"}, view status`
+              : "System: all jobs and Telegram healthy"}
+          </Link>
         </div>
         <Link
           href="/platform/clinics/new"

@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { addDays, format } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { monitoredCron } from "@/lib/job-runs";
-import { getClinicConfig } from "@/lib/data";
-import { getFallbackChatId, getGroupChatId, sendTelegramMessageToMany } from "@/lib/telegram";
+import { getEnvChatsClinicId, getFallbackChatId, getGroupChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +66,8 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
   // Fetched up front (rather than only when building the send list) so every reminder line
   // below can name the responsible seller — the group now sees everyone's patients, not just
   // their own, so "who is this" is no longer implicit from whose chat it landed in.
-  const { data: profiles } = await supabase.from("profiles").select("id, telegram_chat_id, display_name");
+  const { data: profiles } = await supabase.from("profiles").select("id, telegram_chat_id, display_name, clinic_id");
+  const clinicBySeller = new Map((profiles ?? []).map((p) => [p.id, p.clinic_id as string | null]));
   const chatBySeller = new Map((profiles ?? []).map((p) => [p.id, p.telegram_chat_id as string | null]));
   const nameBySeller = new Map((profiles ?? []).map((p) => [p.id, (p.display_name as string | null) || "Unassigned"]));
 
@@ -239,18 +239,29 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
     return NextResponse.json({ sent: false, reason: "No reminders today" });
   }
 
-  const fallback = getFallbackChatId();
-  const clinicConfig = await getClinicConfig(supabase);
-  const group = clinicConfig.telegramGroupChatId || getGroupChatId();
+  // Every clinic gets its own group (Settings → Team Telegram group); the env chats only ever
+  // go to the clinic that owns them. A seller and their patients always share a clinic, so the
+  // seller's clinic decides where their lines go.
+  const [{ data: configs }, { data: clinics }, envChatsClinicId] = await Promise.all([
+    supabase.from("clinic_config").select("clinic_id, telegram_group_chat_id"),
+    supabase.from("clinics").select("id, is_active"),
+    getEnvChatsClinicId(),
+  ]);
+  const groupByClinic = new Map((configs ?? []).map((c) => [c.clinic_id as string, c.telegram_group_chat_id as string | null]));
+  const activeClinics = new Set((clinics ?? []).filter((c) => c.is_active).map((c) => c.id as string));
 
   let totalCount = 0;
   await Promise.all(
     [...linesBySeller.entries()].map(async ([sellerId, lines]) => {
+      const clinicId = clinicBySeller.get(sellerId) ?? null;
+      if (!clinicId || !activeClinics.has(clinicId)) return; // suspended clinics get nothing
       totalCount += lines.length;
       const chatIds = new Set<string>();
       const own = chatBySeller.get(sellerId);
       if (own) chatIds.add(own);
+      const fallback = getFallbackChatId(clinicId, envChatsClinicId);
       if (fallback) chatIds.add(fallback);
+      const group = getGroupChatId(clinicId, groupByClinic.get(clinicId) ?? null, envChatsClinicId);
       if (group) chatIds.add(group);
       if (chatIds.size === 0) return;
 

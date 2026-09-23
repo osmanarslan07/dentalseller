@@ -52,6 +52,11 @@ No other config needed — the app is fully server-rendered per request (auth-ga
 3. Visit `https://api.telegram.org/bot<your-token>/getUpdates` in a browser — find `"chat":{"id":...}` in the response, that's your `TELEGRAM_CHAT_ID`.
 4. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Vercel env vars (production).
 
+**Multiple clinics:** `TELEGRAM_CHAT_ID` and `TELEGRAM_GROUP_CHAT_ID` belong to **one** clinic —
+`TELEGRAM_FALLBACK_CLINIC_ID` if set, otherwise the oldest clinic. No other clinic ever
+receives them. Every other clinic gets reminders only in each seller's own linked chat and in
+its own group, set by its admin under Settings → Team Telegram group.
+
 ## Data model
 
 - **Patient**: name, treatment, confirmation date, two visits (date / expected payment / actual payment / status), notes. Every row has a `user_id` and is protected by RLS.

@@ -7,6 +7,7 @@ import { computeOnboarding, OnboardingStep } from "@/lib/clinic-onboarding";
 import { ClinicBilling, Plan } from "@/lib/clinic-billing";
 import { Announcement, AnnouncementLevel } from "@/lib/announcements";
 import { JobDefinition, JobHealth, jobHealth, JOBS } from "@/lib/jobs";
+import { getEnvChatsClinicId } from "@/lib/telegram";
 import { ProfileRole } from "@/types";
 
 /** Server-side gate for every /platform page and action. Platform reads go through the
@@ -554,6 +555,8 @@ export interface TelegramStatus {
   lastWebhookError: string | null;
   webhookSecretConfigured: boolean;
   fallbackChatConfigured: boolean;
+  /** The one clinic the env chats (TELEGRAM_CHAT_ID / TELEGRAM_GROUP_CHAT_ID) go to. */
+  envChatsClinicName: string | null;
   error: string | null;
 }
 
@@ -597,6 +600,14 @@ async function getJobStatuses(): Promise<JobStatus[]> {
   );
 }
 
+async function getEnvChatsClinicName(): Promise<string | null> {
+  const id = await getEnvChatsClinicId();
+  if (!id) return null;
+  const admin = createAdminClient();
+  const { data } = await admin.from("clinics").select("name").eq("id", id).maybeSingle();
+  return data?.name ?? null;
+}
+
 /** Live checks against the Bot API. The token itself never leaves the server. */
 async function getTelegramStatus(): Promise<TelegramStatus> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -610,6 +621,7 @@ async function getTelegramStatus(): Promise<TelegramStatus> {
     lastWebhookError: null,
     webhookSecretConfigured: !!process.env.TELEGRAM_WEBHOOK_SECRET,
     fallbackChatConfigured: !!process.env.TELEGRAM_CHAT_ID,
+    envChatsClinicName: await getEnvChatsClinicName(),
     error: null,
   };
   if (!token) return base;

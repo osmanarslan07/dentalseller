@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { monitoredCron } from "@/lib/job-runs";
-import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
+import { getEnvChatsClinicId, getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 
@@ -59,15 +59,30 @@ export const GET = monitoredCron("task-reminders", async (request: NextRequest) 
     dueByOwner.set(t.user_id, list);
   }
 
-  const { data: profiles } = await supabase.from("profiles").select("id, telegram_chat_id");
-  const chatByOwner = new Map((profiles ?? []).map((p) => [p.id, p.telegram_chat_id as string | null]));
-  const fallback = getFallbackChatId();
+  const [{ data: profiles }, { data: clinics }, envChatsClinicId] = await Promise.all([
+    supabase.from("profiles").select("id, telegram_chat_id, clinic_id"),
+    supabase.from("clinics").select("id, is_active"),
+    getEnvChatsClinicId(),
+  ]);
+  const ownerById = new Map(
+    (profiles ?? []).map((p) => [p.id, { chat: p.telegram_chat_id as string | null, clinicId: p.clinic_id as string | null }])
+  );
+  const activeClinics = new Set((clinics ?? []).filter((c) => c.is_active).map((c) => c.id as string));
+
+  // A suspended clinic (or an owner with no clinic) gets nothing — and those tasks aren't
+  // marked notified, so they still go out if the clinic is reactivated.
+  const sendable = [...dueByOwner.entries()].filter(([ownerId]) => {
+    const clinicId = ownerById.get(ownerId)?.clinicId;
+    return !!clinicId && activeClinics.has(clinicId);
+  });
 
   await Promise.all(
-    [...dueByOwner.entries()].map(async ([ownerId, tasks]) => {
+    sendable.map(async ([ownerId, tasks]) => {
+      const owner = ownerById.get(ownerId);
       const chatIds = new Set<string>();
-      const own = chatByOwner.get(ownerId);
-      if (own) chatIds.add(own);
+      if (owner?.chat) chatIds.add(owner.chat);
+      // The env fallback chat belongs to one clinic only — never another clinic's tasks.
+      const fallback = getFallbackChatId(owner?.clinicId ?? null, envChatsClinicId);
       if (fallback) chatIds.add(fallback);
       if (chatIds.size === 0) return;
 
@@ -86,13 +101,12 @@ export const GET = monitoredCron("task-reminders", async (request: NextRequest) 
     })
   );
 
-  await supabase
-    .from("tasks")
-    .update({ notified_at: now.toISOString() })
-    .in(
-      "id",
-      due.map((t) => t.id)
-    );
+  const sentTaskIds = sendable.flatMap(([, tasks]) => tasks.map((t) => t.id));
+  if (sentTaskIds.length === 0) {
+    return NextResponse.json({ sent: false, reason: "Only tasks at suspended clinics were due" });
+  }
 
-  return NextResponse.json({ sent: true, count: due.length });
+  await supabase.from("tasks").update({ notified_at: now.toISOString() }).in("id", sentTaskIds);
+
+  return NextResponse.json({ sent: true, count: sentTaskIds.length });
 });

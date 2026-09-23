@@ -138,7 +138,7 @@ function TelegramCard({ telegram: t }: { telegram: TelegramStatus }) {
           ok={t.fallbackChatConfigured}
           warn
           label={t.fallbackChatConfigured ? "Fallback chat set" : "No fallback chat"}
-          detail="TELEGRAM_CHAT_ID — also receives reminders for sellers who haven't linked Telegram."
+          detail={`TELEGRAM_CHAT_ID and TELEGRAM_GROUP_CHAT_ID go to ${t.envChatsClinicName ?? "no clinic"} only. Other clinics use their own group from Settings.`}
         />
       </ul>
     </Card>

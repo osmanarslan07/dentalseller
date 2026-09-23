@@ -6,7 +6,7 @@ import { addMonths, format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPatient, getPatients, getSettings } from "@/lib/data";
-import { getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
+import { getEnvChatsClinicId, getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { ActivityLogRow, diffFields, logActivity } from "@/lib/activity-log";
 import { detectTierJump } from "@/lib/commission";
 import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
@@ -53,12 +53,16 @@ async function maybeCreateFollowUpTask(patientId: string, responsibleSellerId: s
 }
 
 /** The responsible seller's own chat plus the clinic-wide fallback (deduped) — so a
- * notification never silently disappears just because a seller hasn't linked Telegram yet. */
+ * notification never silently disappears just because a seller hasn't linked Telegram yet.
+ * The fallback only applies to the clinic that owns the env chats (see getEnvChatsClinicId). */
 async function getRecipientChatIds(supabase: SupabaseClient, sellerId: string): Promise<string[]> {
-  const { data } = await supabase.from("profiles").select("telegram_chat_id").eq("id", sellerId).maybeSingle();
+  const [{ data }, envChatsClinicId] = await Promise.all([
+    supabase.from("profiles").select("telegram_chat_id, clinic_id").eq("id", sellerId).maybeSingle(),
+    getEnvChatsClinicId(),
+  ]);
   const ids = new Set<string>();
   if (data?.telegram_chat_id) ids.add(data.telegram_chat_id);
-  const fallback = getFallbackChatId();
+  const fallback = getFallbackChatId(data?.clinic_id ?? null, envChatsClinicId);
   if (fallback) ids.add(fallback);
   return [...ids];
 }

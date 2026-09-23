@@ -1,3 +1,5 @@
+import { createAdminClient } from "@/lib/supabase/admin";
+
 /** Low-level send to one specific chat. Every caller must resolve the right chat id itself —
  * there is no more single global chat. */
 export async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
@@ -27,17 +29,37 @@ export async function sendTelegramMessageToMany(chatIds: string[], text: string)
   );
 }
 
+/** The env-configured chats (TELEGRAM_CHAT_ID, TELEGRAM_GROUP_CHAT_ID) predate multi-tenancy
+ * and belong to exactly one clinic: TELEGRAM_FALLBACK_CLINIC_ID if set, otherwise the oldest
+ * clinic (the original one). Every other clinic must never receive them — they'd leak one
+ * clinic's patients into another's chat. */
+export async function getEnvChatsClinicId(): Promise<string | null> {
+  const explicit = process.env.TELEGRAM_FALLBACK_CLINIC_ID;
+  if (explicit) return explicit;
+  const admin = createAdminClient();
+  const { data } = await admin.from("clinics").select("id").order("created_at", { ascending: true }).limit(1).maybeSingle();
+  return data?.id ?? null;
+}
+
 /** Clinic-wide fallback chat (the original single chat this app used before per-seller
  * linking existed) — still notified alongside a seller's own chat, and used alone when a
- * seller hasn't linked Telegram yet so nothing gets silently dropped. */
-export function getFallbackChatId(): string | null {
-  return process.env.TELEGRAM_CHAT_ID ?? null;
+ * seller hasn't linked Telegram yet so nothing gets silently dropped. Only for the clinic
+ * that owns the env chats; null for everyone else. */
+export function getFallbackChatId(clinicId: string | null, envChatsClinicId: string | null): string | null {
+  return clinicId && clinicId === envChatsClinicId ? (process.env.TELEGRAM_CHAT_ID ?? null) : null;
 }
 
 /** Shared group chat for arrival/departure reminders only — tasks stay seller-private since
- * a task list is personal to-dos, not something the whole team needs pinged about. */
-export function getGroupChatId(): string | null {
-  return process.env.TELEGRAM_GROUP_CHAT_ID ?? null;
+ * a task list is personal to-dos, not something the whole team needs pinged about. A clinic's
+ * own group (Settings → Team Telegram group) wins; the env group is only a fallback for the
+ * clinic that owns the env chats. */
+export function getGroupChatId(
+  clinicId: string | null,
+  clinicGroupChatId: string | null,
+  envChatsClinicId: string | null
+): string | null {
+  if (clinicGroupChatId) return clinicGroupChatId;
+  return clinicId && clinicId === envChatsClinicId ? (process.env.TELEGRAM_GROUP_CHAT_ID ?? null) : null;
 }
 
 let cachedBotUsername: string | null = null;

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useState, useTransition } from "react";
-import { ClinicConfig, CommissionSettings, Patient } from "@/types";
+import { ClinicConfig, CommissionSettings, Patient, TransferCompany } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
@@ -15,17 +15,19 @@ import { TeamCard } from "./TeamCard";
 import { TelegramCard } from "./TelegramCard";
 import { TelegramGroupCard } from "./TelegramGroupCard";
 import { SystemSettingsCard } from "./SystemSettingsCard";
+import { TransfersCard } from "./TransfersCard";
 import { saveClinicBranding, saveDashboardCards, saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
 
-type TabId = "account" | "commission" | "cards" | "clinic" | "system" | "data";
+type TabId = "account" | "commission" | "cards" | "transfers" | "clinic" | "system" | "data";
 
 function tabsFor(isAdmin: boolean): { id: TabId; label: string }[] {
   return [
     { id: "account", label: "Account" },
     { id: "commission", label: "Commission" },
     { id: "cards", label: "Cards" },
+    { id: "transfers", label: "Transfers" },
     ...(isAdmin
       ? [
           { id: "clinic" as const, label: "Team & clinic" },
@@ -46,6 +48,7 @@ export function SettingsClient({
   currentDisplayName,
   telegramConnected,
   clinicConfig,
+  transferCompanies,
   isAdmin,
 }: {
   settings: CommissionSettings;
@@ -57,6 +60,7 @@ export function SettingsClient({
   currentDisplayName: string;
   telegramConnected: boolean;
   clinicConfig: ClinicConfig;
+  transferCompanies: TransferCompany[];
   isAdmin: boolean;
 }) {
   const [pending, startTransition] = useTransition();
@@ -470,6 +474,12 @@ export function SettingsClient({
               </div>
             </form>
           </Card>
+        </div>
+      )}
+
+      {activeTab === "transfers" && (
+        <div className="space-y-6">
+          <TransfersCard companies={transferCompanies} isAdmin={isAdmin} />
         </div>
       )}
 

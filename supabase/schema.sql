@@ -1791,6 +1791,136 @@ alter table public.patients add column if not exists visit1_pax integer not null
 alter table public.patients add column if not exists visit2_pax integer not null default 1 check (visit2_pax between 1 and 50);
 alter table public.patient_visits add column if not exists pax integer not null default 1 check (pax between 1 and 50);
 
+-- ---------- transfer companies + drivers ----------
+-- Airport transfers go through external companies; hotel<->clinic runs use the clinic's own
+-- car and drivers. Both live here: the clinic itself is one "internal" company (exactly one
+-- per clinic, created automatically), external companies sit alongside it, and every driver
+-- belongs to one company. Internal transfers never cost anything; external ones can.
+create table if not exists public.transfer_companies (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+  name text not null,
+  is_internal boolean not null default false,
+  phone text,
+  notes text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists transfer_companies_one_internal
+  on public.transfer_companies (clinic_id) where is_internal;
+
+create table if not exists public.drivers (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+  company_id uuid not null references public.transfer_companies(id) on delete cascade,
+  name text not null,
+  phone text,
+  vehicle text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists drivers_company_idx on public.drivers (company_id);
+
+drop trigger if exists transfer_companies_set_updated_at on public.transfer_companies;
+create trigger transfer_companies_set_updated_at before update on public.transfer_companies
+  for each row execute function public.set_updated_at();
+drop trigger if exists drivers_set_updated_at on public.drivers;
+create trigger drivers_set_updated_at before update on public.drivers
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists transfer_companies_set_clinic_id on public.transfer_companies;
+create trigger transfer_companies_set_clinic_id before insert on public.transfer_companies
+  for each row execute function public.set_row_clinic_id();
+drop trigger if exists drivers_set_clinic_id on public.drivers;
+create trigger drivers_set_clinic_id before insert on public.drivers
+  for each row execute function public.set_row_clinic_id();
+
+-- a driver must belong to a company of the same clinic. Named so it sorts after
+-- drivers_set_clinic_id — Postgres fires BEFORE triggers alphabetically, and this needs clinic_id set.
+create or replace function public.check_driver_company_clinic()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from public.transfer_companies where id = new.company_id and clinic_id = new.clinic_id) then
+    raise exception 'Company not found';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists drivers_check_company_clinic on public.drivers;
+drop trigger if exists drivers_validate_company on public.drivers;
+create trigger drivers_validate_company before insert or update on public.drivers
+  for each row execute function public.check_driver_company_clinic();
+
+-- the internal company can't be renamed into an external one or vice versa
+create or replace function public.guard_transfer_company_internal()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.is_internal is distinct from old.is_internal then
+    raise exception 'A company can''t switch between internal and external';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists transfer_companies_guard_internal on public.transfer_companies;
+create trigger transfer_companies_guard_internal before update on public.transfer_companies
+  for each row execute function public.guard_transfer_company_internal();
+
+-- every clinic gets its internal company — existing ones now, new ones at creation
+insert into public.transfer_companies (clinic_id, name, is_internal)
+select c.id, c.name, true from public.clinics c
+where not exists (select 1 from public.transfer_companies t where t.clinic_id = c.id and t.is_internal);
+
+create or replace function public.create_internal_transfer_company()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.transfer_companies (clinic_id, name, is_internal) values (new.id, new.name, true);
+  return new;
+end;
+$$;
+drop trigger if exists clinics_create_internal_transfer_company on public.clinics;
+create trigger clinics_create_internal_transfer_company after insert on public.clinics
+  for each row execute function public.create_internal_transfer_company();
+
+alter table public.transfer_companies enable row level security;
+alter table public.drivers enable row level security;
+
+-- Any active member works with the list (operations is done by sellers today); only an admin
+-- deletes — deactivating is the everyday way to retire a driver or company.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['transfer_companies', 'drivers'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_select_active', t);
+    execute format('create policy %I on public.%I for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id())', t || '_select_active', t);
+    execute format('drop policy if exists %I on public.%I', t || '_insert_active', t);
+    execute format('create policy %I on public.%I for insert with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id())', t || '_insert_active', t);
+    execute format('drop policy if exists %I on public.%I', t || '_update_active', t);
+    execute format('create policy %I on public.%I for update using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id()) with check (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id())', t || '_update_active', t);
+    execute format('drop policy if exists %I on public.%I', t || '_delete_admin', t);
+    execute format('create policy %I on public.%I for delete using (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id())', t || '_delete_admin', t);
+    -- support mode: read-only until unlocked, same as every other clinic table
+    execute format('drop policy if exists %I on public.%I', t || '_support_readonly_insert', t);
+    execute format('create policy %I on public.%I as restrictive for insert with check (not public.is_superadmin(auth.uid()) or public.support_can_write())', t || '_support_readonly_insert', t);
+    execute format('drop policy if exists %I on public.%I', t || '_support_readonly_update', t);
+    execute format('create policy %I on public.%I as restrictive for update using (not public.is_superadmin(auth.uid()) or public.support_can_write()) with check (not public.is_superadmin(auth.uid()) or public.support_can_write())', t || '_support_readonly_update', t);
+    execute format('drop policy if exists %I on public.%I', t || '_support_readonly_delete', t);
+    execute format('create policy %I on public.%I as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write())', t || '_support_readonly_delete', t);
+  end loop;
+end $$;
+
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to

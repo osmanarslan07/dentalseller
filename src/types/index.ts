@@ -145,6 +145,31 @@ export type PatientInput = Omit<
   | "visit2_earned_by_seller_id"
 >;
 
+/** A transfer provider. Exactly one per clinic is internal — the clinic itself, with its own
+ * car and drivers (never costs anything); the rest are external companies. */
+export interface TransferCompany {
+  id: string;
+  name: string;
+  is_internal: boolean;
+  phone: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  drivers: Driver[];
+}
+
+export interface Driver {
+  id: string;
+  company_id: string;
+  name: string;
+  /** Transfer details are sent here (WhatsApp). */
+  phone: string | null;
+  /** Car and/or plate, e.g. "Mercedes Vito · 07 ABC 123". */
+  vehicle: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
 export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";
 export type QuoteSplitMode = "percent" | "amount";
 

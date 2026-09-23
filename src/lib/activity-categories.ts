@@ -1,9 +1,10 @@
 /** Groups the activity_log action names into the filters shown on history pages. */
 
-export type ActivityCategory = "patients" | "quotes" | "tasks" | "team" | "settings";
+export type ActivityCategory = "patients" | "transfers" | "quotes" | "tasks" | "team" | "settings";
 
 export const ACTIVITY_CATEGORY_LABELS: Record<ActivityCategory, string> = {
   patients: "Patients & visits",
+  transfers: "Transfers & drivers",
   quotes: "Quotes",
   tasks: "Tasks",
   team: "Team",
@@ -22,6 +23,14 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "visit_updated",
     "visit_deleted",
     "visit_logistics_toggled",
+  ],
+  transfers: [
+    "transfer_company_added",
+    "transfer_company_updated",
+    "transfer_company_deleted",
+    "driver_added",
+    "driver_updated",
+    "driver_deleted",
   ],
   quotes: ["quote_created", "quote_updated", "quote_duplicated", "quote_deleted", "quote_converted"],
   tasks: ["task_created", "task_updated", "task_status_changed", "task_deleted"],

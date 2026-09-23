@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer } from "@/lib/viewer";
@@ -108,6 +108,24 @@ export async function getClinicConfig(supabase: SupabaseClient): Promise<ClinicC
     deductCostsFromCommission: data.deduct_costs_from_commission ?? false,
     cardSurchargeRate: data.card_surcharge_rate != null ? Number(data.card_surcharge_rate) : DEFAULT_CLINIC_CONFIG.cardSurchargeRate,
   };
+}
+
+/** Internal company first, then external ones by name; drivers by name within each. */
+export async function getTransferCompanies(supabase: SupabaseClient): Promise<TransferCompany[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from("transfer_companies")
+      .select("*, drivers(*)")
+      .eq("clinic_id", clinicId)
+      .order("is_internal", { ascending: false })
+      .order("name", { ascending: true })
+      .order("name", { foreignTable: "drivers", ascending: true })
+  );
+
+  if (error) throw error;
+  return data as TransferCompany[];
 }
 
 export async function getMyProfile(supabase: SupabaseClient, userId: string): Promise<Profile | null> {

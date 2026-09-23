@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatients, getProfiles, getRateHistory, getSettings, getTeamMembers } from "@/lib/data";
+import { getClinicConfig, getPatients, getProfiles, getRateHistory, getSettings, getTeamMembers, getTransferCompanies } from "@/lib/data";
 import { SettingsClient } from "./SettingsClient";
 import { getViewerUser } from "@/lib/viewer";
 
@@ -7,11 +7,12 @@ export default async function SettingsPage() {
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const user = await getViewerUser();
-  const [patients, settings, profiles, clinicConfig] = await Promise.all([
+  const [patients, settings, profiles, clinicConfig, transferCompanies] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, user?.id ?? ""),
     getProfiles(supabase),
     getClinicConfig(supabase),
+    getTransferCompanies(supabase),
   ]);
   const rateHistory =
     settings.show_try && settings.currency !== "TRY"
@@ -32,6 +33,7 @@ export default async function SettingsPage() {
       currentDisplayName={myProfile?.display_name ?? ""}
       telegramConnected={!!myProfile?.telegram_chat_id}
       clinicConfig={clinicConfig}
+      transferCompanies={transferCompanies}
       isAdmin={isAdmin}
     />
   );

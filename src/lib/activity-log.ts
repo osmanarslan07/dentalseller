@@ -135,6 +135,18 @@ export function describeActivity(
       return `${actor} changed commission settings${entry.detail ? ` — ${entry.detail}` : ""}`;
     case "clinic_branding_updated":
       return `${actor} updated clinic branding${entry.detail ? ` — ${entry.detail}` : ""}`;
+    case "transfer_company_added":
+      return `${actor} added transfer company${entry.detail ? ` ${entry.detail}` : ""}`;
+    case "transfer_company_updated":
+      return `${actor} updated transfer company${entry.detail ? ` — ${entry.detail}` : ""}`;
+    case "transfer_company_deleted":
+      return `${actor} deleted transfer company${entry.detail ? ` ${entry.detail}` : ""}`;
+    case "driver_added":
+      return `${actor} added driver${entry.detail ? ` ${entry.detail}` : ""}`;
+    case "driver_updated":
+      return `${actor} updated driver${entry.detail ? ` — ${entry.detail}` : ""}`;
+    case "driver_deleted":
+      return `${actor} deleted driver${entry.detail ? ` ${entry.detail}` : ""}`;
     case "system_settings_updated":
       return `${actor} changed system settings${entry.detail ? ` — ${entry.detail}` : ""}`;
     case "dashboard_cards_updated":

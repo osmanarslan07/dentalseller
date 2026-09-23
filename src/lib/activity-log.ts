@@ -181,6 +181,8 @@ export function describeActivity(
       return `${actor} updated transfer company${entry.detail ? ` — ${entry.detail}` : ""}`;
     case "transfer_company_deleted":
       return `${actor} deleted transfer company${entry.detail ? ` ${entry.detail}` : ""}`;
+    case "transfer_defaults_updated":
+      return `${actor} changed the default transfer company/driver`;
     case "driver_added":
       return `${actor} added driver${entry.detail ? ` ${entry.detail}` : ""}`;
     case "driver_updated":

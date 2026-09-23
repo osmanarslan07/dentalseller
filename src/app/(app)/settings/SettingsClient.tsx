@@ -479,7 +479,7 @@ export function SettingsClient({
 
       {activeTab === "transfers" && (
         <div className="space-y-6">
-          <TransfersCard companies={transferCompanies} isAdmin={isAdmin} />
+          <TransfersCard companies={transferCompanies} defaults={clinicConfig.transferDefaults} isAdmin={isAdmin} />
         </div>
       )}
 

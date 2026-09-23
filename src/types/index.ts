@@ -375,6 +375,15 @@ export interface ClinicConfig {
   deductCostsFromCommission: boolean;
   /** Optional card-payment surcharge, e.g. 0.03 = 3%. Never counts toward commission. */
   cardSurchargeRate: number;
+  /** Settings → Transfers: who new airport (arrival/departure) and local transfers start with. */
+  transferDefaults: TransferDefaults;
+}
+
+export interface TransferDefaults {
+  airportCompanyId: string | null;
+  airportDriverId: string | null;
+  localCompanyId: string | null;
+  localDriverId: string | null;
 }
 
 /** Only used when a clinic has no clinic_config row (every clinic gets one at creation).
@@ -390,4 +399,5 @@ export const DEFAULT_CLINIC_CONFIG: ClinicConfig = {
   clinicLogoUrl: null,
   deductCostsFromCommission: false,
   cardSurchargeRate: 0.03,
+  transferDefaults: { airportCompanyId: null, airportDriverId: null, localCompanyId: null, localDriverId: null },
 };

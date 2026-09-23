@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getPatient } from "@/lib/data";
+import { getClinicConfig, getPatient } from "@/lib/data";
+import { departurePickup, LOCAL_PICKUP_TIME } from "@/lib/transfer-times";
 import { logActivity } from "@/lib/activity-log";
 import { getActingUser } from "@/lib/viewer";
 import { Patient, TransferKind, TransferStatus } from "@/types";
@@ -112,9 +113,10 @@ export async function deleteTransfer(id: string) {
   revalidate(data.patient_id);
 }
 
-/** Pre-fills the usual journeys from the visit's flights and hotel — airport → hotel on
- * arrival, hotel → clinic on the visit day, hotel → airport on departure — skipping any type
- * the visit already has. Created without a driver; operations assigns one on each. */
+/** Pre-fills the usual journeys from the visit's flights and hotel — airport → hotel at the
+ * landing time, hotel → clinic at 10:00 on the visit day, hotel → airport 3 hours before the
+ * flight — skipping any type the visit already has. Company and driver come from the clinic's
+ * defaults (Settings → Transfers), so often there's nothing left to fill in. */
 export async function suggestTransfers(patientId: string, visitKey: string): Promise<{ created: number }> {
   const supabase = await createClient();
   const user = await getActingUser();
@@ -171,6 +173,10 @@ export async function suggestTransfers(patientId: string, visitKey: string): Pro
   if (existingError) throw new Error(existingError.message);
   const has = new Set((existing ?? []).map((t) => t.kind as TransferKind));
 
+  const { transferDefaults: d } = await getClinicConfig(supabase);
+  const airport = { company_id: d.airportCompanyId, driver_id: d.airportCompanyId ? d.airportDriverId : null };
+  const local = { company_id: d.localCompanyId, driver_id: d.localCompanyId ? d.localDriverId : null };
+
   const hotel = visit.hotel || "Hotel";
   const rows = [];
   if (!has.has("arrival") && visit.arrivalDate) {
@@ -181,20 +187,31 @@ export async function suggestTransfers(patientId: string, visitKey: string): Pro
       from_place: AIRPORT,
       to_place: hotel,
       flight_no: visit.arrivalFlight,
+      ...airport,
     });
   }
   if (!has.has("local") && visit.date) {
-    rows.push({ kind: "local", transfer_date: visit.date, transfer_time: null, from_place: hotel, to_place: CLINIC, flight_no: null });
+    rows.push({
+      kind: "local",
+      transfer_date: visit.date,
+      transfer_time: LOCAL_PICKUP_TIME,
+      from_place: hotel,
+      to_place: CLINIC,
+      flight_no: null,
+      ...local,
+    });
   }
   if (!has.has("departure") && visit.departureDate) {
+    const pickup = departurePickup(visit.departureDate, visit.departureTime);
     rows.push({
       kind: "departure",
-      transfer_date: visit.departureDate,
-      transfer_time: null,
+      transfer_date: pickup.date,
+      transfer_time: pickup.time,
       from_place: hotel,
       to_place: AIRPORT,
       flight_no: visit.departureFlight,
       notes: visit.departureTime ? `Flight departs ${visit.departureTime}` : null,
+      ...airport,
     });
   }
   if (rows.length === 0) return { created: 0 };

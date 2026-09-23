@@ -2,14 +2,15 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Driver, TransferCompany } from "@/types";
-import { Badge, Button, Card, Input, Label } from "@/components/ui";
+import { Driver, TransferCompany, TransferDefaults } from "@/types";
+import { Badge, Button, Card, Input, Label, Select } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import {
   deleteDriver,
   deleteTransferCompany,
   saveDriver,
   saveTransferCompany,
+  saveTransferDefaults,
   setDriverActive,
   setTransferCompanyActive,
 } from "./transfer-actions";
@@ -36,35 +37,173 @@ function useAction() {
   return { pending, run };
 }
 
-export function TransfersCard({ companies, isAdmin }: { companies: TransferCompany[]; isAdmin: boolean }) {
+export function TransfersCard({
+  companies,
+  defaults,
+  isAdmin,
+}: {
+  companies: TransferCompany[];
+  defaults: TransferDefaults;
+  isAdmin: boolean;
+}) {
   const [adding, setAdding] = useState(false);
 
   return (
-    <Card className="p-6">
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">Transfer companies &amp; drivers</h2>
-        {!adding && (
-          <Button type="button" size="sm" variant="secondary" onClick={() => setAdding(true)}>
-            + Add company
-          </Button>
-        )}
-      </div>
-      <p className="mb-5 text-sm text-slate-500">
-        Pick a company and driver for each transfer. The clinic&apos;s own car and drivers are listed as
-        internal — internal transfers never cost anything. Transfer details are sent to the driver&apos;s phone.
-      </p>
-
-      {adding && (
-        <div className="mb-4 rounded-xl border border-slate-200 p-4">
-          <CompanyForm onDone={() => setAdding(false)} />
+    <>
+      <DefaultsCard companies={companies} defaults={defaults} isAdmin={isAdmin} />
+      <Card className="p-6">
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-slate-900">Transfer companies &amp; drivers</h2>
+          {!adding && (
+            <Button type="button" size="sm" variant="secondary" onClick={() => setAdding(true)}>
+              + Add company
+            </Button>
+          )}
         </div>
-      )}
+        <p className="mb-5 text-sm text-slate-500">
+          Pick a company and driver for each transfer. The clinic&apos;s own car and drivers are listed as
+          internal — internal transfers never cost anything. Transfer details are sent to the driver&apos;s phone.
+        </p>
 
-      <div className="space-y-4">
-        {companies.map((c) => (
-          <CompanyBlock key={c.id} company={c} isAdmin={isAdmin} />
-        ))}
+        {adding && (
+          <div className="mb-4 rounded-xl border border-slate-200 p-4">
+            <CompanyForm onDone={() => setAdding(false)} />
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {companies.map((c) => (
+            <CompanyBlock key={c.id} company={c} isAdmin={isAdmin} />
+          ))}
+        </div>
+      </Card>
+    </>
+  );
+}
+
+const companyName = (c: TransferCompany) => (c.is_internal ? `${c.name} (internal)` : c.name);
+
+/** One company + driver pair of selects; the driver list follows the chosen company. */
+function DefaultPicker({
+  kind,
+  label,
+  hint,
+  companies,
+  initialCompanyId,
+  initialDriverId,
+  disabled,
+}: {
+  kind: "airport" | "local";
+  label: string;
+  hint: string;
+  companies: TransferCompany[];
+  initialCompanyId: string | null;
+  initialDriverId: string | null;
+  disabled: boolean;
+}) {
+  const [companyId, setCompanyId] = useState(initialCompanyId ?? "");
+  const [driverId, setDriverId] = useState(initialDriverId ?? "");
+  const company = companies.find((c) => c.id === companyId);
+  const activeCompanies = companies.filter((c) => c.is_active || c.id === initialCompanyId);
+  const drivers = (company?.drivers ?? []).filter((d) => d.is_active || d.id === initialDriverId);
+
+  return (
+    <div>
+      <p className="text-sm font-medium text-slate-800">{label}</p>
+      <p className="mb-2 text-xs text-slate-500">{hint}</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <Label>Company</Label>
+          <Select
+            name={`${kind}_company_id`}
+            value={companyId}
+            disabled={disabled}
+            onChange={(e) => {
+              setCompanyId(e.target.value);
+              setDriverId("");
+            }}
+          >
+            <option value="">No default</option>
+            {activeCompanies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {companyName(c)}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label>Driver</Label>
+          <Select
+            name={`${kind}_driver_id`}
+            value={driverId}
+            disabled={disabled || !company}
+            onChange={(e) => setDriverId(e.target.value)}
+          >
+            <option value="">{company ? "No default driver" : "Pick a company first"}</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+                {d.vehicle ? ` · ${d.vehicle}` : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function DefaultsCard({
+  companies,
+  defaults,
+  isAdmin,
+}: {
+  companies: TransferCompany[];
+  defaults: TransferDefaults;
+  isAdmin: boolean;
+}) {
+  const { pending, run } = useAction();
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    run(() => saveTransferDefaults(formData), "Defaults saved ✓");
+  }
+
+  return (
+    <Card className="p-6">
+      <h2 className="mb-1 text-base font-semibold text-slate-900">Defaults</h2>
+      <p className="mb-5 text-sm text-slate-500">
+        “Suggest transfers” and new transfers start with these — you can still change them on each transfer.
+        {!isAdmin && " Only an admin can change them."}
+      </p>
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <DefaultPicker
+          kind="airport"
+          label="Airport transfers"
+          hint="Arrival (airport → hotel) and departure (hotel → airport)."
+          companies={companies}
+          initialCompanyId={defaults.airportCompanyId}
+          initialDriverId={defaults.airportDriverId}
+          disabled={!isAdmin}
+        />
+        <DefaultPicker
+          kind="local"
+          label="Local transfers"
+          hint="Hotel ↔ clinic."
+          companies={companies}
+          initialCompanyId={defaults.localCompanyId}
+          initialDriverId={defaults.localDriverId}
+          disabled={!isAdmin}
+        />
+        {isAdmin && (
+          <div className="flex justify-end">
+            <Button type="submit" disabled={pending}>
+              {pending ? "Saving…" : "Save defaults"}
+            </Button>
+          </div>
+        )}
+      </form>
     </Card>
   );
 }

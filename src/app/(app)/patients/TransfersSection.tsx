@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input, Label, Select } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Transfer, TransferCompany, TransferKind, TransferStatus } from "@/types";
+import { Transfer, TransferCompany, TransferDefaults, TransferKind, TransferStatus } from "@/types";
+import { departurePickup, LOCAL_PICKUP_TIME } from "@/lib/transfer-times";
 import { addTransfer, deleteTransfer, markTransferSent, suggestTransfers, updateTransfer } from "./transfer-actions";
 
 /** What the visit already knows — used to prefill new transfers and by "Suggest transfers". */
@@ -72,6 +73,7 @@ export function TransfersSection({
   travel,
   transfers,
   companies,
+  defaults,
   deductCosts = false,
   compact = false,
 }: {
@@ -83,6 +85,8 @@ export function TransfersSection({
   travel: VisitTravel;
   transfers: Transfer[];
   companies: TransferCompany[];
+  /** Settings → Transfers defaults — a new transfer starts with these. */
+  defaults: TransferDefaults;
   /** Settings → System: external transfer costs come off before commission. */
   deductCosts?: boolean;
   /** Inside an extra visit's row — no card of its own. */
@@ -180,6 +184,7 @@ export function TransfersSection({
           <TransferForm
             companies={companies}
             travel={travel}
+            defaults={defaults}
             deductCosts={deductCosts}
             onCancel={() => setAdding(false)}
             onSave={async (formData) => {
@@ -205,6 +210,7 @@ export function TransfersSection({
                   transfer={t}
                   companies={companies}
                   travel={travel}
+                  defaults={defaults}
                   deductCosts={deductCosts}
                   onCancel={() => setEditingId(null)}
                   onSave={async (formData) => {
@@ -327,10 +333,12 @@ function TransferForm({
   transfer,
   companies,
   travel,
+  defaults,
   deductCosts,
   onCancel,
   onSave,
 }: {
+  defaults: TransferDefaults;
   deductCosts: boolean;
   transfer?: Transfer;
   companies: TransferCompany[];
@@ -342,12 +350,19 @@ function TransferForm({
   const [kind, setKind] = useState<TransferKind>(transfer?.kind ?? "arrival");
   // A new transfer starts from the arrival leg; switching type refills the route, date and
   // flight from the visit — unless the user has already typed their own.
-  const prefill = (k: TransferKind) =>
-    k === "arrival"
-      ? { from: "Airport", to: hotel, date: travel.arrivalDate ?? "", time: travel.arrivalTime ?? "", flight: travel.arrivalFlight ?? "" }
-      : k === "departure"
-      ? { from: hotel, to: "Airport", date: travel.departureDate ?? "", time: "", flight: travel.departureFlight ?? "" }
-      : { from: hotel, to: "Clinic", date: travel.date ?? "", time: "", flight: "" };
+  // Same rules as "Suggest transfers": landing time, 3h before departure, 10:00 local.
+  const airportDefault = { company: defaults.airportCompanyId ?? "", driver: defaults.airportCompanyId ? defaults.airportDriverId ?? "" : "" };
+  const localDefault = { company: defaults.localCompanyId ?? "", driver: defaults.localCompanyId ? defaults.localDriverId ?? "" : "" };
+  const prefill = (k: TransferKind) => {
+    if (k === "arrival") {
+      return { from: "Airport", to: hotel, date: travel.arrivalDate ?? "", time: travel.arrivalTime ?? "", flight: travel.arrivalFlight ?? "", ...airportDefault };
+    }
+    if (k === "departure") {
+      const pickup = departurePickup(travel.departureDate, travel.departureTime);
+      return { from: hotel, to: "Airport", date: pickup.date ?? "", time: pickup.time ?? "", flight: travel.departureFlight ?? "", ...airportDefault };
+    }
+    return { from: hotel, to: "Clinic", date: travel.date ?? "", time: LOCAL_PICKUP_TIME, flight: "", ...localDefault };
+  };
   const initial = transfer
     ? {
         from: transfer.from_place ?? "",
@@ -364,8 +379,8 @@ function TransferForm({
   const [flight, setFlight] = useState(initial.flight);
   const [touched, setTouched] = useState(!!transfer);
 
-  const [companyId, setCompanyId] = useState(transfer?.company_id ?? "");
-  const [driverId, setDriverId] = useState(transfer?.driver_id ?? "");
+  const [companyId, setCompanyId] = useState(transfer ? transfer.company_id ?? "" : airportDefault.company);
+  const [driverId, setDriverId] = useState(transfer ? transfer.driver_id ?? "" : airportDefault.driver);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -382,6 +397,8 @@ function TransferForm({
     setDate(p.date);
     setTime(p.time);
     setFlight(p.flight);
+    setCompanyId(p.company);
+    setDriverId(p.driver);
   }
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {

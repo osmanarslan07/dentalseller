@@ -2335,6 +2335,14 @@ alter table public.patients add column if not exists visit1_hotel_cost numeric(1
 alter table public.patients add column if not exists visit2_hotel_cost numeric(10,2) check (visit2_hotel_cost is null or visit2_hotel_cost >= 0);
 alter table public.patient_visits add column if not exists hotel_cost numeric(10,2) check (hotel_cost is null or hotel_cost >= 0);
 
+-- ---------- default transfer company + driver (Settings → Transfers) ----------
+-- Airport = arrival/departure transfers, local = hotel <-> clinic. "Suggest transfers" and a
+-- new transfer's form start from these. Cleared automatically if the company/driver is deleted.
+alter table public.clinic_config add column if not exists default_airport_company_id uuid references public.transfer_companies(id) on delete set null;
+alter table public.clinic_config add column if not exists default_airport_driver_id uuid references public.drivers(id) on delete set null;
+alter table public.clinic_config add column if not exists default_local_company_id uuid references public.transfer_companies(id) on delete set null;
+alter table public.clinic_config add column if not exists default_local_driver_id uuid references public.drivers(id) on delete set null;
+
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to

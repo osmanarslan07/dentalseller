@@ -91,6 +91,44 @@ export async function deleteTransferCompany(id: string) {
   revalidate();
 }
 
+/** Admin-only (clinic_config is admin-writable). A driver must work for the chosen company,
+ * and both must be this clinic's — checked here through RLS-scoped reads. */
+export async function saveTransferDefaults(formData: FormData) {
+  const supabase = await createClient();
+  const user = await getActingUser();
+
+  const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
+  if (myProfile?.role !== "admin") throw new Error("Only an admin can change the defaults");
+
+  async function pair(kind: "airport" | "local") {
+    const companyId = str(formData, `${kind}_company_id`);
+    const driverId = companyId ? str(formData, `${kind}_driver_id`) : null;
+    if (companyId) {
+      const { data } = await supabase.from("transfer_companies").select("id").eq("id", companyId).maybeSingle();
+      if (!data) throw new Error("Company not found");
+    }
+    if (driverId) {
+      const { data } = await supabase.from("drivers").select("company_id").eq("id", driverId).maybeSingle();
+      if (!data || data.company_id !== companyId) throw new Error("That driver doesn't work for the chosen company");
+    }
+    return { companyId, driverId };
+  }
+  const airport = await pair("airport");
+  const local = await pair("local");
+
+  const { error } = await supabase.from("clinic_config").upsert({
+    clinic_id: myProfile.clinic_id,
+    default_airport_company_id: airport.companyId,
+    default_airport_driver_id: airport.driverId,
+    default_local_company_id: local.companyId,
+    default_local_driver_id: local.driverId,
+  });
+  if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.actorId, "transfer_defaults_updated", "settings", user.id);
+  revalidate();
+}
+
 export async function saveDriver(id: string | null, companyId: string, formData: FormData) {
   const supabase = await createClient();
   const user = await getActingUser();

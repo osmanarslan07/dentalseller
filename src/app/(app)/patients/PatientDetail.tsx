@@ -9,14 +9,20 @@ import { useCelebrationSound } from "@/components/celebration-sound";
 import { fireConfetti, playChime } from "@/lib/celebrate";
 import { formatDate } from "@/lib/format";
 import { describeActivity, formatActivityTime, ActivityLogRow } from "@/lib/activity-log";
-import { Patient, PatientExtraVisit, Profile, Transfer, TransferCompany } from "@/types";
+import { DEFAULT_CLINIC_CONFIG, Patient, PatientExtraVisit, Profile, Transfer, TransferCompany, TransferDefaults } from "@/types";
 import { TransfersSection, VisitTravel } from "./TransfersSection";
 import { ExtrasSection } from "./ExtrasSection";
 import { PaymentsSection } from "./PaymentsSection";
 import { extrasTotalFor, visitCosts } from "@/lib/commission";
 
 /** What a payments section needs besides the visit itself. */
-type PaymentContext = { profiles: Profile[]; currentUserId: string; surchargeRate: number; deductCosts: boolean };
+type PaymentContext = {
+  profiles: Profile[];
+  currentUserId: string;
+  surchargeRate: number;
+  deductCosts: boolean;
+  transferDefaults: TransferDefaults;
+};
 
 /** Before the current month — changing such a visit's costs changes a month already paid out. */
 function isPastMonth(date: string | null | undefined): boolean {
@@ -210,6 +216,7 @@ export function PatientDetail({
   companies = [],
   surchargeRate = 0.03,
   deductCosts = false,
+  transferDefaults = DEFAULT_CLINIC_CONFIG.transferDefaults,
 }: {
   patient?: Patient | null;
   /** Prefill a new (non-edit) patient from an existing one — for group bookings sharing a flight/hotel. */
@@ -230,6 +237,8 @@ export function PatientDetail({
   surchargeRate?: number;
   /** Settings → System: hotel/transfer costs come off before commission. */
   deductCosts?: boolean;
+  /** Settings → Transfers: default company/driver for new transfers. */
+  transferDefaults?: TransferDefaults;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -741,6 +750,7 @@ export function PatientDetail({
               transfers={transfers.filter((t) => t.visit_number === (activeTab === "visit1" ? 1 : 2))}
               companies={companies}
               deductCosts={deductCosts}
+              defaults={transferDefaults}
             />
           </>
         ) : (
@@ -755,7 +765,7 @@ export function PatientDetail({
             patient={patient}
             transfers={transfers}
             companies={companies}
-            pay={{ profiles, currentUserId, surchargeRate, deductCosts }}
+            pay={{ profiles, currentUserId, surchargeRate, deductCosts, transferDefaults }}
           />
         </div>
       )}
@@ -1335,6 +1345,7 @@ function ExtraVisitRow({
         transfers={transfers}
         companies={companies}
         deductCosts={pay.deductCosts}
+        defaults={pay.transferDefaults}
       />
     </div>
   );

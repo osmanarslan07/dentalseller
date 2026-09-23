@@ -165,6 +165,12 @@ export async function getClinicConfig(supabase: SupabaseClient): Promise<ClinicC
     clinicLogoUrl: data.clinic_logo_url ?? null,
     deductCostsFromCommission: data.deduct_costs_from_commission ?? false,
     cardSurchargeRate: data.card_surcharge_rate != null ? Number(data.card_surcharge_rate) : DEFAULT_CLINIC_CONFIG.cardSurchargeRate,
+    transferDefaults: {
+      airportCompanyId: data.default_airport_company_id ?? null,
+      airportDriverId: data.default_airport_driver_id ?? null,
+      localCompanyId: data.default_local_company_id ?? null,
+      localDriverId: data.default_local_driver_id ?? null,
+    },
   };
 }
 

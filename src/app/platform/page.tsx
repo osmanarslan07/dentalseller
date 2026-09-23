@@ -5,6 +5,7 @@ import { StatCard } from "@/components/ui";
 import { pluralize } from "@/lib/format";
 import { CheckCircleIcon, LayersIcon, PeopleIcon, TagIcon } from "@/components/StatIcons";
 import { ClinicsTable } from "./ClinicsTable";
+import { NeedsAttentionPanel } from "./HealthFlags";
 
 export default async function PlatformOverviewPage() {
   const clinics = await getClinicsWithStats();
@@ -56,6 +57,8 @@ export default async function PlatformOverviewPage() {
           icon={<TagIcon className="h-5 w-5" />}
         />
       </div>
+
+      <NeedsAttentionPanel clinics={clinics} />
 
       <ClinicsTable clinics={clinics} />
     </div>

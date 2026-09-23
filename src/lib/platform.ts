@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { currentMonthKey } from "@/lib/commission";
+import { computeHealthFlags, HealthFlag } from "@/lib/clinic-health";
 import { ProfileRole } from "@/types";
 
 /** Server-side gate for every /platform page and action. Platform reads go through the
@@ -63,6 +64,8 @@ export interface ClinicStats {
 
 export interface ClinicWithStats extends Clinic {
   stats: ClinicStats;
+  /** Worst first; empty when the clinic is healthy (or suspended). */
+  health: HealthFlag[];
 }
 
 export interface ClinicMember {
@@ -111,12 +114,16 @@ function currentMonthRange(): { start: string; end: string } {
 
 /** Head-only count queries (no rows transferred) — nothing identifying ever leaves the DB,
  * and no risk of PostgREST's default row cap silently truncating a big clinic's numbers. */
-async function computeClinicStats(clinicId: string): Promise<ClinicStats> {
+async function computeClinicStatsAndHealth(
+  clinic: Clinic,
+  authById: Map<string, AuthInfo>
+): Promise<ClinicWithStats> {
+  const clinicId = clinic.id;
   const admin = createAdminClient();
   const { start, end } = currentMonthRange();
   const count = { count: "exact" as const, head: true };
 
-  const [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity] = await Promise.all([
+  const [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity, brandingRes] = await Promise.all([
     admin.from("profiles").select("id, role, is_active").eq("clinic_id", clinicId),
     admin.from("patients").select("id", count).eq("clinic_id", clinicId),
     admin
@@ -134,50 +141,78 @@ async function computeClinicStats(clinicId: string): Promise<ClinicStats> {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    admin
+      .from("clinic_config")
+      .select("clinic_address, clinic_phone, clinic_email, clinic_logo_url")
+      .eq("clinic_id", clinicId)
+      .maybeSingle(),
   ]);
-  for (const res of [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity]) {
+  for (const res of [profilesRes, patients, patientsThisMonth, quotes, quotesThisMonth, lastActivity, brandingRes]) {
     if (res.error) throw res.error;
   }
 
   const profiles = profilesRes.data ?? [];
   const lastSeenById = await getLastSeenById(profiles.map((p) => p.id));
   const onlineSince = Date.now() - ONLINE_WINDOW_MS;
+  const lastActivityAt = lastActivity.data?.created_at ?? null;
+  const branding = brandingRes.data;
 
   return {
-    admins: profiles.filter((p) => p.role === "admin").length,
-    sellers: profiles.filter((p) => p.role === "seller").length,
-    activeUsers: profiles.filter((p) => p.is_active).length,
-    patients: patients.count ?? 0,
-    patientsConfirmedThisMonth: patientsThisMonth.count ?? 0,
-    quotes: quotes.count ?? 0,
-    quotesThisMonth: quotesThisMonth.count ?? 0,
-    lastActivityAt: lastActivity.data?.created_at ?? null,
-    onlineNow: [...lastSeenById.values()].filter((t) => new Date(t).getTime() > onlineSince).length,
+    ...clinic,
+    stats: {
+      admins: profiles.filter((p) => p.role === "admin").length,
+      sellers: profiles.filter((p) => p.role === "seller").length,
+      activeUsers: profiles.filter((p) => p.is_active).length,
+      patients: patients.count ?? 0,
+      patientsConfirmedThisMonth: patientsThisMonth.count ?? 0,
+      quotes: quotes.count ?? 0,
+      quotesThisMonth: quotesThisMonth.count ?? 0,
+      lastActivityAt,
+      onlineNow: [...lastSeenById.values()].filter((t) => new Date(t).getTime() > onlineSince).length,
+    },
+    health: computeHealthFlags({
+      isActive: clinic.is_active,
+      createdAt: clinic.created_at,
+      lastActivityAt,
+      members: profiles.map((p) => ({
+        role: p.role,
+        isActive: p.is_active,
+        lastSignInAt: authById.get(p.id)?.lastSignInAt ?? null,
+      })),
+      branding: branding
+        ? {
+            address: branding.clinic_address ?? "",
+            phone: branding.clinic_phone ?? "",
+            email: branding.clinic_email ?? "",
+            logoUrl: branding.clinic_logo_url,
+          }
+        : null,
+    }),
   };
 }
 
+const CLINIC_COLUMNS = "id, name, slug, is_active, created_at";
+
 export async function getClinicsWithStats(): Promise<ClinicWithStats[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("clinics")
-    .select("id, name, slug, is_active, created_at")
-    .order("created_at", { ascending: true });
+  const [{ data, error }, authById] = await Promise.all([
+    admin.from("clinics").select(CLINIC_COLUMNS).order("created_at", { ascending: true }),
+    getAuthInfoById(),
+  ]);
   if (error) throw error;
 
-  const clinics = (data ?? []) as Clinic[];
-  return Promise.all(clinics.map(async (clinic) => ({ ...clinic, stats: await computeClinicStats(clinic.id) })));
+  return Promise.all(((data ?? []) as Clinic[]).map((clinic) => computeClinicStatsAndHealth(clinic, authById)));
 }
 
 export async function getClinicWithStats(id: string): Promise<ClinicWithStats | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("clinics")
-    .select("id, name, slug, is_active, created_at")
-    .eq("id", id)
-    .maybeSingle();
+  const [{ data, error }, authById] = await Promise.all([
+    admin.from("clinics").select(CLINIC_COLUMNS).eq("id", id).maybeSingle(),
+    getAuthInfoById(),
+  ]);
   if (error) throw error;
   if (!data) return null;
-  return { ...(data as Clinic), stats: await computeClinicStats(id) };
+  return computeClinicStatsAndHealth(data as Clinic, authById);
 }
 
 interface MemberProfileRow {

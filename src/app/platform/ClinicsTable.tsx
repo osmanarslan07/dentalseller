@@ -7,12 +7,16 @@ import type { ClinicWithStats } from "@/lib/platform";
 import { formatDate, pluralize } from "@/lib/format";
 import { formatActivityTime } from "@/lib/activity-log";
 import { Badge, Card, Input } from "@/components/ui";
+import { severityRank, worstSeverity } from "@/lib/clinic-health";
+import { HealthSummary } from "./HealthFlags";
 
-type SortKey = "name" | "users" | "patients" | "activity" | "created";
+type SortKey = "name" | "health" | "users" | "patients" | "activity" | "created";
 
 // text columns read best A→Z first; numeric/date columns read best highest/newest first
 const DEFAULT_SORT_DIR: Record<SortKey, "asc" | "desc"> = {
   name: "asc",
+  // asc = worst first (critical ranks lowest)
+  health: "asc",
   users: "desc",
   patients: "desc",
   activity: "desc",
@@ -23,6 +27,8 @@ function sortValue(clinic: ClinicWithStats, key: SortKey): string | number {
   switch (key) {
     case "name":
       return clinic.name.toLowerCase();
+    case "health":
+      return severityRank(worstSeverity(clinic.health));
     case "users":
       return clinic.stats.admins + clinic.stats.sellers;
     case "patients":
@@ -79,10 +85,11 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-left text-sm">
+        <table className="w-full min-w-[860px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50/60">
               <th className="py-3 pl-4 pr-4">{header("Clinic", "name")}</th>
+              <th className="py-3 pr-4">{header("Health", "health")}</th>
               <th className="py-3 pr-4">{header("Team", "users")}</th>
               <th className="py-3 pr-4">{header("Patients", "patients")}</th>
               <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">Quotes</th>
@@ -110,6 +117,9 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
                     {!clinic.is_active && <Badge tone="amber">Suspended</Badge>}
                   </div>
                 </td>
+                <td className="py-3 pr-4">
+                  <HealthSummary flags={clinic.health} />
+                </td>
                 <td className="py-3 pr-4 text-slate-600">
                   {pluralize(clinic.stats.admins, "admin")}, {pluralize(clinic.stats.sellers, "seller")}
                   {clinic.stats.onlineNow > 0 && (
@@ -131,7 +141,7 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-10 text-center text-slate-400">
+                <td colSpan={7} className="py-10 text-center text-slate-400">
                   {clinics.length === 0 ? "No clinics yet." : "No clinics match your search."}
                 </td>
               </tr>

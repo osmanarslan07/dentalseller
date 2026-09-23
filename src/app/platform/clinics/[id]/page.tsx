@@ -7,6 +7,7 @@ import { formatDate, pluralize } from "@/lib/format";
 import { Badge, StatCard } from "@/components/ui";
 import { ClinicDetailsCard } from "./ClinicDetailsCard";
 import { ClinicTeamCard } from "./ClinicTeamCard";
+import { HealthCard } from "../../HealthFlags";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -42,6 +43,8 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
         <StatCard label="Confirmed this month" value={stats.patientsConfirmedThisMonth} sublabel={thisMonth} />
         <StatCard label="Quotes this month" value={stats.quotesThisMonth} sublabel={`${stats.quotes} all-time`} />
       </div>
+
+      <HealthCard flags={clinic.health} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <ClinicDetailsCard clinic={clinic} />

@@ -10,6 +10,7 @@ import { ClinicTeamCard } from "./ClinicTeamCard";
 import { HealthCard } from "../../HealthFlags";
 import { OnboardingCard } from "../../Onboarding";
 import { UsageTrends } from "../../UsageTrends";
+import { TERMS_VERSION } from "@/lib/terms";
 import { BillingCard } from "./BillingCard";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,6 +41,24 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
           {" · "}
           <Link href={`/platform/audit?clinic=${clinic.id}`} className="text-teal-700 hover:underline">
             Platform audit log
+          </Link>
+        </p>
+        <p className="mt-1 text-sm text-slate-500">
+          Terms:{" "}
+          {clinic.termsAcceptance ? (
+            <>
+              v{clinic.termsAcceptance.version} accepted {formatActivityTime(clinic.termsAcceptance.acceptedAt)}
+              {clinic.termsAcceptance.acceptedBy && <> by {clinic.termsAcceptance.acceptedBy}</>}
+              {!clinic.termsAcceptance.current && (
+                <span className="text-amber-700"> · not the current version (v{TERMS_VERSION})</span>
+              )}
+            </>
+          ) : (
+            <span className="text-amber-700">not accepted yet</span>
+          )}
+          {" · "}
+          <Link href="/terms" className="text-teal-700 hover:underline">
+            View terms
           </Link>
         </p>
       </div>

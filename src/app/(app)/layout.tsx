@@ -12,6 +12,8 @@ import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { LiveAnnouncement } from "@/lib/announcements";
 import { Button } from "@/components/ui";
 import { logout } from "@/lib/auth-actions";
+import { REQUIRE_TERMS_ACCEPTANCE } from "@/lib/terms";
+import { hasAcceptedCurrentTerms } from "@/lib/terms-status";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -30,6 +32,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // this just explains why, instead of rendering an app full of empty pages.
   const { data: clinic } = await supabase.from("clinics").select("is_active").eq("id", profile.clinic_id).maybeSingle();
   if (clinic && !clinic.is_active) return <ClinicSuspended />;
+
+  // The clinic's admin accepts the current terms (incl. the DPA) on the clinic's behalf before
+  // using the app; sellers aren't asked.
+  if (REQUIRE_TERMS_ACCEPTANCE && profile.role === "admin" && !(await hasAcceptedCurrentTerms(supabase))) {
+    redirect("/terms/accept");
+  }
 
   const [settings, announcements] = await Promise.all([getSettings(supabase, user.id), getLiveAnnouncements(supabase)]);
   const tryRate =

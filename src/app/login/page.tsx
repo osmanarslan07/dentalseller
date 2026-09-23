@@ -22,6 +22,12 @@ export default function LoginPage() {
         >
           <LoginForm />
         </div>
+
+        <p className="mt-6 text-center text-xs text-slate-400">
+          <a href="/terms" className="hover:text-slate-600 hover:underline">
+            Terms of service · Hizmet şartları
+          </a>
+        </p>
       </div>
     </div>
   );

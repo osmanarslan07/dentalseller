@@ -8,6 +8,7 @@ import { ClinicBilling, Plan } from "@/lib/clinic-billing";
 import { Announcement, AnnouncementLevel } from "@/lib/announcements";
 import { JobDefinition, JobHealth, jobHealth, JOBS } from "@/lib/jobs";
 import { getEnvChatsClinicId } from "@/lib/telegram";
+import { REQUIRE_TERMS_ACCEPTANCE, TERMS_VERSION } from "@/lib/terms";
 import { ProfileRole } from "@/types";
 
 export type MfaState = "verified" | "needs_setup" | "needs_code";
@@ -107,6 +108,8 @@ export interface ClinicWithStats extends Clinic {
   onboarding: OnboardingStep[];
   /** Null until a superadmin records a plan. */
   billing: ClinicBilling | null;
+  /** The clinic's latest acceptance of any terms version; null if never accepted. */
+  termsAcceptance: { version: string; acceptedAt: string; acceptedBy: string | null; current: boolean } | null;
 }
 
 export interface ClinicMember {
@@ -175,6 +178,7 @@ async function summarizeClinic(
     brandingRes,
     confirmedPatients,
     billingRes,
+    termsRes,
   ] =
     await Promise.all([
       admin.from("profiles").select("id, role, is_active").eq("clinic_id", clinicId),
@@ -205,6 +209,13 @@ async function summarizeClinic(
         .select("plan, seat_limit, trial_ends_at, monthly_price, currency, notes")
         .eq("clinic_id", clinicId)
         .maybeSingle(),
+      admin
+        .from("terms_acceptances")
+        .select("version, accepted_at, user_id")
+        .eq("clinic_id", clinicId)
+        .order("accepted_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
   const results = [
     profilesRes,
@@ -216,6 +227,7 @@ async function summarizeClinic(
     brandingRes,
     confirmedPatients,
     billingRes,
+    termsRes,
   ];
   for (const res of results) {
     if (res.error) throw res.error;
@@ -235,6 +247,15 @@ async function summarizeClinic(
       }
     : null;
   const billing = toClinicBilling(billingRes.data);
+  const terms = termsRes.data;
+  const termsAcceptance = terms
+    ? {
+        version: terms.version as string,
+        acceptedAt: terms.accepted_at as string,
+        acceptedBy: terms.user_id ? (authById.get(terms.user_id)?.email ?? null) : null,
+        current: terms.version === TERMS_VERSION,
+      }
+    : null;
 
   return {
     ...clinic,
@@ -260,8 +281,11 @@ async function summarizeClinic(
       })),
       branding: brandingInput,
       billing,
+      // only a problem once clinics are actually required to accept
+      termsAccepted: REQUIRE_TERMS_ACCEPTANCE ? !!termsAcceptance?.current : null,
     }),
     billing,
+    termsAcceptance,
     onboarding: computeOnboarding({
       branding: brandingInput && { ...brandingInput, telegramGroupChatId: branding?.telegram_group_chat_id ?? null },
       sellers: profiles.filter((p) => p.role === "seller").length,

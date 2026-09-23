@@ -11,6 +11,7 @@ export interface HealthFlag {
     | "trial_expired"
     | "trial_ending"
     | "over_seat_limit"
+    | "terms_not_accepted"
     | "inactive"
     | "never_signed_in"
     | "branding_incomplete";
@@ -31,6 +32,8 @@ export interface ClinicHealthInput {
   members: { role: string; isActive: boolean; lastSignInAt: string | null }[];
   branding: { address: string; phone: string; email: string; logoUrl: string | null } | null;
   billing: ClinicBilling | null;
+  /** null = acceptance not enforced yet, so never flagged */
+  termsAccepted?: boolean | null;
 }
 
 export function computeHealthFlags(input: ClinicHealthInput, now = Date.now()): HealthFlag[] {
@@ -63,6 +66,15 @@ export function computeHealthFlags(input: ClinicHealthInput, now = Date.now()): 
       severity: "warning",
       label: trial.daysLeft === 0 ? "Trial ends today" : `Trial ends in ${trial.daysLeft} day${trial.daysLeft === 1 ? "" : "s"}`,
       detail: "Worth a conversation about which plan they want before the trial runs out.",
+    });
+  }
+
+  if (input.termsAccepted === false) {
+    flags.push({
+      id: "terms_not_accepted",
+      severity: "warning",
+      label: "Terms not accepted",
+      detail: "No admin has accepted the current terms of service yet. They'll be asked on their next sign-in.",
     });
   }
 

@@ -1355,6 +1355,61 @@ create index if not exists job_runs_job_started_idx on public.job_runs (job, sta
 alter table public.job_runs enable row level security;
 
 -- =====================================================================
+-- PLATFORM: terms of service / DPA acceptance. Idempotent/safe to re-run.
+-- =====================================================================
+
+-- One row per acceptance: which clinic, which admin, which version, in which language.
+-- Evidence that the clinic agreed to the processing terms (incl. support access): clinics
+-- get no update/delete policies at all, and the trigger below refuses edits even from the
+-- service role. Rows go away only with their clinic (cascade).
+create table if not exists public.terms_acceptances (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  version text not null,
+  language text not null check (language in ('tr', 'en')),
+  accepted_at timestamptz not null default now()
+);
+
+create index if not exists terms_acceptances_clinic_idx on public.terms_acceptances (clinic_id, accepted_at desc);
+
+alter table public.terms_acceptances enable row level security;
+
+-- clinic_id is forced to the caller's own clinic by set_row_clinic_id()
+drop trigger if exists terms_acceptances_set_clinic_id on public.terms_acceptances;
+create trigger terms_acceptances_set_clinic_id before insert on public.terms_acceptances
+  for each row execute function public.set_row_clinic_id('user_id');
+
+-- Only a clinic's active admin accepts, only as themselves, only for their own clinic.
+drop policy if exists "terms_acceptances_insert_admin" on public.terms_acceptances;
+create policy "terms_acceptances_insert_admin" on public.terms_acceptances
+  for insert with check (
+    user_id = auth.uid()
+    and public.is_admin(auth.uid())
+    and public.is_active_profile(auth.uid())
+    and clinic_id = public.my_clinic_id()
+  );
+
+-- A clinic's admins can see their own clinic's acceptances (the app checks the current version).
+drop policy if exists "terms_acceptances_select_own_clinic_admin" on public.terms_acceptances;
+create policy "terms_acceptances_select_own_clinic_admin" on public.terms_acceptances
+  for select using (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id());
+
+create or replace function public.forbid_row_change()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception '% rows are append-only', tg_table_name;
+end;
+$$;
+
+-- No edits, even from the service role: an edited acceptance record proves nothing.
+drop trigger if exists terms_acceptances_append_only on public.terms_acceptances;
+create trigger terms_acceptances_append_only before update on public.terms_acceptances
+  for each row execute function public.forbid_row_change();
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

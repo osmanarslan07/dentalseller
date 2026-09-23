@@ -64,6 +64,8 @@ export function describeActivity(
   const target = (entry.target_id && nameById.get(entry.target_id)) || "a seller";
 
   switch (entry.action) {
+    case "terms_accepted":
+      return `${actor} accepted the terms of service ${entry.detail ?? ""}`.trim();
     case "seller_added":
       return `${actor} added seller (${entry.detail ?? "unknown email"})`;
     case "seller_activated":

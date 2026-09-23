@@ -2327,6 +2327,14 @@ from public.patient_visits v join public.patients p on p.id = v.patient_id
 where v.actual is not null and v.actual > 0
   and not exists (select 1 from public.patient_payments x where x.extra_visit_id = v.id);
 
+-- ---------- hotel cost per visit ----------
+-- What the clinic pays the hotel for the visit (extra nights included). Empty = the patient
+-- booked/paid their own hotel. With Settings → System "deduct costs" on, it comes off the
+-- visit's amount before commission, together with the visit's external transfer costs.
+alter table public.patients add column if not exists visit1_hotel_cost numeric(10,2) check (visit1_hotel_cost is null or visit1_hotel_cost >= 0);
+alter table public.patients add column if not exists visit2_hotel_cost numeric(10,2) check (visit2_hotel_cost is null or visit2_hotel_cost >= 0);
+alter table public.patient_visits add column if not exists hotel_cost numeric(10,2) check (hotel_cost is null or hotel_cost >= 0);
+
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to

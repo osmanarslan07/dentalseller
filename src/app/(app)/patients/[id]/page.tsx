@@ -28,6 +28,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
       transfers={transfers}
       companies={companies}
       surchargeRate={clinicConfig.cardSurchargeRate}
+      deductCosts={clinicConfig.deductCostsFromCommission}
     />
   );
 }

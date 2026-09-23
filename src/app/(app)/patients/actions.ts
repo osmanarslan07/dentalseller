@@ -91,6 +91,7 @@ const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
   { key: "visit1_departure_flight_no", label: "visit1 departure flight" },
   { key: "visit1_hotel_name", label: "visit1 hotel" },
   { key: "visit1_room_type", label: "visit1 room type" },
+  { key: "visit1_hotel_cost", label: "visit1 hotel cost" },
   { key: "visit1_hotel_arranged", label: "visit1 hotel arranged" },
 
   { key: "visit2_date", label: "visit2 date" },
@@ -105,6 +106,7 @@ const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
   { key: "visit2_departure_flight_no", label: "visit2 departure flight" },
   { key: "visit2_hotel_name", label: "visit2 hotel" },
   { key: "visit2_room_type", label: "visit2 room type" },
+  { key: "visit2_hotel_cost", label: "visit2 hotel cost" },
   { key: "visit2_hotel_arranged", label: "visit2 hotel arranged" },
 ];
 
@@ -124,6 +126,7 @@ const EXTRA_VISIT_AUDIT_FIELDS: { key: keyof ReturnType<typeof parseExtraVisitIn
   { key: "departure_flight_no", label: "departure flight" },
   { key: "hotel_name", label: "hotel" },
   { key: "room_type", label: "room type" },
+  { key: "hotel_cost", label: "hotel cost" },
   { key: "hotel_arranged", label: "hotel arranged" },
 ];
 
@@ -314,6 +317,7 @@ function parseInput(formData: FormData): PatientInput {
     visit1_departure_flight_no: str("visit1_departure_flight_no"),
     visit1_hotel_name: str("visit1_hotel_name"),
     visit1_room_type: str("visit1_room_type"),
+    visit1_hotel_cost: num("visit1_hotel_cost"),
     visit1_hotel_arranged: formData.get("visit1_hotel_arranged") === "on",
     visit2_arrival_date: str("visit2_arrival_date"),
     visit2_arrival_time: str("visit2_arrival_time"),
@@ -323,6 +327,7 @@ function parseInput(formData: FormData): PatientInput {
     visit2_departure_flight_no: str("visit2_departure_flight_no"),
     visit2_hotel_name: str("visit2_hotel_name"),
     visit2_room_type: str("visit2_room_type"),
+    visit2_hotel_cost: num("visit2_hotel_cost"),
     visit2_hotel_arranged: formData.get("visit2_hotel_arranged") === "on",
   };
 }
@@ -484,6 +489,7 @@ function parseExtraVisitInput(formData: FormData) {
     departure_flight_no: str("departure_flight_no"),
     hotel_name: str("hotel_name"),
     room_type: str("room_type"),
+    hotel_cost: num("hotel_cost"),
     hotel_arranged: formData.get("hotel_arranged") === "on",
   };
 }

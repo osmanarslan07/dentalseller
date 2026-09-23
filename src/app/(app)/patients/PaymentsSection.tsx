@@ -59,6 +59,7 @@ export function PaymentsSection({
   profiles,
   currentUserId,
   surchargeRate,
+  costs = null,
   compact = false,
 }: {
   patientId: string;
@@ -71,6 +72,8 @@ export function PaymentsSection({
   currentUserId: string;
   /** The clinic's card surcharge, e.g. 0.03. */
   surchargeRate: number;
+  /** The visit's costs — set only when the clinic deducts them before commission. */
+  costs?: { hotel: number; transfers: number } | null;
   compact?: boolean;
 }) {
   const router = useRouter();
@@ -104,6 +107,15 @@ export function PaymentsSection({
             Payments
           </h3>
           <BalanceLine expected={expected} extras={extrasTotal} paid={paid} />
+          {costs && costs.hotel + costs.transfers > 0 && (
+            <p className="text-xs text-slate-500">
+              Commission base {gbp(Math.max(0, (payments.length ? paid : (expected ?? 0) + extrasTotal) - costs.hotel - costs.transfers))}
+              {" = "}
+              {payments.length ? "paid" : "expected"} − {costs.hotel > 0 && `hotel ${gbp(costs.hotel)}`}
+              {costs.hotel > 0 && costs.transfers > 0 && " − "}
+              {costs.transfers > 0 && `transfers ${gbp(costs.transfers)}`}
+            </p>
+          )}
           {surcharges > 0 && (
             <p className="text-xs text-slate-400">+ {gbp(surcharges)} card surcharge collected (not counted toward commission)</p>
           )}

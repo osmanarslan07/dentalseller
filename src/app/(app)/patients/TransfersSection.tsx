@@ -72,6 +72,7 @@ export function TransfersSection({
   travel,
   transfers,
   companies,
+  deductCosts = false,
   compact = false,
 }: {
   patientId: string;
@@ -82,6 +83,8 @@ export function TransfersSection({
   travel: VisitTravel;
   transfers: Transfer[];
   companies: TransferCompany[];
+  /** Settings → System: external transfer costs come off before commission. */
+  deductCosts?: boolean;
   /** Inside an extra visit's row — no card of its own. */
   compact?: boolean;
 }) {
@@ -177,6 +180,7 @@ export function TransfersSection({
           <TransferForm
             companies={companies}
             travel={travel}
+            deductCosts={deductCosts}
             onCancel={() => setAdding(false)}
             onSave={async (formData) => {
               await addTransfer(patientId, visitKey, formData);
@@ -201,6 +205,7 @@ export function TransfersSection({
                   transfer={t}
                   companies={companies}
                   travel={travel}
+                  deductCosts={deductCosts}
                   onCancel={() => setEditingId(null)}
                   onSave={async (formData) => {
                     await updateTransfer(t.id, formData);
@@ -322,9 +327,11 @@ function TransferForm({
   transfer,
   companies,
   travel,
+  deductCosts,
   onCancel,
   onSave,
 }: {
+  deductCosts: boolean;
   transfer?: Transfer;
   companies: TransferCompany[];
   travel: VisitTravel;
@@ -487,6 +494,14 @@ function TransferForm({
               placeholder={company ? "0.00" : "—"}
               disabled={!company}
             />
+          )}
+          {deductCosts && company && !company.is_internal && (
+            <p className="mt-1 text-xs text-slate-400">
+              Deducted before commission.
+              {date && date.slice(0, 7) < new Date().toISOString().slice(0, 7) && (
+                <span className="text-amber-700"> ⚠ Past month — changes that month&apos;s commission.</span>
+              )}
+            </p>
           )}
         </div>
         <div>

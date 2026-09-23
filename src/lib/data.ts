@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task, Transfer, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
+import { visitCosts } from "@/lib/commission";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer } from "@/lib/viewer";
 
@@ -24,13 +25,21 @@ async function getMyClinicId(): Promise<string | null> {
 
 /** A patient with everything hanging off their visits that money or operations reads. */
 const PATIENT_SELECT =
-  "*, extra_visits:patient_visits(*), extras:patient_extras(*), payments:patient_payments(*)";
+  "*, extra_visits:patient_visits(*), extras:patient_extras(*), payments:patient_payments(*), transfer_costs:transfers(visit_number, extra_visit_id, cost)";
 
-/** Postgres numerics can arrive as strings — make the money fields plain numbers once, here. */
-function normalizePatient(row: Record<string, unknown>): Patient {
+const num = (v: unknown): number | null => (v == null ? null : Number(v));
+
+/** Postgres numerics can arrive as strings — make the money fields plain numbers once, here.
+ * `deductCosts` is the clinic's "deduct costs before commission" setting: when on, each
+ * visit's hotel + external transfer costs are attached for the commission maths. */
+function normalizePatient(row: Record<string, unknown>, deductCosts: boolean): Patient {
   const p = row as unknown as Patient;
-  return {
+  const normalized: Patient = {
     ...p,
+    visit1_hotel_cost: num(p.visit1_hotel_cost),
+    visit2_hotel_cost: num(p.visit2_hotel_cost),
+    transfer_costs: (p.transfer_costs ?? []).map((t) => ({ ...t, cost: num(t.cost) })),
+    commission_costs: null,
     extras: (p.extras ?? [])
       .map((e) => ({ ...e, quantity: Number(e.quantity), unit_price: Number(e.unit_price), total: Number(e.total) }))
       .sort((a, b) => a.created_at.localeCompare(b.created_at)),
@@ -51,8 +60,23 @@ function normalizePatient(row: Record<string, unknown>): Patient {
       ...v,
       expected: v.expected != null ? Number(v.expected) : null,
       actual: v.actual != null ? Number(v.actual) : null,
+      hotel_cost: num(v.hotel_cost),
     })),
   };
+  if (deductCosts) {
+    const costs: Record<string, number> = {};
+    for (const key of ["visit1", "visit2", ...normalized.extra_visits.map((v) => v.id)]) {
+      const c = visitCosts(normalized, key);
+      if (c.hotel + c.transfers > 0) costs[key] = c.hotel + c.transfers;
+    }
+    normalized.commission_costs = costs;
+  }
+  return normalized;
+}
+
+/** Whether the viewed clinic deducts hotel/transfer costs before commission. */
+async function deductsCosts(supabase: SupabaseClient): Promise<boolean> {
+  return (await getClinicConfig(supabase)).deductCostsFromCommission;
 }
 
 export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> {
@@ -68,7 +92,8 @@ export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> 
   );
 
   if (error) throw error;
-  return (data ?? []).map(normalizePatient);
+  const deduct = await deductsCosts(supabase);
+  return (data ?? []).map((row) => normalizePatient(row, deduct));
 }
 
 export async function getPatient(supabase: SupabaseClient, id: string): Promise<Patient | null> {
@@ -84,7 +109,7 @@ export async function getPatient(supabase: SupabaseClient, id: string): Promise<
   );
 
   if (error) throw error;
-  return data ? normalizePatient(data) : null;
+  return data ? normalizePatient(data, await deductsCosts(supabase)) : null;
 }
 
 /** userId must be explicit: admin can now read every seller's settings row (for the team

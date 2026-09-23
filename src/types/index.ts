@@ -55,6 +55,8 @@ export interface PatientExtraVisit {
   departure_flight_no: string | null;
   hotel_name: string | null;
   room_type: string | null;
+  /** What the clinic pays the hotel for this visit; null = the patient paid their own. */
+  hotel_cost: number | null;
   /** Derived (DB trigger): has an arrival / departure transfer with a driver assigned. */
   arrival_transfer_arranged: boolean;
   departure_transfer_arranged: boolean;
@@ -120,6 +122,8 @@ export interface Patient {
   visit1_departure_flight_no: string | null;
   visit1_hotel_name: string | null;
   visit1_room_type: string | null;
+  /** What the clinic pays the hotel for visit 1; null = the patient paid their own. */
+  visit1_hotel_cost: number | null;
   visit1_arrival_transfer_arranged: boolean;
   visit1_departure_transfer_arranged: boolean;
   visit1_hotel_arranged: boolean;
@@ -132,6 +136,7 @@ export interface Patient {
   visit2_departure_flight_no: string | null;
   visit2_hotel_name: string | null;
   visit2_room_type: string | null;
+  visit2_hotel_cost: number | null;
   visit2_arrival_transfer_arranged: boolean;
   visit2_departure_transfer_arranged: boolean;
   visit2_hotel_arranged: boolean;
@@ -141,6 +146,12 @@ export interface Patient {
   extras: PatientExtra[];
   /** Every payment recorded on any of this patient's visits. */
   payments: PatientPayment[];
+  /** Just the cost side of each transfer — enough to work out a visit's costs. */
+  transfer_costs: { visit_number: 1 | 2 | null; extra_visit_id: string | null; cost: number | null }[];
+  /** Set only when the clinic deducts costs before commission: visit key ("visit1" |
+   * "visit2" | extra visit id) → hotel + external transfer cost to take off that visit.
+   * Null when the clinic pays commission on the full amount. */
+  commission_costs: Record<string, number> | null;
 
   created_at: string;
   updated_at: string;
@@ -155,6 +166,8 @@ export type PatientInput = Omit<
   | "extra_visits"
   | "extras"
   | "payments"
+  | "transfer_costs"
+  | "commission_costs"
   // the sum of the visit's payments, kept by a DB trigger — never typed in
   | "visit1_actual"
   | "visit2_actual"

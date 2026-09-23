@@ -13,10 +13,45 @@ import { Patient, PatientExtraVisit, Profile, Transfer, TransferCompany } from "
 import { TransfersSection, VisitTravel } from "./TransfersSection";
 import { ExtrasSection } from "./ExtrasSection";
 import { PaymentsSection } from "./PaymentsSection";
-import { extrasTotalFor } from "@/lib/commission";
+import { extrasTotalFor, visitCosts } from "@/lib/commission";
 
 /** What a payments section needs besides the visit itself. */
-type PaymentContext = { profiles: Profile[]; currentUserId: string; surchargeRate: number };
+type PaymentContext = { profiles: Profile[]; currentUserId: string; surchargeRate: number; deductCosts: boolean };
+
+/** Before the current month — changing such a visit's costs changes a month already paid out. */
+function isPastMonth(date: string | null | undefined): boolean {
+  if (!date) return false;
+  const now = new Date();
+  const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return date.slice(0, 7) < current;
+}
+
+/** The hotel cost input — shared by visit 1/2 and extra visits. */
+function HotelCostInput({
+  name,
+  defaultValue,
+  deductCosts,
+  visitDate,
+}: {
+  name: string;
+  defaultValue: number | null | undefined;
+  deductCosts: boolean;
+  visitDate: string | null | undefined;
+}) {
+  return (
+    <div>
+      <Label>Hotel cost (£)</Label>
+      <Input type="number" step="0.01" min="0" name={name} defaultValue={defaultValue ?? ""} placeholder="Patient pays" />
+      <p className="mt-1 text-xs text-slate-400">
+        What the clinic pays the hotel. Leave empty if the patient pays their own.
+        {deductCosts && " Deducted before commission."}
+      </p>
+      {deductCosts && isPastMonth(visitDate) && (
+        <p className="mt-1 text-xs text-amber-700">⚠ This visit is in a past month — changing it changes that month&apos;s commission.</p>
+      )}
+    </div>
+  );
+}
 import {
   createPatient,
   updatePatient,
@@ -174,6 +209,7 @@ export function PatientDetail({
   transfers = [],
   companies = [],
   surchargeRate = 0.03,
+  deductCosts = false,
 }: {
   patient?: Patient | null;
   /** Prefill a new (non-edit) patient from an existing one — for group bookings sharing a flight/hotel. */
@@ -192,6 +228,8 @@ export function PatientDetail({
   companies?: TransferCompany[];
   /** The clinic's card surcharge rate (System settings). */
   surchargeRate?: number;
+  /** Settings → System: hotel/transfer costs come off before commission. */
+  deductCosts?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -630,6 +668,9 @@ export function PatientDetail({
             hotelName={initial?.visit1_hotel_name}
             roomType={initial?.visit1_room_type}
             hotelArranged={initial?.visit1_hotel_arranged}
+            hotelCost={initial?.visit1_hotel_cost}
+            visitDate={initial?.visit1_date}
+            deductCosts={deductCosts}
             hotelOptions={hotelOptions}
             roomTypeOptions={roomTypeOptions}
           />
@@ -656,6 +697,9 @@ export function PatientDetail({
               hotelName={initial?.visit2_hotel_name}
               roomType={initial?.visit2_room_type}
               hotelArranged={initial?.visit2_hotel_arranged}
+              hotelCost={initial?.visit2_hotel_cost}
+              visitDate={initial?.visit2_date}
+              deductCosts={deductCosts}
               hotelOptions={hotelOptions}
               roomTypeOptions={roomTypeOptions}
             />
@@ -678,6 +722,7 @@ export function PatientDetail({
               profiles={profiles}
               currentUserId={currentUserId}
               surchargeRate={surchargeRate}
+              costs={deductCosts ? visitCosts(patient, activeTab) : null}
             />
             <ExtrasSection
               key={`extras-${activeTab}`}
@@ -695,6 +740,7 @@ export function PatientDetail({
               travel={mainVisitTravel(patient, activeTab === "visit1" ? 1 : 2)}
               transfers={transfers.filter((t) => t.visit_number === (activeTab === "visit1" ? 1 : 2))}
               companies={companies}
+              deductCosts={deductCosts}
             />
           </>
         ) : (
@@ -709,7 +755,7 @@ export function PatientDetail({
             patient={patient}
             transfers={transfers}
             companies={companies}
-            pay={{ profiles, currentUserId, surchargeRate }}
+            pay={{ profiles, currentUserId, surchargeRate, deductCosts }}
           />
         </div>
       )}
@@ -757,11 +803,17 @@ function TravelFields({
   departureFlightNo,
   hotelName,
   roomType,
+  hotelCost,
+  visitDate,
+  deductCosts = false,
   hotelArranged,
   hotelOptions = [],
   roomTypeOptions = [],
 }: {
   index: 1 | 2;
+  hotelCost?: number | null;
+  visitDate?: string | null;
+  deductCosts?: boolean;
   arrivalDate?: string | null;
   arrivalTime?: string | null;
   arrivalFlightNo?: string | null;
@@ -829,6 +881,12 @@ function TravelFields({
             ))}
           </datalist>
         </div>
+        <HotelCostInput
+          name={`visit${index}_hotel_cost`}
+          defaultValue={hotelCost}
+          deductCosts={deductCosts}
+          visitDate={visitDate}
+        />
       </div>
       <div className="mt-3 flex flex-wrap gap-4">
         <label className="flex items-center gap-2 text-sm text-slate-600">
@@ -929,7 +987,7 @@ function ExtraVisitsSection({
 
       {adding ? (
         <div ref={fieldsRef} className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-          <ExtraVisitFields />
+          <ExtraVisitFields deductCosts={pay.deductCosts} />
           <div className="mt-3 flex items-center justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setAdding(false)}>
               Cancel
@@ -1008,7 +1066,7 @@ function HistorySection({
 }
 
 /** Shared field set for both the add form and the edit form — same shape as visit 1/2's fields + travel. */
-function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
+function ExtraVisitFields({ visit, deductCosts = false }: { visit?: PatientExtraVisit; deductCosts?: boolean }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -1091,6 +1149,12 @@ function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
             <Label>Room type</Label>
             <Input name="room_type" defaultValue={visit?.room_type ?? ""} placeholder="Double room" />
           </div>
+          <HotelCostInput
+            name="hotel_cost"
+            defaultValue={visit?.hotel_cost}
+            deductCosts={deductCosts}
+            visitDate={visit?.visit_date}
+          />
         </div>
         <div className="mt-3 flex flex-wrap gap-4">
           <label className="flex items-center gap-2 text-sm text-slate-600">
@@ -1163,7 +1227,7 @@ function ExtraVisitRow({
   if (editing) {
     return (
       <div ref={fieldsRef} className="rounded-lg border border-slate-200 bg-white p-3">
-        <ExtraVisitFields visit={visit} />
+        <ExtraVisitFields visit={visit} deductCosts={pay.deductCosts} />
         <div className="mt-3 flex items-center justify-end gap-2">
           <Button type="button" variant="secondary" onClick={() => setEditing(false)}>
             Cancel
@@ -1252,6 +1316,7 @@ function ExtraVisitRow({
         profiles={pay.profiles}
         currentUserId={pay.currentUserId}
         surchargeRate={pay.surchargeRate}
+        costs={pay.deductCosts ? visitCosts(patient, visit.id) : null}
       />
       <ExtrasSection
         compact
@@ -1269,6 +1334,7 @@ function ExtraVisitRow({
         travel={extraVisitTravel(visit)}
         transfers={transfers}
         companies={companies}
+        deductCosts={pay.deductCosts}
       />
     </div>
   );

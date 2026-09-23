@@ -18,6 +18,27 @@ export function extrasTotalFor(p: Patient, visitKey: string): number {
     .reduce((sum, e) => sum + e.total, 0);
 }
 
+/** Hotel cost + external transfer costs of one visit — what the clinic spends on it. */
+export function visitCosts(p: Patient, visitKey: string): { hotel: number; transfers: number } {
+  const hotel =
+    visitKey === "visit1"
+      ? p.visit1_hotel_cost
+      : visitKey === "visit2"
+      ? p.visit2_hotel_cost
+      : p.extra_visits.find((v) => v.id === visitKey)?.hotel_cost ?? null;
+  const transfers = p.transfer_costs
+    .filter((t) => (t.extra_visit_id ?? `visit${t.visit_number}`) === visitKey)
+    .reduce((s, t) => s + (t.cost ?? 0), 0);
+  return { hotel: hotel ?? 0, transfers };
+}
+
+/** An amount as commission sees it: minus the visit's costs when the clinic deducts them
+ * (see Patient.commission_costs), never below zero. */
+function afterCosts(p: Patient, visitKey: string, amount: number | null): number | null {
+  if (amount == null || !p.commission_costs) return amount;
+  return Math.max(0, amount - (p.commission_costs[visitKey] ?? 0));
+}
+
 /** What the patient is expected to pay for a visit: the agreed treatment price plus any
  * extras sold on it. Null only when neither exists. */
 export function visitExpectedTotal(p: Patient, visitKey: string, expected: number | null): number | null {
@@ -92,22 +113,22 @@ function patientVisits(p: Patient): Visit[] {
   return [
     {
       date: p.visit1_date,
-      expected: visitExpectedTotal(p, "visit1", p.visit1_expected),
-      actual: p.visit1_actual,
+      expected: afterCosts(p, "visit1", visitExpectedTotal(p, "visit1", p.visit1_expected)),
+      actual: afterCosts(p, "visit1", p.visit1_actual),
       status: p.visit1_status,
       ownerId: p.visit1_actual != null ? p.visit1_earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,
     },
     {
       date: p.visit2_date,
-      expected: visitExpectedTotal(p, "visit2", p.visit2_expected),
-      actual: p.visit2_actual,
+      expected: afterCosts(p, "visit2", visitExpectedTotal(p, "visit2", p.visit2_expected)),
+      actual: afterCosts(p, "visit2", p.visit2_actual),
       status: p.visit2_status,
       ownerId: p.visit2_actual != null ? p.visit2_earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,
     },
     ...p.extra_visits.map((v) => ({
       date: v.visit_date,
-      expected: visitExpectedTotal(p, v.id, v.expected),
-      actual: v.actual,
+      expected: afterCosts(p, v.id, visitExpectedTotal(p, v.id, v.expected)),
+      actual: afterCosts(p, v.id, v.actual),
       status: v.status,
       ownerId: v.actual != null ? v.earned_by_seller_id ?? p.responsible_seller_id : p.responsible_seller_id,
     })),

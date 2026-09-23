@@ -15,7 +15,6 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
-import { PatientFormModal } from "./PatientFormModal";
 import { deletePatient, sendPatientTelegramMessage } from "./actions";
 
 type SortKey = "name" | "confirmation_date" | "visit1_date" | "visit2_date" | "commission";
@@ -54,6 +53,7 @@ function patientStage(p: Patient): Stage {
 function matchesSearch(p: Patient, q: string): boolean {
   const haystacks = [
     p.name,
+    p.phone,
     p.treatment,
     p.komo_reference,
     p.notes,
@@ -280,20 +280,14 @@ export function PatientsClient({
   patients,
   settings,
   initialQuery,
-  initialOpenId = null,
   profiles,
   currentUserId,
-  isAdmin,
 }: {
   patients: Patient[];
   settings: CommissionSettings;
   initialQuery: string;
-  /** Jump straight into an edit — e.g. right after converting a quote, so the seller lands
-   * in the new patient's form instead of having to find it in the list themselves. */
-  initialOpenId?: string | null;
   profiles: Profile[];
   currentUserId: string;
-  isAdmin: boolean;
 }) {
   const sellerName = useMemo(() => {
     const map = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
@@ -308,11 +302,6 @@ export function PatientsClient({
   const [sellerFilter, setSellerFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("confirmation_date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [modalOpen, setModalOpen] = useState(() => !!initialOpenId);
-  const [editingPatient, setEditingPatient] = useState<Patient | null>(() =>
-    initialOpenId ? patients.find((p) => p.id === initialOpenId) ?? null : null
-  );
-  const [duplicateFrom, setDuplicateFrom] = useState<Patient | null>(null);
   const [, startTransition] = useTransition();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openDocsId, setOpenDocsId] = useState<string | null>(null);
@@ -332,13 +321,6 @@ export function PatientsClient({
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, [openTelegramId]);
-
-  // Strip ?open= once it's been used to seed the initial modal state — a later refresh or
-  // back-navigation shouldn't keep reopening the same patient.
-  useEffect(() => {
-    if (initialOpenId) router.replace("/patients", { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Commission tiers are computed from the viewer's own commission-earning visits only — this
   // list is the shared clinic roster, so mixing in colleagues' totals would both misreport the
@@ -373,24 +355,6 @@ export function PatientsClient({
       .map((p) => ({ id: p.id, name: p.display_name || "Unnamed seller" }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, profiles]);
-
-  const hotelOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of patients) {
-      if (p.visit1_hotel_name) set.add(p.visit1_hotel_name);
-      if (p.visit2_hotel_name) set.add(p.visit2_hotel_name);
-    }
-    return [...set].sort();
-  }, [patients]);
-
-  const roomTypeOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of patients) {
-      if (p.visit1_room_type) set.add(p.visit1_room_type);
-      if (p.visit2_room_type) set.add(p.visit2_room_type);
-    }
-    return [...set].sort();
-  }, [patients]);
 
   const rows = useMemo(() => {
     let list = patients.map((p) => {
@@ -490,14 +454,7 @@ export function PatientsClient({
               Kanban
             </button>
           </div>
-          <Button
-            onClick={() => {
-              setEditingPatient(null);
-              setModalOpen(true);
-            }}
-          >
-            + Add patient
-          </Button>
+          <Button onClick={() => router.push("/patients/new")}>+ Add patient</Button>
         </div>
       </div>
 
@@ -568,11 +525,7 @@ export function PatientsClient({
           rows={rows}
           settings={settings}
           sellerName={sellerName}
-          onCardClick={(p) => {
-            setEditingPatient(p);
-            setDuplicateFrom(null);
-            setModalOpen(true);
-          }}
+          onCardClick={(p) => router.push(`/patients/${p.id}`)}
         />
       )}
 
@@ -582,11 +535,7 @@ export function PatientsClient({
           <Card
             key={p.id}
             className="cursor-pointer p-4"
-            onClick={() => {
-              setEditingPatient(p);
-              setDuplicateFrom(null);
-              setModalOpen(true);
-            }}
+            onClick={() => router.push(`/patients/${p.id}`)}
           >
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -680,11 +629,7 @@ export function PatientsClient({
               <button
                 title="Duplicate — prefill a new patient from this one"
                 className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                onClick={() => {
-                  setEditingPatient(null);
-                  setDuplicateFrom(p);
-                  setModalOpen(true);
-                }}
+                onClick={() => router.push(`/patients/new?from=${p.id}`)}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                   <rect x="8" y="8" width="12" height="12" rx="2" />
@@ -729,11 +674,7 @@ export function PatientsClient({
                   key={p.id}
                   className="animate-fade-in-up cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/50"
                   style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
-                  onClick={() => {
-                    setEditingPatient(p);
-                    setDuplicateFrom(null);
-                    setModalOpen(true);
-                  }}
+                  onClick={() => router.push(`/patients/${p.id}`)}
                 >
                   <td className="py-3 pl-4 pr-4 font-medium text-slate-800">
                     {p.name}
@@ -813,11 +754,7 @@ export function PatientsClient({
                       <button
                         title="Duplicate — prefill a new patient from this one"
                         className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                        onClick={() => {
-                          setEditingPatient(null);
-                          setDuplicateFrom(p);
-                          setModalOpen(true);
-                        }}
+                        onClick={() => router.push(`/patients/new?from=${p.id}`)}
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                           <rect x="8" y="8" width="12" height="12" rx="2" />
@@ -848,19 +785,6 @@ export function PatientsClient({
       </Card>
       )}
 
-      <PatientFormModal
-        key={modalOpen ? editingPatient?.id ?? duplicateFrom?.id ?? "new" : "closed"}
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        patient={editingPatient ? patients.find((p) => p.id === editingPatient.id) ?? editingPatient : null}
-        duplicateFrom={duplicateFrom}
-        hotelOptions={hotelOptions}
-        roomTypeOptions={roomTypeOptions}
-        profiles={profiles}
-        currentUserId={currentUserId}
-        isAdmin={isAdmin}
-        existingPatients={patients}
-      />
     </div>
   );
 }

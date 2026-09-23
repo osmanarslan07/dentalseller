@@ -72,6 +72,7 @@ async function getRecipientChatIds(supabase: SupabaseClient, sellerId: string): 
 
 const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
   { key: "name", label: "name" },
+  { key: "phone", label: "phone" },
   { key: "treatment", label: "treatment" },
   { key: "notes", label: "notes" },
   { key: "komo_reference", label: "komo reference" },
@@ -83,6 +84,7 @@ const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
   { key: "visit1_expected", label: "visit1 expected" },
   { key: "visit1_actual", label: "visit1 actual" },
   { key: "visit1_status", label: "visit1 status" },
+  { key: "visit1_pax", label: "visit1 pax" },
   { key: "visit1_arrival_date", label: "visit1 arrival date" },
   { key: "visit1_arrival_time", label: "visit1 arrival time" },
   { key: "visit1_arrival_flight_no", label: "visit1 arrival flight" },
@@ -99,6 +101,7 @@ const PATIENT_AUDIT_FIELDS: { key: keyof PatientInput; label: string }[] = [
   { key: "visit2_expected", label: "visit2 expected" },
   { key: "visit2_actual", label: "visit2 actual" },
   { key: "visit2_status", label: "visit2 status" },
+  { key: "visit2_pax", label: "visit2 pax" },
   { key: "visit2_arrival_date", label: "visit2 arrival date" },
   { key: "visit2_arrival_time", label: "visit2 arrival time" },
   { key: "visit2_arrival_flight_no", label: "visit2 arrival flight" },
@@ -118,6 +121,7 @@ const EXTRA_VISIT_AUDIT_FIELDS: { key: keyof ReturnType<typeof parseExtraVisitIn
   { key: "expected", label: "expected" },
   { key: "actual", label: "actual" },
   { key: "status", label: "status" },
+  { key: "pax", label: "pax" },
   { key: "treatment", label: "treatment" },
   { key: "notes", label: "notes" },
   { key: "arrival_date", label: "arrival date" },
@@ -273,6 +277,12 @@ function buildVisitMessage(patient: Patient, visitKey: string): string {
   return lines.join("\n");
 }
 
+/** People travelling, patient included — never below 1, and a typo can't produce a bus-load. */
+function parsePax(v: FormDataEntryValue | null): number {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 50) : 1;
+}
+
 function parseInput(formData: FormData): PatientInput {
   const num = (key: string) => {
     const v = formData.get(key);
@@ -287,6 +297,7 @@ function parseInput(formData: FormData): PatientInput {
 
   return {
     name: String(formData.get("name") ?? "").trim(),
+    phone: str("phone")?.trim() || null,
     treatment: str("treatment"),
     letter_treatment_items: str("letter_treatment_items"),
     confirmation_date: str("confirmation_date"),
@@ -299,10 +310,12 @@ function parseInput(formData: FormData): PatientInput {
     visit1_expected: num("visit1_expected"),
     visit1_actual: num("visit1_actual"),
     visit1_status: (formData.get("visit1_status") as "upcoming" | "completed") || "upcoming",
+    visit1_pax: parsePax(formData.get("visit1_pax")),
     visit2_date: str("visit2_date"),
     visit2_expected: num("visit2_expected"),
     visit2_actual: num("visit2_actual"),
     visit2_status: (formData.get("visit2_status") as "upcoming" | "completed") || "upcoming",
+    visit2_pax: parsePax(formData.get("visit2_pax")),
     notes: str("notes"),
     komo_reference: str("komo_reference"),
     visit1_arrival_date: str("visit1_arrival_date"),
@@ -369,7 +382,7 @@ export async function createPatient(formData: FormData) {
       ? { kind: "confetti", message: `🌟 ${input.name} is your first patient — welcome aboard!` }
       : { kind: "confetti", message: `🎉 ${input.name} confirmed!` };
 
-  return { celebration };
+  return { id: (created?.id as string | undefined) ?? null, celebration };
 }
 
 export async function updatePatient(id: string, formData: FormData) {
@@ -504,6 +517,7 @@ function parseExtraVisitInput(formData: FormData) {
     expected: num("expected"),
     actual: num("actual"),
     status: (formData.get("status") as "upcoming" | "completed") || "upcoming",
+    pax: parsePax(formData.get("pax")),
     treatment: str("treatment"),
     notes: str("notes"),
     arrival_date: str("arrival_date"),

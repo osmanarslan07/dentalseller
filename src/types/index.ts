@@ -39,6 +39,8 @@ export interface PatientExtraVisit {
   expected: number | null;
   actual: number | null;
   status: VisitStatus;
+  /** People travelling on this visit, patient included — every transfer carries this many. */
+  pax: number;
   /** Locked in the moment `actual` is first recorded (DB trigger) — the seller who gets
    * commission credit for this visit, independent of who owns the patient later on. */
   earned_by_seller_id: string | null;
@@ -73,6 +75,7 @@ export interface Patient {
    * who actually earns commission on a visit already paid, which reassignment can't change. */
   responsible_seller_id: string;
   name: string;
+  phone: string | null;
   treatment: string | null;
   letter_treatment_items: string | null;
   confirmation_date: string | null; // ISO date
@@ -85,6 +88,8 @@ export interface Patient {
   visit1_expected: number | null;
   visit1_actual: number | null;
   visit1_status: VisitStatus;
+  /** People travelling on visit 1, patient included. */
+  visit1_pax: number;
   /** Locked in (DB trigger) the moment visit1_actual is first recorded. */
   visit1_earned_by_seller_id: string | null;
 
@@ -92,6 +97,7 @@ export interface Patient {
   visit2_expected: number | null;
   visit2_actual: number | null;
   visit2_status: VisitStatus;
+  visit2_pax: number;
   /** Locked in (DB trigger) the moment visit2_actual is first recorded. */
   visit2_earned_by_seller_id: string | null;
 

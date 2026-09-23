@@ -338,7 +338,7 @@ export function TeamOperationsPanel({
                       {g.events.map((v, i) => (
                         <li key={i} className="animate-fade-in-up" style={{ animationDelay: `${idx++ * 40}ms` }}>
                           <Link
-                            href={`/patients?q=${encodeURIComponent(v.patientName)}`}
+                            href={`/patients/${v.patientId}`}
                             className="flex items-center justify-between rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
                           >
                             <div className="flex items-center gap-2.5">
@@ -395,7 +395,7 @@ export function TeamOperationsPanel({
               {needsFollowUp.map(({ patient: p, daysSince }, i) => (
                 <li key={p.id} className="animate-fade-in-up" style={{ animationDelay: `${i * 40}ms` }}>
                   <Link
-                    href={`/patients?q=${encodeURIComponent(p.name)}`}
+                    href={`/patients/${p.id}`}
                     className="flex items-center justify-between rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
                   >
                     <div>
@@ -456,7 +456,7 @@ export function TeamOperationsPanel({
                   style={{ animationDelay: `${i * 40}ms` }}
                 >
                   <Link
-                    href={`/patients?q=${encodeURIComponent(m.patient.name)}`}
+                    href={`/patients/${m.patient.id}`}
                     className="flex items-center justify-between rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
                   >
                     <div>
@@ -512,7 +512,7 @@ export function TeamOperationsPanel({
                   style={{ animationDelay: `${i * 40}ms` }}
                 >
                   <Link
-                    href={`/patients?q=${encodeURIComponent(item.patientName)}`}
+                    href={`/patients/${item.patientId}`}
                     className="min-w-0 flex-1"
                   >
                     <p className="text-sm font-medium text-slate-800">{item.patientName}</p>

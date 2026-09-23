@@ -2,6 +2,7 @@ import { Patient } from "@/types";
 
 const HEADERS = [
   "Name",
+  "Phone",
   "Treatment",
   "Confirmation Date",
   "Visit 1 Date",
@@ -25,6 +26,7 @@ export function patientsToCsv(patients: Patient[]): string {
   const rows = patients.map((p) =>
     [
       p.name,
+      p.phone,
       p.treatment,
       p.confirmation_date,
       p.visit1_date,

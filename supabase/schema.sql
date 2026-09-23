@@ -1784,6 +1784,13 @@ alter table public.clinic_config add column if not exists deduct_costs_from_comm
 alter table public.clinic_config add column if not exists card_surcharge_rate numeric(5,4) not null default 0.03
   check (card_surcharge_rate >= 0 and card_surcharge_rate <= 1);
 
+-- ---------- patient phone + pax (people travelling, patient included) per visit ----------
+-- Pax is per visit: the same for every transfer of that visit, but visit 2 can differ.
+alter table public.patients add column if not exists phone text;
+alter table public.patients add column if not exists visit1_pax integer not null default 1 check (visit1_pax between 1 and 50);
+alter table public.patients add column if not exists visit2_pax integer not null default 1 check (visit2_pax between 1 and 50);
+alter table public.patient_visits add column if not exists pax integer not null default 1 check (pax between 1 and 50);
+
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to

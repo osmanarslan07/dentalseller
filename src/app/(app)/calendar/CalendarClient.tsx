@@ -266,7 +266,7 @@ function EventRow({ event, sellerName }: { event: CalendarEvent; sellerName: str
   return (
     <li className="py-3">
       <Link
-        href={`/patients?q=${encodeURIComponent(event.patientName)}`}
+        href={`/patients/${event.patientId}`}
         className="flex items-center justify-between gap-4 rounded-lg px-2 py-1 hover:bg-slate-50"
       >
         <div>

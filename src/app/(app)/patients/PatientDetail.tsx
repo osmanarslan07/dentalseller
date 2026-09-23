@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Modal } from "@/components/Modal";
-import { Button, Input, Label, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Card, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useCelebrationSound } from "@/components/celebration-sound";
 import { fireConfetti, playChime } from "@/lib/celebrate";
@@ -14,6 +14,7 @@ import {
   createPatient,
   updatePatient,
   reassignPatient,
+  deletePatient,
   sendPatientTelegramMessage,
   addExtraVisit,
   updateExtraVisit,
@@ -21,7 +22,9 @@ import {
   getPatientActivity,
 } from "./actions";
 
-type TabId = "details" | "visit1" | "visit2" | "extra" | "history";
+type TabId = "visit1" | "visit2" | "extra" | "history";
+
+const FORM_ID = "patient-form";
 
 /** ExtraVisitFields' add/edit forms aren't real <form> elements (they're built inline so
  * they can share one field set for both add and save), so FormData has to be collected by
@@ -41,9 +44,90 @@ function collectFormData(container: HTMLElement): FormData {
   return formData;
 }
 
-export function PatientFormModal({
-  open,
-  onClose,
+/** Digits only, for wa.me links — "+44 7700 900123" → "447700900123". */
+function whatsappNumber(phone: string): string {
+  return phone.replace(/[^\d]/g, "");
+}
+
+function patientStageLabel(p: Patient): string {
+  if (!p.visit1_date) return "Confirmed";
+  if (p.visit1_status !== "completed") return "Visit 1 scheduled";
+  if (!p.needs_visit2 || p.visit2_status === "completed") return "Done";
+  if (p.visit2_date) return "Visit 2 scheduled";
+  return "Visit 1 completed";
+}
+
+function documentLinks(p: Patient): { label: string; href: string }[] {
+  return [
+    p.confirmation_date && p.visit1_date
+      ? { label: "Operations sheet · Visit 1", href: `/patients/${p.id}/document?visit=1` }
+      : null,
+    p.confirmation_date && p.visit2_date
+      ? { label: "Operations sheet · Visit 2", href: `/patients/${p.id}/document?visit=2` }
+      : null,
+    ...p.extra_visits
+      .filter((v) => v.visit_date)
+      .map((v) => ({ label: `Operations sheet · ${v.label}`, href: `/patients/${p.id}/document?visit=${v.id}` })),
+    p.visit1_arrival_flight_no
+      ? { label: "Confirmation letter · Visit 1", href: `/patients/${p.id}/confirmation-letter?visit=1` }
+      : null,
+    p.visit2_arrival_flight_no
+      ? { label: "Confirmation letter · Visit 2", href: `/patients/${p.id}/confirmation-letter?visit=2` }
+      : null,
+  ].filter((item): item is { label: string; href: string } => item != null);
+}
+
+const MENU_ITEM =
+  "block w-full px-3 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-600 disabled:opacity-50";
+
+/** A small header dropdown that closes on any click — outside it, or on one of its items. */
+function HeaderMenu({ label, title, children }: { label: string; title?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        title={title}
+        onClick={() => setOpen((o) => !o)}
+        className={`rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 ${open ? "bg-slate-200" : "bg-slate-100"}`}
+      >
+        {label}
+      </button>
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          className="absolute right-0 z-20 mt-1 w-60 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The full patient page — replaces the old edit popup. One form holds the patient's own
+ * fields plus visit 1/2 (a single updatePatient save, as before); extra visits and history
+ * sit outside it since they save/load on their own. Used for both an existing patient and
+ * /patients/new (optionally prefilled from another patient for group bookings). */
+export function PatientDetail({
   patient,
   duplicateFrom,
   hotelOptions = [],
@@ -53,8 +137,6 @@ export function PatientFormModal({
   isAdmin = false,
   existingPatients = [],
 }: {
-  open: boolean;
-  onClose: () => void;
   patient?: Patient | null;
   /** Prefill a new (non-edit) patient from an existing one — for group bookings sharing a flight/hotel. */
   duplicateFrom?: Patient | null;
@@ -66,22 +148,24 @@ export function PatientFormModal({
   isAdmin?: boolean;
   /** The shared roster, used to warn on create if the name matches someone already entered
    * (easy to do by accident now that multiple sellers add into the same pool). */
-  existingPatients?: Patient[];
+  existingPatients?: Pick<Patient, "id" | "name" | "confirmation_date" | "responsible_seller_id">[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [telegramPending, setTelegramPending] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isEdit = !!patient;
 
   // Prefill source: the record being edited, or the record being duplicated from. Duplicating clears
-  // fields that shouldn't carry over to a different person (name, CRM ref, confirmation, payments made).
+  // fields that shouldn't carry over to a different person (name, phone, CRM ref, confirmation, payments made).
   const initial: Patient | (Partial<Patient> & { needs_visit2: boolean }) | null | undefined = patient
     ? patient
     : duplicateFrom
     ? {
         ...duplicateFrom,
         name: "",
+        phone: null,
         komo_reference: null,
         confirmation_date: null,
         visit1_actual: null,
@@ -93,9 +177,8 @@ export function PatientFormModal({
 
   const [needsVisit2, setNeedsVisit2] = useState(initial ? initial.needs_visit2 : true);
   const [isDirty, setIsDirty] = useState(false);
-  // The modal remounts (via a `key` prop keyed on which patient is open) every time it opens,
-  // so a plain default here is enough to always start back on Details — no effect needed.
-  const [activeTab, setActiveTab] = useState<TabId>("details");
+  const [activeTab, setActiveTab] = useState<TabId>("visit1");
+  const [phone, setPhone] = useState(initial?.phone ?? "");
   const { showToast } = useToast();
   const { enabled: soundEnabled } = useCelebrationSound();
 
@@ -110,28 +193,25 @@ export function PatientFormModal({
         ...patient.extra_visits.map((v) => ({ value: v.id, label: v.label })),
       ]
     : [];
-  const [visitToSend, setVisitToSend] = useState("visit1");
+  const docs = patient ? documentLinks(patient) : [];
 
+  // Leaving with unsaved edits (closing the tab, reloading) asks first — the old popup's
+  // "Discard unsaved changes?" prompt, for a page.
+  const dirtyRef = useRef(false);
   useEffect(() => {
-    if (open) setIsDirty(false);
-  }, [open, patient?.id, duplicateFrom?.id]);
-
+    dirtyRef.current = isDirty;
+  }, [isDirty]);
   useEffect(() => {
-    if (open) setResponsibleId(patient?.responsible_seller_id ?? "");
-  }, [open, patient?.id]);
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!dirtyRef.current) return;
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
-  useEffect(() => {
-    if (open) setVisitToSend("visit1");
-  }, [open, patient?.id]);
-
-  useEffect(() => {
-    if (open) setNeedsVisit2(initial ? initial.needs_visit2 : true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, patient?.id, duplicateFrom?.id]);
-
-  function handleRequestClose() {
-    if (isDirty && !confirm("Discard unsaved changes?")) return;
-    onClose();
+  function confirmLeave(): boolean {
+    return !isDirty || confirm("Discard unsaved changes?");
   }
 
   function handleReassign(newSellerId: string) {
@@ -154,16 +234,32 @@ export function PatientFormModal({
     })();
   }
 
-  async function handleSendTelegram() {
+  async function handleSendTelegram(visitKey: string) {
     if (!patient) return;
     setTelegramPending(true);
     try {
-      await sendPatientTelegramMessage(patient.id, visitToSend);
+      await sendPatientTelegramMessage(patient.id, visitKey);
       showToast("Sent to Telegram ✓");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Failed to send to Telegram");
     } finally {
       setTelegramPending(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!patient) return;
+    if (!confirm("Delete this patient? This cannot be undone.")) return;
+    setDeletePending(true);
+    try {
+      await deletePatient(patient.id);
+      setIsDirty(false);
+      dirtyRef.current = false;
+      showToast("Patient deleted");
+      router.push("/patients");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to delete patient", "error");
+      setDeletePending(false);
     }
   }
 
@@ -199,14 +295,17 @@ export function PatientFormModal({
           } else {
             showToast("Patient saved ✓");
           }
+          setIsDirty(false);
+          router.refresh();
         } else {
-          const { celebration } = await createPatient(formData);
+          const { id, celebration } = await createPatient(formData);
           fireConfetti();
           if (soundEnabled) playChime();
           showToast(celebration.message);
+          setIsDirty(false);
+          dirtyRef.current = false;
+          router.replace(id ? `/patients/${id}` : "/patients");
         }
-        router.refresh();
-        onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong");
       }
@@ -214,7 +313,6 @@ export function PatientFormModal({
   }
 
   const tabs: { id: TabId; label: string }[] = [
-    { id: "details", label: "Details" },
     { id: "visit1", label: "Visit 1" },
     ...(needsVisit2 ? [{ id: "visit2" as TabId, label: "Visit 2" }] : []),
     ...(isEdit && patient
@@ -228,20 +326,238 @@ export function PatientFormModal({
       : []),
   ];
 
-  return (
-    <Modal
-      open={open}
-      onClose={handleRequestClose}
-      title={isEdit ? "Edit patient" : duplicateFrom ? `Duplicate ${duplicateFrom.name}` : "Add patient"}
-    >
-      <form action={handleSubmit} onChange={() => setIsDirty(true)} className="space-y-5">
-        {duplicateFrom && (
-          <p className="rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-700">
-            Prefilled from {duplicateFrom.name}&apos;s travel, hotel and treatment. Name, Komo reference,
-            confirmation date and payments were left blank for you to fill in.
-          </p>
-        )}
+  const title = isEdit ? patient!.name : duplicateFrom ? `New patient (from ${duplicateFrom.name})` : "New patient";
+  const waNumber = whatsappNumber(phone);
 
+  return (
+    <div className="space-y-6 pb-24">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <Link
+            href="/patients"
+            onClick={(e) => {
+              if (!confirmLeave()) e.preventDefault();
+            }}
+            className="text-sm font-medium text-teal-600 hover:text-teal-700"
+          >
+            ← Patients
+          </Link>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <h1 className="truncate text-2xl font-semibold text-slate-900">{title}</h1>
+            {patient && <Badge tone="slate">{patientStageLabel(patient)}</Badge>}
+          </div>
+          {patient?.treatment && <p className="mt-0.5 text-sm text-slate-500">{patient.treatment}</p>}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {patient && docs.length > 0 && (
+            <HeaderMenu label="Documents ▾">
+              {docs.map((d) => (
+                <Link key={d.href} href={d.href} target="_blank" className={MENU_ITEM}>
+                  {d.label}
+                </Link>
+              ))}
+            </HeaderMenu>
+          )}
+          {patient && (
+            <HeaderMenu label={telegramPending ? "Sending…" : "Telegram ▾"}>
+              {visitOptions.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  disabled={telegramPending}
+                  onClick={() => handleSendTelegram(o.value)}
+                  className={MENU_ITEM}
+                >
+                  Send {o.label}
+                </button>
+              ))}
+            </HeaderMenu>
+          )}
+          {patient && (
+            <HeaderMenu label="⋯" title="More actions">
+              <Link href={`/patients/new?from=${patient.id}`} className={MENU_ITEM}>
+                Duplicate (group booking)
+              </Link>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deletePending}
+                className={`${MENU_ITEM} text-red-600 hover:text-red-700`}
+              >
+                {deletePending ? "Deleting…" : "Delete patient"}
+              </button>
+            </HeaderMenu>
+          )}
+          <Button type="submit" form={FORM_ID} disabled={pending}>
+            {pending ? "Saving…" : isEdit ? "Save changes" : "Add patient"}
+          </Button>
+        </div>
+      </div>
+
+      {duplicateFrom && (
+        <p className="rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-700">
+          Prefilled from {duplicateFrom.name}&apos;s travel, hotel and treatment. Name, phone, Komo reference,
+          confirmation date and payments were left blank for you to fill in.
+        </p>
+      )}
+
+      <form
+        id={FORM_ID}
+        action={handleSubmit}
+        onChange={(e) => {
+          // the seller picker lives inside this form visually but saves on its own
+          if ((e.target as unknown as HTMLInputElement).form?.id === FORM_ID) setIsDirty(true);
+        }}
+        className="space-y-6"
+      >
+        {/* Patient */}
+        <Card className="p-5">
+          <h2 className="mb-4 text-base font-semibold text-slate-900">Patient</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="sm:col-span-2">
+              <Label>Name</Label>
+              <Input name="name" required defaultValue={initial?.name} placeholder="Jane Smith" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Phone</Label>
+              <div className="flex gap-2">
+                <Input
+                  name="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+44 7700 900123"
+                  autoComplete="off"
+                />
+                {waNumber.length >= 8 && (
+                  <>
+                    <a
+                      href={`tel:${phone.replace(/[^\d+]/g, "")}`}
+                      title="Call"
+                      className="shrink-0 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                    >
+                      Call
+                    </a>
+                    <a
+                      href={`https://wa.me/${waNumber}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open a WhatsApp chat"
+                      className="shrink-0 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
+                    >
+                      WhatsApp
+                    </a>
+                  </>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-slate-400">With country code, e.g. +44.</p>
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label>Treatment</Label>
+              <Input name="treatment" defaultValue={initial?.treatment ?? ""} placeholder="Full mouth veneers" />
+              <p className="mt-1 text-xs text-slate-400">
+                Short label — shown on the dashboard, calendar and upcoming visits.
+              </p>
+            </div>
+            <div>
+              <Label>Confirmation date</Label>
+              <Input type="date" name="confirmation_date" defaultValue={initial?.confirmation_date ?? ""} />
+            </div>
+            <div>
+              <Label>Responsible seller</Label>
+              {!isEdit ? (
+                <p className="py-2 text-sm text-slate-700">You</p>
+              ) : canReassign ? (
+                <Select
+                  value={responsibleId}
+                  disabled={reassignPending}
+                  // not part of the patient form — reassigning saves on its own, right away
+                  form="__none"
+                  onChange={(e) => handleReassign(e.target.value)}
+                >
+                  {profiles
+                    .filter((p) => p.is_active || p.id === responsibleId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.display_name || "Unnamed seller"}
+                        {p.id === currentUserId ? " (you)" : ""}
+                      </option>
+                    ))}
+                </Select>
+              ) : (
+                <p className="py-2 text-sm font-medium text-slate-700">
+                  {profiles.find((p) => p.id === responsibleId)?.display_name || "Unknown"}
+                </p>
+              )}
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label>Confirmation letter treatments</Label>
+              <Textarea
+                name="letter_treatment_items"
+                rows={2}
+                defaultValue={initial?.letter_treatment_items ?? ""}
+                placeholder="12x Nucleoss T6 Dental Implants, 24x Dental Direkt Zirconium Crowns"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Comma-separated — each item becomes a bullet on the confirmation letter. Leave blank to fall back
+                to the Treatment field.
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Notes</Label>
+              <Textarea name="notes" rows={2} defaultValue={initial?.notes ?? ""} placeholder="Optional notes…" />
+            </div>
+
+            <div className="sm:col-span-2">
+              <Label>Komo reference</Label>
+              <Input name="komo_reference" defaultValue={initial?.komo_reference ?? ""} placeholder="Komo lead link or ID" />
+              {initial?.komo_reference && /^https?:\/\//i.test(initial.komo_reference) && (
+                <a
+                  href={initial.komo_reference}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block text-xs font-medium text-teal-600 hover:underline"
+                >
+                  Open in Komo ↗
+                </a>
+              )}
+            </div>
+            <div className="flex items-end pb-2.5">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  name="needs_visit2"
+                  checked={needsVisit2}
+                  onChange={(e) => {
+                    setNeedsVisit2(e.target.checked);
+                    if (!e.target.checked && activeTab === "visit2") setActiveTab("visit1");
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+                />
+                Needs a second visit
+              </label>
+            </div>
+            {needsVisit2 && (
+              <div>
+                <Label>Visit 2 recall (months)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  name="visit2_recall_months"
+                  defaultValue={initial?.visit2_recall_months ?? 3}
+                  title="Once visit 1 is marked completed, a “Book visit 2” task is created, due this many months later."
+                />
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Visit tabs */}
         <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
           {tabs.map((t) => (
             <button
@@ -259,133 +575,14 @@ export function PatientFormModal({
           ))}
         </div>
 
-        <div hidden={activeTab !== "details"} className="space-y-5">
-          {isEdit && (
-            <div className="rounded-lg bg-slate-50 px-3 py-2.5">
-              <Label className="mb-1">Responsible seller</Label>
-              {canReassign ? (
-                <Select
-                  value={responsibleId}
-                  disabled={reassignPending}
-                  onChange={(e) => handleReassign(e.target.value)}
-                >
-                  {profiles
-                    .filter((p) => p.is_active || p.id === responsibleId)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.display_name || "Unnamed seller"}
-                        {p.id === currentUserId ? " (you)" : ""}
-                      </option>
-                    ))}
-                </Select>
-              ) : (
-                <p className="text-sm font-medium text-slate-700">
-                  {profiles.find((p) => p.id === responsibleId)?.display_name || "Unknown"}
-                </p>
-              )}
-              <p className="mt-1 text-xs text-slate-400">
-                Earns the commission on this patient. Only they or an admin can hand it to someone else.
-              </p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Label>Name</Label>
-              <Input name="name" required defaultValue={initial?.name} placeholder="Jane Smith" />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Treatment</Label>
-              <Input
-                name="treatment"
-                defaultValue={initial?.treatment ?? ""}
-                placeholder="Full mouth veneers"
-              />
-              <p className="mt-1 text-xs text-slate-400">
-                Short label — shown on the dashboard, calendar and upcoming visits.
-              </p>
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Confirmation letter treatments</Label>
-              <Textarea
-                name="letter_treatment_items"
-                rows={2}
-                defaultValue={initial?.letter_treatment_items ?? ""}
-                placeholder="12x Nucleoss T6 Dental Implants, 24x Dental Direkt Zirconium Crowns"
-              />
-              <p className="mt-1 text-xs text-slate-400">
-                Comma-separated — each item becomes a bullet on the confirmation letter. Leave blank to fall
-                back to the Treatment field above.
-              </p>
-            </div>
-            <div>
-              <Label>Confirmation date</Label>
-              <Input type="date" name="confirmation_date" defaultValue={initial?.confirmation_date ?? ""} />
-            </div>
-            <div className="flex items-end pb-2.5">
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  name="needs_visit2"
-                  checked={needsVisit2}
-                  onChange={(e) => {
-                    setNeedsVisit2(e.target.checked);
-                    if (!e.target.checked && activeTab === "visit2") setActiveTab("details");
-                  }}
-                  className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
-                />
-                Needs a second visit
-              </label>
-            </div>
-            {needsVisit2 && (
-              <div>
-                <Label>Recall period before visit 2 (months)</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  step="1"
-                  name="visit2_recall_months"
-                  defaultValue={initial?.visit2_recall_months ?? 3}
-                />
-                <p className="mt-1 text-xs text-slate-400">
-                  Once visit 1 is marked completed, a &quot;Book visit 2&quot; task is created automatically,
-                  due this many months later.
-                </p>
-              </div>
-            )}
-            <div className="sm:col-span-2">
-              <Label>Komo reference</Label>
-              <Input
-                name="komo_reference"
-                defaultValue={initial?.komo_reference ?? ""}
-                placeholder="Komo lead link or ID"
-              />
-              {initial?.komo_reference && /^https?:\/\//i.test(initial.komo_reference) && (
-                <a
-                  href={initial.komo_reference}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-block text-xs font-medium text-teal-600 hover:underline"
-                >
-                  Open in Komo ↗
-                </a>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <Label>Notes</Label>
-            <Textarea name="notes" rows={3} defaultValue={initial?.notes ?? ""} placeholder="Optional notes…" />
-          </div>
-        </div>
-
-        <div hidden={activeTab !== "visit1"} className="space-y-5">
+        <div hidden={activeTab !== "visit1"} className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <VisitFields
             index={1}
             date={initial?.visit1_date}
             expected={initial?.visit1_expected}
             actual={initial?.visit1_actual}
             status={initial?.visit1_status}
+            pax={initial?.visit1_pax}
           />
           <TravelFields
             index={1}
@@ -406,13 +603,14 @@ export function PatientFormModal({
         </div>
 
         {needsVisit2 && (
-          <div hidden={activeTab !== "visit2"} className="space-y-5">
+          <div hidden={activeTab !== "visit2"} className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <VisitFields
               index={2}
               date={initial?.visit2_date}
               expected={initial?.visit2_expected}
               actual={initial?.visit2_actual}
               status={initial?.visit2_status}
+              pax={initial?.visit2_pax}
             />
             <TravelFields
               index={2}
@@ -433,54 +631,45 @@ export function PatientFormModal({
           </div>
         )}
 
-        {isEdit && patient && (
-          <div hidden={activeTab !== "extra"}>
-            <ExtraVisitsSection patient={patient} />
-          </div>
-        )}
-
-        {isEdit && patient && (
-          <div hidden={activeTab !== "history"}>
-            <HistorySection patient={patient} profiles={profiles} active={activeTab === "history"} />
-          </div>
-        )}
-
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
-
-        <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-          {isEdit && (
-            <div className="mr-auto flex items-center gap-1.5">
-              <Select
-                value={visitToSend}
-                onChange={(e) => setVisitToSend(e.target.value)}
-                className="w-auto"
-                aria-label="Visit to send"
-              >
-                {visitOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={handleSendTelegram}
-                disabled={telegramPending}
-              >
-                {telegramPending ? "Sending…" : "Send to Telegram"}
-              </Button>
-            </div>
-          )}
-          <Button type="button" variant="secondary" onClick={handleRequestClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : isEdit ? "Save changes" : "Add patient"}
-          </Button>
-        </div>
       </form>
-    </Modal>
+
+      {isEdit && patient && (
+        <div hidden={activeTab !== "extra"}>
+          <ExtraVisitsSection patient={patient} />
+        </div>
+      )}
+
+      {isEdit && patient && (
+        <div hidden={activeTab !== "history"}>
+          <HistorySection patient={patient} profiles={profiles} active={activeTab === "history"} />
+        </div>
+      )}
+
+      {/* Sticky save bar — only while there's something to save */}
+      {isDirty && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur print:hidden">
+          <div className="mx-auto flex max-w-6xl items-center justify-end gap-3">
+            <span className="mr-auto text-sm text-amber-700">Unsaved changes</span>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (!confirm("Discard unsaved changes?")) return;
+                setIsDirty(false);
+                dirtyRef.current = false;
+                window.location.reload();
+              }}
+            >
+              Discard
+            </Button>
+            <Button type="submit" form={FORM_ID} disabled={pending}>
+              {pending ? "Saving…" : isEdit ? "Save changes" : "Add patient"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -516,8 +705,8 @@ function TravelFields({
   roomTypeOptions?: string[];
 }) {
   return (
-    <fieldset className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-      <legend className="px-1 text-sm font-semibold text-slate-700">Visit {index} travel &amp; hotel</legend>
+    <Card className="p-5">
+      <h2 className="mb-4 text-base font-semibold text-slate-900">Visit {index} · Flights &amp; hotel</h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div>
           <Label>Arrival date</Label>
@@ -600,7 +789,7 @@ function TravelFields({
           Hotel arranged
         </label>
       </div>
-    </fieldset>
+    </Card>
   );
 }
 
@@ -779,6 +968,10 @@ function ExtraVisitFields({ visit }: { visit?: PatientExtraVisit }) {
             <option value="completed">Completed</option>
           </Select>
         </div>
+        <div>
+          <Label>Pax</Label>
+          <Input type="number" min="1" max="50" step="1" name="pax" defaultValue={visit?.pax ?? 1} />
+        </div>
       </div>
       <div>
         <Label>Treatment details</Label>
@@ -940,6 +1133,7 @@ function ExtraVisitRow({ visit }: { visit: PatientExtraVisit }) {
             : visit.expected != null
             ? ` · £${visit.expected} expected`
             : ""}
+          {` · ${visit.pax} pax`}
           {visit.hotel_name ? ` · ${visit.hotel_name}` : ""}
           {flight ? ` · ${flight}` : ""}
         </div>
@@ -991,18 +1185,20 @@ function VisitFields({
   expected,
   actual,
   status,
+  pax,
 }: {
   index: 1 | 2;
   date?: string | null;
   expected?: number | null;
   actual?: number | null;
   status?: "upcoming" | "completed";
+  pax?: number;
 }) {
   return (
-    <fieldset className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-      <legend className="px-1 text-sm font-semibold text-slate-700">Visit {index}</legend>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="col-span-2 sm:col-span-1">
+    <Card className="p-5">
+      <h2 className="mb-4 text-base font-semibold text-slate-900">Visit {index} · Treatment &amp; payment</h2>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
           <Label>Date</Label>
           <Input type="date" name={`visit${index}_date`} defaultValue={date ?? ""} />
         </div>
@@ -1021,7 +1217,12 @@ function VisitFields({
             <option value="completed">Completed</option>
           </Select>
         </div>
+        <div>
+          <Label>Pax</Label>
+          <Input type="number" min="1" max="50" step="1" name={`visit${index}_pax`} defaultValue={pax ?? 1} />
+          <p className="mt-1 text-xs text-slate-400">People travelling, patient included.</p>
+        </div>
       </div>
-    </fieldset>
+    </Card>
   );
 }

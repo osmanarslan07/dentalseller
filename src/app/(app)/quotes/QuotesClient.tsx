@@ -197,7 +197,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
         fireConfetti();
         if (soundEnabled) playChime();
         showToast(`${celebration.message} Fill in travel details.`);
-        router.push(`/patients?open=${patientId}`);
+        router.push(`/patients/${patientId}`);
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Failed to convert quote", "error");
       } finally {

@@ -26,6 +26,7 @@ const SAFE_LABELS = new Set<string>([
       "arrival transfer",
       "departure transfer",
       "hotel arranged",
+      "pax",
     ].map((f) => `${v} ${f}`)
   ),
   // extra visits (unprefixed)
@@ -41,6 +42,7 @@ const SAFE_LABELS = new Set<string>([
   "arrival transfer",
   "departure transfer",
   "hotel arranged",
+  "pax",
   // quotes
   "total",
   "currency",
@@ -59,6 +61,7 @@ const MASKED_LABELS = [
   "treatment",
   "notes",
   "komo reference",
+  "phone",
   "label",
   "intro text",
   "inclusions",

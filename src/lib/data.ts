@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, Quote, SellerRole, Task } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -106,7 +106,7 @@ export async function getProfiles(supabase: SupabaseClient): Promise<Profile[]> 
 export interface TeamMember {
   id: string;
   displayName: string | null;
-  role: SellerRole;
+  role: ProfileRole;
   isActive: boolean;
   /** Only ever populated for an admin caller — sellers must never see a colleague's email,
    * registered or still-invited. */

@@ -105,7 +105,8 @@ export async function saveClinicBranding(formData: FormData) {
     }
     const admin = createAdminClient();
     const ext = logoFile.name.split(".").pop() || "png";
-    const path = `clinic/logo.${ext}`;
+    // one folder per clinic — a shared path would let one clinic's upload replace another's logo
+    const path = `clinic/${myProfile.clinic_id}/logo.${ext}`;
     const { error: uploadError } = await admin.storage
       .from("clinic-assets")
       .upload(path, logoFile, { upsert: true, contentType: logoFile.type });

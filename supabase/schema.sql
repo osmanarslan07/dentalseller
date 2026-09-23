@@ -1065,6 +1065,125 @@ create policy "activity_log_select_admin" on public.activity_log
   for select using (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id());
 
 -- =====================================================================
+-- MULTI-TENANT MIGRATION — Phase 1 follow-up fixes + Phase 3 (superadmin platform)
+-- support. Idempotent/safe to re-run.
+-- =====================================================================
+
+-- ---------- clinic_id on insert ----------
+-- Phase 1 made clinic_id NOT NULL on every clinic-scoped table but nothing ever filled it
+-- in: the app's inserts don't pass it, and there was no default. Every patient/quote/task/
+-- visit/settings/link-code insert failed, and activity_log rows landed with a null
+-- clinic_id (invisible to the clinic's own admin feed). Filled in by trigger rather than
+-- by threading clinic_id through every insert in the app:
+--   * a signed-in caller's rows always belong to their own clinic — forced, not
+--     defaulted, so a caller can't write into another clinic by passing clinic_id
+--     explicitly (RLS already blocks that on most tables, but not activity_log);
+--   * service-role writes (no auth.uid()) keep whatever clinic_id they pass, else derive
+--     it from the row's owner — e.g. the auto "book visit 2" task, which the service-role
+--     client inserts on behalf of the patient's responsible seller.
+create or replace function public.set_row_clinic_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  owner_id uuid;
+begin
+  if auth.uid() is not null then
+    new.clinic_id := public.my_clinic_id();
+  elsif new.clinic_id is null and tg_nargs > 0 then
+    owner_id := (to_jsonb(new) ->> tg_argv[0])::uuid;
+    if tg_table_name = 'patient_visits' then
+      select clinic_id into new.clinic_id from public.patients where id = owner_id;
+    else
+      select clinic_id into new.clinic_id from public.profiles where id = owner_id;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists patients_set_clinic_id on public.patients;
+create trigger patients_set_clinic_id before insert on public.patients
+  for each row execute function public.set_row_clinic_id('responsible_seller_id');
+
+drop trigger if exists patient_visits_set_clinic_id on public.patient_visits;
+create trigger patient_visits_set_clinic_id before insert on public.patient_visits
+  for each row execute function public.set_row_clinic_id('patient_id');
+
+drop trigger if exists quotes_set_clinic_id on public.quotes;
+create trigger quotes_set_clinic_id before insert on public.quotes
+  for each row execute function public.set_row_clinic_id('user_id');
+
+drop trigger if exists tasks_set_clinic_id on public.tasks;
+create trigger tasks_set_clinic_id before insert on public.tasks
+  for each row execute function public.set_row_clinic_id('user_id');
+
+drop trigger if exists settings_set_clinic_id on public.settings;
+create trigger settings_set_clinic_id before insert on public.settings
+  for each row execute function public.set_row_clinic_id('user_id');
+
+drop trigger if exists telegram_link_codes_set_clinic_id on public.telegram_link_codes;
+create trigger telegram_link_codes_set_clinic_id before insert on public.telegram_link_codes
+  for each row execute function public.set_row_clinic_id('user_id');
+
+drop trigger if exists activity_log_set_clinic_id on public.activity_log;
+create trigger activity_log_set_clinic_id before insert on public.activity_log
+  for each row execute function public.set_row_clinic_id('actor_id');
+
+-- ---------- profile privilege guard: let the service role provision accounts ----------
+-- The Phase 1 version rejected *every* clinic_id change, and every role change without an
+-- admin auth.uid() — including the service-role client assigning a brand-new account
+-- (clinic_id still null from handle_new_user()) to its clinic. That broke addSeller, and
+-- would break creating a clinic's first admin from the platform area. No auth.uid() means
+-- the service role or a direct DB connection — both trusted, and neither reachable by an
+-- ordinary signed-in user (RLS never lets a JWT-less request update profiles). clinic_id
+-- still can't be *moved* between clinics by anyone, only assigned once.
+create or replace function public.guard_profile_privilege_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    if old.clinic_id is not null and new.clinic_id is distinct from old.clinic_id then
+      raise exception 'clinic_id cannot be changed once assigned';
+    end if;
+    return new;
+  end if;
+  if (new.role is distinct from old.role or new.is_active is distinct from old.is_active)
+     and not public.is_admin(auth.uid()) then
+    raise exception 'Only an admin can change role or active status';
+  end if;
+  if new.clinic_id is distinct from old.clinic_id then
+    raise exception 'clinic_id cannot be changed directly';
+  end if;
+  return new;
+end;
+$$;
+
+-- ---------- suspended clinics ----------
+-- clinics.is_active = false (set from the platform area) locks out that clinic's whole
+-- team at the RLS level: is_active_profile() gates every shared-record policy. A
+-- superadmin has no clinic, so the left join leaves them unaffected.
+create or replace function public.is_active_profile(uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(
+    (select p.is_active and coalesce(c.is_active, true)
+     from public.profiles p left join public.clinics c on c.id = p.clinic_id
+     where p.id = uid),
+    false
+  );
+$$;
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

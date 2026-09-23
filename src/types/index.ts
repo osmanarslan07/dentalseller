@@ -4,6 +4,10 @@ export type { DashboardCardId };
 
 export type SellerRole = "seller" | "admin";
 
+/** `superadmin` runs the platform (every clinic), belongs to no clinic, and never appears in
+ * a clinic's own team — only in the /platform area. */
+export type ProfileRole = SellerRole | "superadmin";
+
 /** Returned by a handful of server actions alongside their normal result, so the client can
  * react to a genuinely good moment (a sale, a payment, a tier jump) with confetti/a toast
  * instead of the usual plain "saved" message. `null` means nothing celebration-worthy happened
@@ -16,7 +20,9 @@ export interface Celebration {
 export interface Profile {
   id: string;
   display_name: string | null;
-  role: SellerRole;
+  role: ProfileRole;
+  /** Null only for a superadmin (and, for a moment, a brand-new account not yet assigned). */
+  clinic_id: string | null;
   telegram_chat_id: string | null;
   is_active: boolean;
   created_at: string;

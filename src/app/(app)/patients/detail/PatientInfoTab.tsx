@@ -7,13 +7,14 @@ import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { isDueNow, todayIsoLocal } from "@/lib/balance";
 import { visitExpectedTotal } from "@/lib/commission";
-import { Patient, Profile, Seller } from "@/types";
+import { Patient, PatientFile, Profile, Seller } from "@/types";
 import { SellerPick, SellerPicker } from "@/components/SellerPicker";
 import { sellerLabel } from "@/lib/sellers";
 import { reassignPatient, setPatientCoordinator, updatePatientFields } from "../actions";
 import { EditButton, EditingChip, Field, gbp, Pill, Section, Toggle } from "./bits";
 import { forVisit, shortDate, VisitView } from "./visits";
 import { useCan } from "@/components/permissions";
+import { FilesCard } from "./FilesCard";
 
 export interface DocLink {
   label: string;
@@ -123,8 +124,10 @@ export function PatientInfoTab({
   sellers,
   currentUserId,
   canAssignSellers,
+  files,
   onOpenVisit,
 }: {
+  files: PatientFile[];
   patient: Patient;
   visits: VisitView[];
   profiles: Profile[];
@@ -194,6 +197,7 @@ export function PatientInfoTab({
 
       <div className="flex flex-col gap-5">
         <VisitsAtAGlance patient={patient} visits={visits} onOpenVisit={onOpenVisit} />
+        <FilesCard patientId={patient.id} files={files} profiles={profiles} currentUserId={currentUserId} />
         <Section title="Documents">
           {docs.length === 0 ? (
             <p className="text-sm text-slate-400">Appear once a visit has a date (operations sheet) or flights (confirmation letter).</p>

@@ -3431,6 +3431,138 @@ end;
 $$;
 
 -- =====================================================================
+-- PATIENT FILES (roadmap step F). Idempotent/safe to re-run.
+-- =====================================================================
+-- A plain list of files per patient (x-rays, plans, passports…). Stored in a private bucket
+-- under {clinic_id}/{patient_id}/{uuid}-{name}; the app uploads through short-lived signed
+-- upload URLs and opens files through 1-hour signed links, both issued server-side after a
+-- permission check. The storage policies below are a second line of defence.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('patient-files', 'patient-files', false, 20971520, array[
+  'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif',
+  'application/pdf', 'text/plain', 'text/csv',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'])
+on conflict (id) do update
+  set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+create table if not exists public.patient_files (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null default public.my_clinic_id() references public.clinics(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  name text not null check (btrim(name) <> '' and char_length(name) <= 200),
+  path text not null unique,
+  size bigint not null check (size >= 0 and size <= 20971520),
+  mime text,
+  uploaded_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists patient_files_patient_idx on public.patient_files (patient_id, created_at desc);
+
+-- the file sits under its own clinic's and patient's folder, and the patient is this clinic's
+create or replace function public.validate_patient_file()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from public.patients where id = new.patient_id and clinic_id = new.clinic_id) then
+    raise exception 'Patient not found';
+  end if;
+  if tg_op = 'INSERT' and split_part(new.path, '/', 1) || '/' || split_part(new.path, '/', 2)
+       <> new.clinic_id::text || '/' || new.patient_id::text then
+    raise exception 'File path doesn''t match the patient';
+  end if;
+  if tg_op = 'UPDATE' and (new.path is distinct from old.path or new.patient_id is distinct from old.patient_id
+                           or new.clinic_id is distinct from old.clinic_id or new.uploaded_by is distinct from old.uploaded_by
+                           or new.size is distinct from old.size) then
+    raise exception 'Only a file''s name can be changed';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists patient_files_validate on public.patient_files;
+create trigger patient_files_validate
+  before insert or update on public.patient_files
+  for each row execute function public.validate_patient_file();
+
+alter table public.patient_files enable row level security;
+
+drop policy if exists "patient_files_select" on public.patient_files;
+create policy "patient_files_select" on public.patient_files
+  for select using (public.has_permission(auth.uid(), 'patients.view') and clinic_id = public.my_clinic_id());
+
+drop policy if exists "patient_files_insert" on public.patient_files;
+create policy "patient_files_insert" on public.patient_files
+  for insert with check (
+    public.has_permission(auth.uid(), 'files.manage') and clinic_id = public.my_clinic_id() and uploaded_by = auth.uid()
+  );
+
+-- rename / delete: whoever uploaded it, or an admin (patients.delete)
+drop policy if exists "patient_files_update" on public.patient_files;
+create policy "patient_files_update" on public.patient_files
+  for update using (
+    public.has_permission(auth.uid(), 'files.manage') and clinic_id = public.my_clinic_id()
+    and (uploaded_by = auth.uid() or public.has_permission(auth.uid(), 'patients.delete'))
+  )
+  with check (public.has_permission(auth.uid(), 'files.manage') and clinic_id = public.my_clinic_id());
+
+drop policy if exists "patient_files_delete" on public.patient_files;
+create policy "patient_files_delete" on public.patient_files
+  for delete using (
+    public.has_permission(auth.uid(), 'files.manage') and clinic_id = public.my_clinic_id()
+    and (uploaded_by = auth.uid() or public.has_permission(auth.uid(), 'patients.delete'))
+  );
+
+drop policy if exists "patient_files_support_readonly_insert" on public.patient_files;
+create policy "patient_files_support_readonly_insert" on public.patient_files
+  as restrictive for insert with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "patient_files_support_readonly_update" on public.patient_files;
+create policy "patient_files_support_readonly_update" on public.patient_files
+  as restrictive for update using (not public.is_superadmin(auth.uid()) or public.support_can_write())
+  with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "patient_files_support_readonly_delete" on public.patient_files;
+create policy "patient_files_support_readonly_delete" on public.patient_files
+  as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write());
+
+-- ---------- storage: the clinic's own folder only ----------
+drop policy if exists "patient_files_objects_select" on storage.objects;
+create policy "patient_files_objects_select" on storage.objects
+  for select to authenticated using (
+    bucket_id = 'patient-files'
+    and (storage.foldername(name))[1] = public.my_clinic_id()::text
+    and public.has_permission(auth.uid(), 'patients.view')
+  );
+drop policy if exists "patient_files_objects_insert" on storage.objects;
+create policy "patient_files_objects_insert" on storage.objects
+  for insert to authenticated with check (
+    bucket_id = 'patient-files'
+    and (storage.foldername(name))[1] = public.my_clinic_id()::text
+    and public.has_permission(auth.uid(), 'files.manage')
+    and (not public.is_superadmin(auth.uid()) or public.support_can_write())
+  );
+drop policy if exists "patient_files_objects_delete" on storage.objects;
+create policy "patient_files_objects_delete" on storage.objects
+  for delete to authenticated using (
+    bucket_id = 'patient-files'
+    and (storage.foldername(name))[1] = public.my_clinic_id()::text
+    and public.has_permission(auth.uid(), 'files.manage')
+    and (not public.is_superadmin(auth.uid()) or public.support_can_write())
+  );
+
+-- Support opening a patient's file is part of the support access log, like reading its history.
+alter table public.support_access_log drop constraint if exists support_access_log_event_check;
+alter table public.support_access_log add constraint support_access_log_event_check check (event in (
+  'session_started', 'session_ended', 'session_extended',
+  'editing_unlocked', 'editing_locked', 'view_as_changed',
+  'page_viewed', 'record_history_viewed', 'record_file_opened', 'change_made'
+));
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getClinicConfig, getPatientTransfers, getTransferCompanies } from "@/lib/data";
+import { getClinicConfig, getPatientFiles, getPatientTransfers, getTransferCompanies } from "@/lib/data";
 import { PatientDetail } from "../PatientDetail";
 import { loadPatientPageContext } from "../detail-data";
 import { requirePagePermission } from "@/lib/permissions";
@@ -16,10 +16,11 @@ export default async function PatientPage({
   const ctx = await loadPatientPageContext();
   const patient = ctx.patients.find((p) => p.id === id);
   if (!patient) notFound();
-  const [transfers, companies, clinicConfig] = await Promise.all([
+  const [transfers, companies, clinicConfig, files] = await Promise.all([
     getPatientTransfers(ctx.supabase, patient.id),
     getTransferCompanies(ctx.supabase),
     getClinicConfig(ctx.supabase),
+    getPatientFiles(ctx.supabase, patient.id),
   ]);
 
   return (
@@ -36,6 +37,7 @@ export default async function PatientPage({
       currentUserId={ctx.currentUserId}
       canAssignSellers={ctx.canAssignSellers}
       transfers={transfers}
+      files={files}
       companies={companies}
       surchargeRate={clinicConfig.cardSurchargeRate}
       deductCosts={clinicConfig.deductCostsFromCommission}

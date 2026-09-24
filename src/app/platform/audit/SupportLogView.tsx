@@ -14,6 +14,7 @@ const EVENT_LABELS: Record<string, string> = {
   view_as_changed: "Viewing as",
   page_viewed: "Opened",
   record_history_viewed: "Viewed history of",
+  record_file_opened: "Opened a file of",
   change_made: "Changed",
 };
 
@@ -23,6 +24,7 @@ const EVENT_TONES: Record<string, "slate" | "green" | "amber" | "blue" | "red"> 
   editing_unlocked: "amber",
   change_made: "red",
   record_history_viewed: "blue",
+  record_file_opened: "blue",
 };
 
 /** The support access log: every support session, what was opened and what was changed —

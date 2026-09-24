@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, Patient, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, Patient, PatientFile, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { visitCosts } from "@/lib/commission";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -398,4 +398,20 @@ export async function getRateHistory(
 
   if (error) throw error;
   return (data ?? []).map((d) => ({ rate_date: d.rate_date, rate: Number(d.rate) }));
+}
+
+/** A patient's files, newest first. */
+export async function getPatientFiles(supabase: SupabaseClient, patientId: string): Promise<PatientFile[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from("patient_files")
+      .select("id, patient_id, name, path, size, mime, uploaded_by, created_at")
+      .eq("patient_id", patientId)
+      .eq("clinic_id", clinicId)
+      .order("created_at", { ascending: false })
+  );
+  if (error) throw error;
+  return ((data ?? []) as PatientFile[]).map((f) => ({ ...f, size: Number(f.size) }));
 }

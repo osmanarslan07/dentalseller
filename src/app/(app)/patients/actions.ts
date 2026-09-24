@@ -16,6 +16,7 @@ import { recordSupportEvent } from "@/lib/support-log";
 import { recordRef } from "@/lib/activity-mask";
 import { visitDiscount, visitDiscountSetting, visitExpectedTotal } from "@/lib/commission";
 import { extraLabel, extrasFor } from "@/lib/balance";
+import { PATIENT_FILE_BUCKET } from "@/lib/patient-files";
 import { can, requirePermission } from "@/lib/permissions";
 
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
@@ -660,8 +661,18 @@ export async function deletePatient(id: string) {
     throw new Error("Only the patient's own seller or an admin can delete this patient");
   }
 
+  // their files go with them: rows cascade, the stored files are removed here
+  const { data: files } = await supabase.from("patient_files").select("path").eq("patient_id", id);
+
   const { error } = await supabase.from("patients").delete().eq("id", id);
   if (error) throw new Error(error.message);
+
+  if (files?.length) {
+    const { error: removeError } = await createAdminClient()
+      .storage.from(PATIENT_FILE_BUCKET)
+      .remove(files.map((f) => f.path as string));
+    if (removeError) console.error("Removing a deleted patient's files failed:", removeError.message);
+  }
 
   await logActivity(supabase, user.actorId, "patient_deleted", "patient", id, patient?.name ?? undefined);
 

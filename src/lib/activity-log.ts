@@ -127,6 +127,18 @@ export function describeActivity(
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       return `${actor} deleted a payment for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
     }
+    case "file_uploaded": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} uploaded ${entry.detail ?? "a file"} to ${patientName}`;
+    }
+    case "file_renamed": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} renamed a file of ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
+    }
+    case "file_deleted": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} deleted ${entry.detail ?? "a file"} from ${patientName}`;
+    }
     case "discount_set": {
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       return `${actor} gave ${patientName} a discount${entry.detail ? ` — ${entry.detail}` : ""}`;

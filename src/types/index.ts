@@ -92,6 +92,19 @@ export interface Seller {
 
 export type VisitStatus = "upcoming" | "completed";
 
+/** A file kept on a patient (x-ray, treatment plan, passport…). The file itself is in the
+ * private patient-files bucket; open it through a signed link (getPatientFileLink). */
+export interface PatientFile {
+  id: string;
+  patient_id: string;
+  name: string;
+  path: string;
+  size: number;
+  mime: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
 /** A visit's discount: a fixed £ amount or a % of the visit's price + extras. */
 export type DiscountType = "amount" | "percent";
 

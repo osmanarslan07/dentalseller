@@ -9,7 +9,7 @@ import { useToast } from "@/components/Toast";
 import { ActivityLogRow } from "@/lib/activity-log";
 import { isMismatch, patientDueNow, todayIsoLocal, visitBalances } from "@/lib/balance";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
-import { DEFAULT_CLINIC_CONFIG, DriverMessagesMode, Patient, Profile, Seller, Transfer, TransferCompany, TransferDefaults } from "@/types";
+import { DEFAULT_CLINIC_CONFIG, DriverMessagesMode, Patient, PatientFile, Profile, Seller, Transfer, TransferCompany, TransferDefaults } from "@/types";
 import { addExtraVisit, deletePatient, getPatientActivity, sendPatientTelegramMessage, updatePatientFields } from "./actions";
 import { ChevronIcon, KebabIcon, Menu } from "./detail/Menu";
 import { gbp, Pill } from "./detail/bits";
@@ -35,6 +35,7 @@ export function PatientDetail({
   currentUserId = "",
   canAssignSellers = false,
   transfers = [],
+  files = [],
   companies = [],
   surchargeRate = 0.03,
   deductCosts = false,
@@ -54,6 +55,8 @@ export function PatientDetail({
   canAssignSellers?: boolean;
   /** Every transfer of this patient, all visits. */
   transfers?: Transfer[];
+  /** The patient's files (Patient info tab). */
+  files?: PatientFile[];
   companies?: TransferCompany[];
   /** The clinic's card surcharge rate (System settings). */
   surchargeRate?: number;
@@ -352,7 +355,7 @@ export function PatientDetail({
         />
       )}
       {activeTab === "info" && (
-        <PatientInfoTab patient={patient} visits={visits} profiles={profiles} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} onOpenVisit={setTab} />
+        <PatientInfoTab patient={patient} visits={visits} profiles={profiles} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} files={files} onOpenVisit={setTab} />
       )}
       {activeTab === "history" && <HistoryTab patient={patient} profiles={profiles} sellers={sellers} entries={history} error={historyError} />}
 

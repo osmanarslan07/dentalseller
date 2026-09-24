@@ -8,7 +8,8 @@ export type SupportLogEvent =
   | "editing_locked"
   | "view_as_changed"
   | "page_viewed"
-  | "record_history_viewed";
+  | "record_history_viewed"
+  | "record_file_opened";
 
 /** Appends to the tamper-evident support access log (hash-chained in the database). Never
  * patient data: paths, staff names and record references only. Best-effort — the support

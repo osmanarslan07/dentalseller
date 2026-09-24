@@ -144,7 +144,11 @@ Changing a discount needs `money.edit` (DB trigger); set/remove is logged.
   operations sheet; "mark completed" mismatch check; History / activity log.
 - Paid commission is unaffected by design (actual = sum of payments).
 
-### Step F — Patient files ☐
+### Step F — Patient files ◐ (built 2026-09-24, SQL not applied yet — waiting for your test)
+Built as designed below. Uploads go browser → Storage through signed upload URLs issued by a
+server action (Vercel's request-size limit rules out uploading through the app), then the
+action records the rows after checking the files arrived. Support opening a file is written
+to the support access log (`record_file_opened`).
 - Private Storage bucket `patient-files`, path `{clinic_id}/{patient_id}/{uuid}-{name}`;
   storage RLS by clinic folder; opened via 1-hour signed links. 20 MB per file; images, PDF,
   Office docs, text.

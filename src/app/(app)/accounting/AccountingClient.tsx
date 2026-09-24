@@ -8,7 +8,8 @@ import { monthLabel } from "@/lib/commission";
 import { isMismatch, todayIsoLocal as todayIso, visitBalances } from "@/lib/balance";
 import { visitLabel } from "@/lib/visit-key";
 import { downloadCsv, escapeCsv } from "@/lib/csv";
-import { Patient, PatientPayment, PaymentMethod, Profile } from "@/types";
+import { Patient, PatientPayment, PaymentMethod, Profile, Seller } from "@/types";
+import { sellerNameMap } from "@/lib/sellers";
 
 const METHOD_LABELS: Record<PaymentMethod, string> = { cash: "Cash", card: "Card", bank: "Bank transfer" };
 const gbp = (n: number) => formatCurrency(n, "GBP");
@@ -17,11 +18,12 @@ type LedgerRow = { payment: PatientPayment; patient: Patient; visit: string };
 
 /** Pre-accounting: what came in (by month, split by method) and what's still open. Money
  * collected only — no commission here, so every team member can use it. */
-export function AccountingClient({ patients, profiles }: { patients: Patient[]; profiles: Profile[] }) {
+export function AccountingClient({ patients, profiles, sellers }: { patients: Patient[]; profiles: Profile[]; sellers: Seller[] }) {
   const today = todayIso();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [receivedBy, setReceivedBy] = useState("all");
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name || "—";
+  const sellerNames = sellerNameMap(sellers);
 
   const allPayments: LedgerRow[] = useMemo(
     () =>
@@ -243,7 +245,7 @@ export function AccountingClient({ patients, profiles }: { patients: Patient[]; 
                         <Badge tone="blue">Overpaid {gbp(-b.due)}</Badge>
                       )}
                     </td>
-                    <td className="py-2.5 pr-5 text-slate-600">{nameOf(patient.responsible_seller_id)}</td>
+                    <td className="py-2.5 pr-5 text-slate-600">{sellerNames.get(patient.responsible_seller_id) ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

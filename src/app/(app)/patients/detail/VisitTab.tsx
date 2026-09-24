@@ -7,13 +7,14 @@ import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { isDueNow, todayIsoLocal } from "@/lib/balance";
 import { visitCosts } from "@/lib/commission";
-import { DriverMessagesMode, Patient, Profile, Transfer, TransferCompany, TransferDefaults } from "@/types";
+import { DriverMessagesMode, Patient, Profile, Seller, Transfer, TransferCompany, TransferDefaults } from "@/types";
 import { deleteExtraVisit, sendPatientTelegramMessage, updatePatientFields, updateVisitFields } from "../actions";
 import { KebabIcon, Menu, MenuItem } from "./Menu";
 import { CheckIcon, EditButton, EditingChip, gbp, LABEL_CAPS, Pill, Section, Stepper, Toggle } from "./bits";
 import { MoneyCard } from "./MoneyCard";
 import { TransfersCard } from "./TransfersCard";
 import { forVisit, nightsBetween, shortDate, travelOf, VisitView } from "./visits";
+import { sellerLabel } from "@/lib/sellers";
 
 export interface VisitTabProps {
   patient: Patient;
@@ -23,6 +24,7 @@ export interface VisitTabProps {
   transfers: Transfer[];
   companies: TransferCompany[];
   profiles: Profile[];
+  sellers: Seller[];
   currentUserId: string;
   surchargeRate: number;
   deductCosts: boolean;
@@ -44,7 +46,7 @@ export function visitStage(v: VisitView, today: string): { label: string; tone: 
 
 /** Everything about one visit: a summary strip, travel & hotel, money and transfers. */
 export function VisitTab(props: VisitTabProps) {
-  const { patient, visit, transfers, profiles, currentUserId, surchargeRate, deductCosts, companies, transferDefaults, driverMessages, isAdmin } = props;
+  const { patient, visit, transfers, profiles, sellers, currentUserId, surchargeRate, deductCosts, companies, transferDefaults, driverMessages, isAdmin } = props;
   const today = todayIsoLocal();
   const payments = forVisit(patient.payments, visit.key);
   const extras = forVisit(patient.extras, visit.key);
@@ -53,7 +55,8 @@ export function VisitTab(props: VisitTabProps) {
   const owed = Math.round(((visit.expected ?? 0) + extrasTotal) * 100) / 100;
   const paid = Math.round(payments.reduce((s, p) => s + p.amount, 0) * 100) / 100;
   const dueNow = isDueNow({ key: visit.key, label: visit.label, date: visit.date, status: visit.status, owed, paid, due: owed - paid }, today);
-  const sellerName = profiles.find((p) => p.id === patient.responsible_seller_id)?.display_name || "the seller";
+  const seller = sellers.find((s) => s.id === patient.responsible_seller_id);
+  const sellerName = seller ? sellerLabel(seller) : "the seller";
 
   return (
     <div className="flex flex-col gap-5">

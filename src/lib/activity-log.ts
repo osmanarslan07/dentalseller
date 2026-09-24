@@ -82,6 +82,20 @@ export function describeActivity(
       return `${actor} deleted seller (${entry.detail ?? "unknown email"})`;
     case "password_reset":
       return `${actor} reset ${target}'s password`;
+    case "seller_record_added":
+      return `${actor} added seller ${entry.detail ?? ""} (no account)`.trim();
+    case "seller_record_renamed":
+      return `${actor} renamed seller ${entry.detail ?? ""}`.trim();
+    case "seller_record_activated":
+      return `${actor} reactivated seller ${target}`;
+    case "seller_record_deactivated":
+      return `${actor} deactivated seller ${target}`;
+    case "seller_record_deleted":
+      return `${actor} removed seller ${entry.detail ?? ""}`.trim();
+    case "seller_record_merged":
+      return `${actor} merged seller ${entry.detail ?? ""}`.trim();
+    case "seller_commission_updated":
+      return `${actor} changed ${target}'s commission rates`;
     case "patient_reassigned": {
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       const newSeller = (entry.detail && nameById.get(entry.detail)) || "another seller";

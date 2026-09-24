@@ -6,10 +6,12 @@ import { addMonths, format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPatient } from "@/lib/data";
+import { normalizePhone } from "@/lib/phone";
+import { SellerChoice, resolveSellerChoice, sellerChoiceFromForm } from "@/lib/seller-choice";
 import { getEnvChatsClinicId, getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { ActivityLogRow, diffFields, logActivity } from "@/lib/activity-log";
 import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
-import { getActingUser } from "@/lib/viewer";
+import { getActingUser, getViewer } from "@/lib/viewer";
 import { recordSupportEvent } from "@/lib/support-log";
 import { recordRef } from "@/lib/activity-mask";
 import { visitExpectedTotal } from "@/lib/commission";
@@ -24,12 +26,12 @@ function addMonthsToDateString(dateStr: string, months: number): string {
 
 /** Auto-creates the "book visit 2" reminder the moment visit 1 is marked completed — no
  * button, no manual step. Runs with the service-role client since the task has to belong to
- * the patient's responsible seller, who may not be whoever's saving this particular edit
+ * `taskOwnerId` (see followUpOwner), who may not be whoever's saving this particular edit
  * (any active seller can update a shared patient record). Best-effort: a failure here
  * should never break the patient save it's attached to. */
 async function maybeCreateFollowUpTask(
   patientId: string,
-  responsibleSellerId: string,
+  taskOwnerId: string,
   input: Pick<PatientInput, "name" | "visit1_status" | "needs_visit2" | "visit1_date" | "visit2_date" | "visit2_recall_months">
 ) {
   if (!(input.visit1_status === "completed" && input.needs_visit2 && input.visit1_date && !input.visit2_date)) return;
@@ -40,7 +42,7 @@ async function maybeCreateFollowUpTask(
       .from("tasks")
       .select("id")
       .eq("patient_id", patientId)
-      .eq("user_id", responsibleSellerId)
+      .eq("user_id", taskOwnerId)
       .eq("status", "pending")
       .eq("title", title)
       .maybeSingle();
@@ -48,7 +50,7 @@ async function maybeCreateFollowUpTask(
 
     const dueDate = addMonthsToDateString(input.visit1_date, input.visit2_recall_months);
     await admin.from("tasks").insert({
-      user_id: responsibleSellerId,
+      user_id: taskOwnerId,
       title,
       due_date: dueDate,
       patient_id: patientId,
@@ -60,17 +62,31 @@ async function maybeCreateFollowUpTask(
   }
 }
 
-/** The responsible seller's own chat plus the clinic-wide fallback (deduped) — so a
- * notification never silently disappears just because a seller hasn't linked Telegram yet.
- * The fallback only applies to the clinic that owns the env chats (see getEnvChatsClinicId). */
-async function getRecipientChatIds(supabase: SupabaseClient, sellerId: string): Promise<string[]> {
-  const [{ data }, envChatsClinicId] = await Promise.all([
-    supabase.from("profiles").select("telegram_chat_id, clinic_id").eq("id", sellerId).maybeSingle(),
+/** A task has to land with an account: the seller's own, else the patient's coordinator,
+ * else whoever is saving. */
+async function followUpOwner(
+  supabase: SupabaseClient,
+  patient: Pick<Patient, "responsible_seller_id" | "coordinator_id">,
+  fallbackId: string
+): Promise<string> {
+  const { data } = await supabase.from("sellers").select("profile_id").eq("id", patient.responsible_seller_id).maybeSingle();
+  return data?.profile_id ?? patient.coordinator_id ?? fallbackId;
+}
+
+/** The seller's and coordinator's own chats plus the clinic-wide fallback (deduped) — so a
+ * notification never silently disappears just because someone hasn't linked Telegram yet, or
+ * the seller has no account at all. The fallback only applies to the clinic that owns the env
+ * chats (see getEnvChatsClinicId). */
+async function getRecipientChatIds(supabase: SupabaseClient, peopleIds: (string | null)[]): Promise<string[]> {
+  const wanted = [...new Set(peopleIds.filter((id): id is string => !!id))];
+  const [{ data }, envChatsClinicId, viewer] = await Promise.all([
+    supabase.from("profiles").select("telegram_chat_id").in("id", wanted),
     getEnvChatsClinicId(),
+    getViewer(),
   ]);
   const ids = new Set<string>();
-  if (data?.telegram_chat_id) ids.add(data.telegram_chat_id);
-  const fallback = getFallbackChatId(data?.clinic_id ?? null, envChatsClinicId);
+  for (const p of data ?? []) if (p.telegram_chat_id) ids.add(p.telegram_chat_id);
+  const fallback = getFallbackChatId(viewer?.clinicId ?? null, envChatsClinicId);
   if (fallback) ids.add(fallback);
   return [...ids];
 }
@@ -303,7 +319,7 @@ function parseInput(formData: FormData): PatientInput {
 
   return {
     name: String(formData.get("name") ?? "").trim(),
-    phone: str("phone")?.trim() || null,
+    phone: normalizePhone(str("phone")),
     treatment: str("treatment"),
     letter_treatment_items: str("letter_treatment_items"),
     confirmation_date: str("confirmation_date"),
@@ -352,19 +368,25 @@ export async function createPatient(formData: FormData) {
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
 
+  // Entering a patient for someone else makes you its coordinator — the one who follows up.
+  const seller = await resolveSellerChoice(supabase, sellerChoiceFromForm(formData), user.id);
+  const coordinatorId = seller.id === user.id ? null : user.id;
+
   const { data: created, error } = await supabase
     .from("patients")
-    .insert({ ...input, responsible_seller_id: user.id })
+    .insert({ ...input, responsible_seller_id: seller.id, coordinator_id: coordinatorId })
     .select("id")
     .single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(/row-level security/i.test(error.message) ? "Only an admin can add a patient for another seller" : error.message);
+  }
 
   await logActivity(supabase, user.actorId, "patient_created", "patient", created?.id ?? null, input.name);
 
-  if (created?.id) await maybeCreateFollowUpTask(created.id, user.id, input);
+  if (created?.id) await maybeCreateFollowUpTask(created.id, seller.hasAccount ? seller.id : coordinatorId ?? user.id, input);
 
   try {
-    const chatIds = await getRecipientChatIds(supabase, user.id);
+    const chatIds = await getRecipientChatIds(supabase, [seller.id, coordinatorId]);
     if (chatIds.length > 0) await sendTelegramMessageToMany(chatIds, buildNewPatientMessage(input));
   } catch (err) {
     console.error("Telegram notify failed:", err);
@@ -378,9 +400,9 @@ export async function createPatient(formData: FormData) {
   const { count } = await supabase
     .from("patients")
     .select("id", { count: "exact", head: true })
-    .eq("responsible_seller_id", user.id);
+    .eq("responsible_seller_id", seller.id);
   const celebration: Celebration =
-    (count ?? 0) <= 1
+    seller.id === user.id && (count ?? 0) <= 1
       ? { kind: "confetti", message: `🌟 ${input.name} is your first patient — welcome aboard!` }
       : { kind: "confetti", message: `🎉 ${input.name} confirmed!` };
 
@@ -389,7 +411,7 @@ export async function createPatient(formData: FormData) {
 
 /** How each field saved on its own from the patient page is cleaned up — the page's cards save
  * just their own fields, so each one is checked here rather than trusting the client's shape. */
-type FieldKind = "text" | "requiredText" | "date" | "time" | "money" | "pax" | "status" | "bool" | "months";
+type FieldKind = "text" | "phone" | "requiredText" | "date" | "time" | "money" | "pax" | "status" | "bool" | "months";
 
 function cleanField(kind: FieldKind, v: unknown): unknown {
   switch (kind) {
@@ -399,6 +421,8 @@ function cleanField(kind: FieldKind, v: unknown): unknown {
       if (kind === "requiredText" && !s) throw new Error("This field can't be empty");
       return s || null;
     }
+    case "phone":
+      return normalizePhone(typeof v === "string" ? v : null);
     case "date":
       return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
     case "time": {
@@ -440,7 +464,7 @@ function cleanPatch(patch: Record<string, unknown>, allowed: Record<string, Fiel
 
 const PATIENT_FIELD_KINDS: Record<string, FieldKind> = {
   name: "requiredText",
-  phone: "text",
+  phone: "phone",
   treatment: "text",
   letter_treatment_items: "text",
   notes: "text",
@@ -524,7 +548,7 @@ export async function updateVisitFields(patientId: string, visitKey: string, pat
     const changes = diffFields(before, after, PATIENT_AUDIT_FIELDS);
     if (changes) await logActivity(supabase, user.actorId, "patient_updated", "patient", patientId, changes);
     if (before.visit1_status !== "completed" && after.visit1_status === "completed") {
-      await maybeCreateFollowUpTask(patientId, before.responsible_seller_id, after);
+      await maybeCreateFollowUpTask(patientId, await followUpOwner(supabase, before, user.id), after);
     }
   } else {
     const cleaned = cleanPatch(patch, { ...VISIT_FIELD_KINDS, ...EXTRA_ONLY_FIELD_KINDS });
@@ -560,8 +584,8 @@ export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   const patient = await getPatient(supabase, id);
   if (!patient) throw new Error("Patient not found");
 
-  const chatIds = await getRecipientChatIds(supabase, patient.responsible_seller_id);
-  if (chatIds.length === 0) throw new Error("No Telegram chat linked for this patient's seller");
+  const chatIds = await getRecipientChatIds(supabase, [patient.responsible_seller_id, patient.coordinator_id]);
+  if (chatIds.length === 0) throw new Error("No Telegram chat linked for this patient's seller or coordinator");
   await sendTelegramMessageToMany(chatIds, buildVisitMessage(patient, visitKey));
 
   await logActivity(supabase, user.actorId, "patient_telegram_sent", "patient", id, visitKey);
@@ -572,21 +596,38 @@ export async function sendPatientTelegramMessage(id: string, visitKey: string) {
  * moves commission the previous seller already earned (see visit*_earned_by_seller_id).
  * A separate DB trigger enforces that only the current responsible seller or an admin may
  * reassign at all. */
-export async function reassignPatient(id: string, newSellerId: string) {
+export async function reassignPatient(id: string, choice: SellerChoice) {
   const supabase = await createClient();
   const user = await getActingUser();
 
+  const seller = await resolveSellerChoice(supabase, choice, "");
   const { error } = await supabase
     .from("patients")
-    .update({ responsible_seller_id: newSellerId })
+    .update({ responsible_seller_id: seller.id })
     .eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.actorId, "patient_reassigned", "patient", id, newSellerId);
+  await logActivity(supabase, user.actorId, "patient_reassigned", "patient", id, seller.id);
 
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/earnings");
+  revalidatePath("/team");
+}
+
+/** The team member who follows this patient up; null clears it. Anyone who can edit the
+ * patient can set it — the database checks they belong to this clinic. */
+export async function setPatientCoordinator(id: string, coordinatorId: string | null) {
+  const supabase = await createClient();
+  const user = await getActingUser();
+
+  const { error } = await supabase.from("patients").update({ coordinator_id: coordinatorId || null }).eq("id", id);
+  if (error) throw new Error(error.message);
+
+  await logActivity(supabase, user.actorId, "patient_updated", "patient", id, coordinatorId ? "coordinator changed" : "coordinator removed");
+
+  revalidatePath("/patients");
+  revalidatePath("/");
 }
 
 export async function deletePatient(id: string) {

@@ -15,7 +15,8 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { Patient, Profile } from "@/types";
+import { Patient, Seller } from "@/types";
+import { sellerLabel } from "@/lib/sellers";
 import { Button, Card, Select } from "@/components/ui";
 import { CalendarEvent, KIND_STYLES, flattenCalendarEvents, groupEventsByDate } from "@/lib/calendar-events";
 
@@ -24,26 +25,26 @@ const MAX_VISIBLE = 3;
 
 export function CalendarClient({
   patients,
-  profiles,
+  sellers,
   currentUserId,
 }: {
   patients: Patient[];
-  profiles: Profile[];
+  sellers: Seller[];
   currentUserId: string;
 }) {
   const sellerName = useMemo(() => {
-    const map = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
+    const map = new Map(sellers.map((s) => [s.id, sellerLabel(s)]));
     return (id: string) => map.get(id) ?? "Unknown";
-  }, [profiles]);
+  }, [sellers]);
 
   // Only sellers who actually have a patient here — no point listing an empty roster.
   const sellerOptions = useMemo(() => {
     const ids = new Set(patients.map((p) => p.responsible_seller_id));
-    return profiles
-      .filter((p) => ids.has(p.id))
-      .map((p) => ({ id: p.id, name: p.display_name || "Unnamed seller" }))
+    return sellers
+      .filter((s) => ids.has(s.id))
+      .map((s) => ({ id: s.id, name: sellerLabel(s) }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [patients, profiles]);
+  }, [patients, sellers]);
 
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);

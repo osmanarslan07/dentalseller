@@ -10,7 +10,9 @@ export default async function NewPatientPage({ searchParams }: { searchParams: P
     <NewPatientForm
       key={duplicateFrom?.id ?? "new"}
       duplicateFrom={duplicateFrom}
-      profiles={ctx.profiles}
+      sellers={ctx.sellers}
+      currentUserId={ctx.currentUserId}
+      isAdmin={ctx.isAdmin}
       existingPatients={ctx.patients.map(({ id, name, confirmation_date, responsible_seller_id }) => ({
         id,
         name,

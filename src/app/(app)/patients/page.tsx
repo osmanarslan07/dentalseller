@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getSettings } from "@/lib/data";
+import { getPatients, getSellers, getSettings } from "@/lib/data";
 import { PatientsClient } from "./PatientsClient";
 import { getViewerUser } from "@/lib/viewer";
 
@@ -17,17 +17,17 @@ export default async function PatientsPage({
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const user = await getViewerUser();
   const currentUserId = user?.id ?? "";
-  const [patients, settings, profiles] = await Promise.all([
+  const [patients, settings, sellers] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, currentUserId),
-    getProfiles(supabase),
+    getSellers(supabase),
   ]);
   return (
     <PatientsClient
       patients={patients}
       settings={settings}
       initialQuery={params.q ?? ""}
-      profiles={profiles}
+      sellers={sellers}
       currentUserId={currentUserId}
     />
   );

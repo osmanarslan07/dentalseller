@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Patient, CommissionSettings, Profile } from "@/types";
+import { Patient, CommissionSettings, Seller } from "@/types";
+import { sellerLabel } from "@/lib/sellers";
 import {
   computeMonthlyAggregates,
   monthLabel,
@@ -322,19 +323,19 @@ export function PatientsClient({
   patients,
   settings,
   initialQuery,
-  profiles,
+  sellers,
   currentUserId,
 }: {
   patients: Patient[];
   settings: CommissionSettings;
   initialQuery: string;
-  profiles: Profile[];
+  sellers: Seller[];
   currentUserId: string;
 }) {
   const sellerName = useMemo(() => {
-    const map = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
+    const map = new Map(sellers.map((s) => [s.id, sellerLabel(s)]));
     return (id: string) => map.get(id) ?? "Unknown";
-  }, [profiles]);
+  }, [sellers]);
   const router = useRouter();
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState(initialQuery);
@@ -392,11 +393,11 @@ export function PatientsClient({
   // listing a colleague with an empty roster.
   const sellerOptions = useMemo(() => {
     const ids = new Set(patients.map((p) => p.responsible_seller_id));
-    return profiles
-      .filter((p) => ids.has(p.id))
-      .map((p) => ({ id: p.id, name: p.display_name || "Unnamed seller" }))
+    return sellers
+      .filter((s) => ids.has(s.id))
+      .map((s) => ({ id: s.id, name: sellerLabel(s) }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [patients, profiles]);
+  }, [patients, sellers]);
 
   const rows = useMemo(() => {
     let list = patients.map((p) => {

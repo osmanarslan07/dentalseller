@@ -13,7 +13,8 @@ import {
   setExtraVisitLogisticsFlag,
   setPatientLogisticsFlag,
 } from "./patients/actions";
-import { Patient, Profile } from "@/types";
+import { Patient, Seller } from "@/types";
+import { sellerLabel } from "@/lib/sellers";
 import { isMismatch, visitBalances } from "@/lib/balance";
 import { visitExpectedTotal } from "@/lib/commission";
 
@@ -80,14 +81,14 @@ type PaymentMismatch = {
  * and a "Responsible: X" label once there's more than one seller's data on screen. */
 export function TeamOperationsPanel({
   allPatients,
-  profiles,
+  sellers,
   currentUserId,
   currency,
   todayIso,
   monthAheadIso,
 }: {
   allPatients: Patient[];
-  profiles: Profile[];
+  sellers: Seller[];
   currentUserId: string;
   currency: string;
   todayIso: string;
@@ -114,9 +115,9 @@ export function TeamOperationsPanel({
   }
 
   const sellerName = useMemo(() => {
-    const map = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
+    const map = new Map(sellers.map((s) => [s.id, sellerLabel(s)]));
     return (id: string) => map.get(id) ?? "Unknown";
-  }, [profiles]);
+  }, [sellers]);
 
   const patients = useMemo(
     () => (scope === "mine" ? allPatients.filter((p) => p.responsible_seller_id === currentUserId) : allPatients),

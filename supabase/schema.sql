@@ -2387,6 +2387,368 @@ alter table public.transfers add column if not exists wa_error text;
 create index if not exists transfers_wa_message_id_idx on public.transfers (wa_message_id) where wa_message_id is not null;
 
 -- =====================================================================
+-- SELLERS AS RECORDS, NOT ACCOUNTS (roadmap step A). Idempotent/safe to re-run.
+-- =====================================================================
+-- A seller is whoever gets credit (and commission) for a sale; an account is whoever logs
+-- in. In many clinics sellers never log in — a coordinator enters their patients — so a
+-- seller no longer has to be an account.
+--
+-- Every clinic account has a seller record with the SAME id (kept in sync from profiles
+-- below), so every existing responsible_seller_id / earned_by_seller_id value stays valid
+-- as-is; only the foreign keys move from auth.users to sellers. A seller without an account
+-- is a record with profile_id = null. Linking one to an account later is a merge
+-- (merge_sellers) into that account's record.
+create table if not exists public.sellers (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null default public.my_clinic_id() references public.clinics(id) on delete cascade,
+  -- For an account's record this mirrors profiles.display_name (null until they first sign in).
+  name text,
+  profile_id uuid unique references public.profiles(id) on delete set null,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint sellers_account_same_id check (profile_id is null or profile_id = id),
+  constraint sellers_named_without_account check (profile_id is not null or nullif(btrim(name), '') is not null)
+);
+
+create index if not exists sellers_clinic_id_idx on public.sellers (clinic_id);
+
+drop trigger if exists sellers_set_updated_at on public.sellers;
+create trigger sellers_set_updated_at
+  before update on public.sellers
+  for each row execute function public.set_updated_at();
+
+-- An account that loses its login (deleted) keeps its seller record — patients and earned
+-- commission stay with it. It needs a name of its own from then on.
+create or replace function public.guard_seller_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.profile_id is null and nullif(btrim(new.name), '') is null then
+    new.name := 'Former account';
+  end if;
+  -- id / clinic / account link only ever change through the service role, the profile sync
+  -- or merge_sellers — never a plain client update
+  if auth.uid() is not null
+     and coalesce(current_setting('app.seller_merge', true), '') <> 'on'
+     and (new.id is distinct from old.id or new.clinic_id is distinct from old.clinic_id
+          or new.profile_id is distinct from old.profile_id) then
+    raise exception 'A seller''s clinic or account link can''t be changed directly';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists sellers_guard_change on public.sellers;
+create trigger sellers_guard_change
+  before update on public.sellers
+  for each row execute function public.guard_seller_change();
+
+-- ---------- every clinic account has a seller record with its own id ----------
+create or replace function public.sync_seller_from_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.clinic_id is null or new.role = 'superadmin' then
+    return new;
+  end if;
+  insert into public.sellers (id, clinic_id, name, profile_id, is_active)
+  values (new.id, new.clinic_id, new.display_name, new.id, new.is_active)
+  on conflict (id) do update
+    set name = coalesce(excluded.name, public.sellers.name),
+        is_active = excluded.is_active;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_sync_seller on public.profiles;
+create trigger profiles_sync_seller
+  after insert or update of clinic_id, display_name, is_active, role on public.profiles
+  for each row execute function public.sync_seller_from_profile();
+
+insert into public.sellers (id, clinic_id, name, profile_id, is_active)
+select p.id, p.clinic_id, p.display_name, p.id, p.is_active
+from public.profiles p
+where p.clinic_id is not null and p.role <> 'superadmin'
+on conflict (id) do nothing;
+
+-- A seller id that belongs to the given clinic (for RLS; security definer so policies can
+-- ask without re-entering sellers' own RLS).
+create or replace function public.is_clinic_seller(sid uuid, cid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (select 1 from public.sellers where id = sid and clinic_id = cid);
+$$;
+
+alter table public.sellers enable row level security;
+
+drop policy if exists "sellers_select_clinic" on public.sellers;
+create policy "sellers_select_clinic" on public.sellers
+  for select using (public.is_active_profile(auth.uid()) and clinic_id = public.my_clinic_id());
+
+-- Admins manage sellers without an account; accounts' records are owned by the profile sync.
+drop policy if exists "sellers_insert_admin" on public.sellers;
+create policy "sellers_insert_admin" on public.sellers
+  for insert with check (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id() and profile_id is null);
+
+drop policy if exists "sellers_update_admin" on public.sellers;
+create policy "sellers_update_admin" on public.sellers
+  for update using (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id() and profile_id is null)
+  with check (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id() and profile_id is null);
+
+-- still refused by the foreign keys while any patient or earned visit points at it
+drop policy if exists "sellers_delete_admin" on public.sellers;
+create policy "sellers_delete_admin" on public.sellers
+  for delete using (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id() and profile_id is null);
+
+drop policy if exists "sellers_support_readonly_insert" on public.sellers;
+create policy "sellers_support_readonly_insert" on public.sellers
+  as restrictive for insert with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "sellers_support_readonly_update" on public.sellers;
+create policy "sellers_support_readonly_update" on public.sellers
+  as restrictive for update using (not public.is_superadmin(auth.uid()) or public.support_can_write())
+  with check (not public.is_superadmin(auth.uid()) or public.support_can_write());
+drop policy if exists "sellers_support_readonly_delete" on public.sellers;
+create policy "sellers_support_readonly_delete" on public.sellers
+  as restrictive for delete using (not public.is_superadmin(auth.uid()) or public.support_can_write());
+
+-- ---------- seller columns point at sellers, not accounts ----------
+-- Deleting a seller with patients or earned visits is refused (restrict); deleting an
+-- account just unlinks its seller record (profile_id → null) and everything stays put.
+alter table public.patients drop constraint if exists patients_user_id_fkey;
+alter table public.patients drop constraint if exists patients_responsible_seller_id_fkey;
+alter table public.patients add constraint patients_responsible_seller_id_fkey
+  foreign key (responsible_seller_id) references public.sellers(id);
+
+alter table public.patients drop constraint if exists patients_visit1_earned_by_seller_id_fkey;
+alter table public.patients add constraint patients_visit1_earned_by_seller_id_fkey
+  foreign key (visit1_earned_by_seller_id) references public.sellers(id);
+alter table public.patients drop constraint if exists patients_visit2_earned_by_seller_id_fkey;
+alter table public.patients add constraint patients_visit2_earned_by_seller_id_fkey
+  foreign key (visit2_earned_by_seller_id) references public.sellers(id);
+alter table public.patient_visits drop constraint if exists patient_visits_earned_by_seller_id_fkey;
+alter table public.patient_visits add constraint patient_visits_earned_by_seller_id_fkey
+  foreign key (earned_by_seller_id) references public.sellers(id);
+
+-- Commission rates belong to a seller (account or not); an account's own row keeps its
+-- personal preferences too, exactly as before.
+alter table public.settings drop constraint if exists settings_user_id_fkey;
+alter table public.settings add constraint settings_user_id_fkey
+  foreign key (user_id) references public.sellers(id) on delete cascade;
+
+-- Admins set the commission rates of sellers without an account (accounts set their own).
+drop policy if exists "settings_admin_insert_no_account" on public.settings;
+create policy "settings_admin_insert_no_account" on public.settings
+  for insert with check (
+    public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id()
+    and exists (select 1 from public.sellers s where s.id = user_id and s.clinic_id = public.my_clinic_id() and s.profile_id is null)
+  );
+drop policy if exists "settings_admin_update_no_account" on public.settings;
+create policy "settings_admin_update_no_account" on public.settings
+  for update using (
+    public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id()
+    and exists (select 1 from public.sellers s where s.id = user_id and s.clinic_id = public.my_clinic_id() and s.profile_id is null)
+  )
+  with check (public.is_admin(auth.uid()) and clinic_id = public.my_clinic_id());
+
+-- settings rows inserted by an admin for a no-account seller: clinic from the seller
+create or replace function public.set_row_clinic_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  owner_id uuid;
+begin
+  if auth.uid() is not null then
+    new.clinic_id := public.my_clinic_id();
+  elsif new.clinic_id is null and tg_nargs > 0 then
+    owner_id := (to_jsonb(new) ->> tg_argv[0])::uuid;
+    if tg_table_name = 'patient_visits' then
+      select clinic_id into new.clinic_id from public.patients where id = owner_id;
+    elsif tg_table_name in ('patients', 'settings') then
+      select clinic_id into new.clinic_id from public.sellers where id = owner_id;
+    else
+      select clinic_id into new.clinic_id from public.profiles where id = owner_id;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+-- ---------- coordinator: the team member who follows the patient up ----------
+alter table public.patients add column if not exists coordinator_id uuid references public.profiles(id) on delete set null;
+create index if not exists patients_coordinator_id_idx on public.patients (coordinator_id);
+
+-- Seller and coordinator always belong to the patient's own clinic. Named to run after
+-- patients_set_clinic_id (same-timing triggers fire in name order) so clinic_id is known.
+create or replace function public.guard_patient_people()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if (tg_op = 'INSERT' or new.responsible_seller_id is distinct from old.responsible_seller_id)
+     and not public.is_clinic_seller(new.responsible_seller_id, new.clinic_id) then
+    raise exception 'That seller isn''t part of this clinic';
+  end if;
+  if new.coordinator_id is not null
+     and (tg_op = 'INSERT' or new.coordinator_id is distinct from old.coordinator_id)
+     and not exists (select 1 from public.profiles where id = new.coordinator_id and clinic_id = new.clinic_id) then
+    raise exception 'That coordinator isn''t part of this clinic';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists patients_zz_guard_people on public.patients;
+create trigger patients_zz_guard_people
+  before insert or update on public.patients
+  for each row execute function public.guard_patient_people();
+
+-- Who may reassign; which clinic the new seller belongs to is checked above.
+create or replace function public.guard_patient_reassignment()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.responsible_seller_id is distinct from old.responsible_seller_id
+     and coalesce(current_setting('app.seller_merge', true), '') <> 'on'
+     and not (auth.uid() = old.responsible_seller_id or public.is_admin(auth.uid())) then
+    raise exception 'Only the responsible seller or an admin can reassign this patient';
+  end if;
+  return new;
+end;
+$$;
+
+-- A seller creates patients as themselves; an admin can record one for any seller of the
+-- clinic, account or not.
+drop policy if exists "patients_insert_self" on public.patients;
+create policy "patients_insert_self" on public.patients
+  for insert with check (
+    public.is_active_profile(auth.uid())
+    and clinic_id = public.my_clinic_id()
+    and (
+      responsible_seller_id = auth.uid()
+      or (public.is_admin(auth.uid()) and public.is_clinic_seller(responsible_seller_id, public.my_clinic_id()))
+    )
+  );
+
+-- ---------- earned-by lock: moved only by a seller merge ----------
+create or replace function public.set_patient_visit_earned_by()
+returns trigger as $$
+declare
+  merging boolean := coalesce(current_setting('app.seller_merge', true), '') = 'on';
+begin
+  if new.visit1_actual is null then
+    new.visit1_earned_by_seller_id := null;
+  elsif merging and new.visit1_earned_by_seller_id is not null then
+    null; -- merge_sellers moves it explicitly
+  elsif TG_OP = 'UPDATE' and old.visit1_earned_by_seller_id is not null then
+    new.visit1_earned_by_seller_id := old.visit1_earned_by_seller_id;
+  else
+    new.visit1_earned_by_seller_id := new.responsible_seller_id;
+  end if;
+
+  if new.visit2_actual is null then
+    new.visit2_earned_by_seller_id := null;
+  elsif merging and new.visit2_earned_by_seller_id is not null then
+    null;
+  elsif TG_OP = 'UPDATE' and old.visit2_earned_by_seller_id is not null then
+    new.visit2_earned_by_seller_id := old.visit2_earned_by_seller_id;
+  else
+    new.visit2_earned_by_seller_id := new.responsible_seller_id;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql;
+
+create or replace function public.set_extra_visit_earned_by()
+returns trigger as $$
+declare
+  merging boolean := coalesce(current_setting('app.seller_merge', true), '') = 'on';
+begin
+  if new.actual is null then
+    new.earned_by_seller_id := null;
+  elsif merging and new.earned_by_seller_id is not null then
+    null;
+  elsif TG_OP = 'UPDATE' and old.earned_by_seller_id is not null then
+    new.earned_by_seller_id := old.earned_by_seller_id;
+  else
+    select responsible_seller_id into new.earned_by_seller_id from public.patients where id = new.patient_id;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+-- ---------- merge a seller without an account into another seller ----------
+-- Used to fix duplicates ("Ahmet" typed twice) and to link a seller to an account once they
+-- get one: everything credited to `from_id` — patients, earned visits — moves to `into_id`,
+-- then `from_id` is removed. Commission rates move only if `into_id` has none of its own.
+create or replace function public.merge_sellers(from_id uuid, into_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cid uuid := public.my_clinic_id();
+begin
+  if not public.is_admin(auth.uid()) then
+    raise exception 'Admin only';
+  end if;
+  -- security definer skips RLS, so support's read-only lock is checked by hand
+  if public.is_superadmin(auth.uid()) and not public.support_can_write() then
+    raise exception 'Support is read-only until editing is unlocked';
+  end if;
+  if from_id = into_id then
+    raise exception 'Pick a different seller';
+  end if;
+  if not exists (select 1 from public.sellers where id = from_id and clinic_id = cid and profile_id is null) then
+    raise exception 'Only a seller without an account can be merged away';
+  end if;
+  if not public.is_clinic_seller(into_id, cid) then
+    raise exception 'Seller not found';
+  end if;
+
+  perform set_config('app.seller_merge', 'on', true);
+
+  update public.patients set responsible_seller_id = into_id where responsible_seller_id = from_id;
+  update public.patients set visit1_earned_by_seller_id = into_id where visit1_earned_by_seller_id = from_id;
+  update public.patients set visit2_earned_by_seller_id = into_id where visit2_earned_by_seller_id = from_id;
+  update public.patient_visits set earned_by_seller_id = into_id where earned_by_seller_id = from_id;
+
+  if exists (select 1 from public.settings where user_id = into_id) then
+    delete from public.settings where user_id = from_id;
+  else
+    update public.settings set user_id = into_id where user_id = from_id;
+  end if;
+
+  delete from public.sellers where id = from_id;
+
+  perform set_config('app.seller_merge', '', true);
+end;
+$$;
+
+revoke execute on function public.merge_sellers(uuid, uuid) from public, anon;
+grant execute on function public.merge_sellers(uuid, uuid) to authenticated;
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

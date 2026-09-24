@@ -9,7 +9,7 @@ import { useToast } from "@/components/Toast";
 import { ActivityLogRow } from "@/lib/activity-log";
 import { isMismatch, patientDueNow, todayIsoLocal, visitBalances } from "@/lib/balance";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
-import { DEFAULT_CLINIC_CONFIG, DriverMessagesMode, Patient, Profile, Transfer, TransferCompany, TransferDefaults } from "@/types";
+import { DEFAULT_CLINIC_CONFIG, DriverMessagesMode, Patient, Profile, Seller, Transfer, TransferCompany, TransferDefaults } from "@/types";
 import { addExtraVisit, deletePatient, getPatientActivity, sendPatientTelegramMessage, updatePatientFields } from "./actions";
 import { ChevronIcon, KebabIcon, Menu } from "./detail/Menu";
 import { gbp, Pill } from "./detail/bits";
@@ -17,6 +17,7 @@ import { currentVisitKey, forVisit, patientVisits, shortDate, transfersWithoutDr
 import { VisitTab, visitStage } from "./detail/VisitTab";
 import { documentLinks, PatientInfoTab } from "./detail/PatientInfoTab";
 import { HistoryTab } from "./detail/HistoryTab";
+import { sellerLabel } from "@/lib/sellers";
 
 const PAGE_TABS = ["info", "history"] as const;
 
@@ -29,6 +30,7 @@ export function PatientDetail({
   hotelOptions = [],
   roomTypeOptions = [],
   profiles = [],
+  sellers = [],
   currentUserId = "",
   isAdmin = false,
   transfers = [],
@@ -45,6 +47,8 @@ export function PatientDetail({
   hotelOptions?: string[];
   roomTypeOptions?: string[];
   profiles?: Profile[];
+  /** The clinic's seller list — accounts and sellers without one. */
+  sellers?: Seller[];
   currentUserId?: string;
   isAdmin?: boolean;
   /** Every transfer of this patient, all visits. */
@@ -143,7 +147,7 @@ export function PatientDetail({
     return (!!b && isMismatch(b, today)) || transfersWithoutDriver(forVisit(transfers, key)).length > 0;
   };
 
-  const sellerName = profiles.find((p) => p.id === patient.responsible_seller_id)?.display_name || "Unknown";
+  const sellerName = sellerLabel(sellers.find((s) => s.id === patient.responsible_seller_id));
   const wa = patient.phone ? whatsappNumber(patient.phone) : "";
   const komoIsLink = !!patient.komo_reference && /^https?:\/\//i.test(patient.komo_reference);
   const docs = documentLinks(patient, visits);
@@ -329,6 +333,7 @@ export function PatientDetail({
           transfers={transfers}
           companies={companies}
           profiles={profiles}
+          sellers={sellers}
           currentUserId={currentUserId}
           surchargeRate={surchargeRate}
           deductCosts={deductCosts}
@@ -341,9 +346,9 @@ export function PatientDetail({
         />
       )}
       {activeTab === "info" && (
-        <PatientInfoTab patient={patient} visits={visits} profiles={profiles} currentUserId={currentUserId} isAdmin={isAdmin} onOpenVisit={setTab} />
+        <PatientInfoTab patient={patient} visits={visits} profiles={profiles} sellers={sellers} currentUserId={currentUserId} isAdmin={isAdmin} onOpenVisit={setTab} />
       )}
-      {activeTab === "history" && <HistoryTab patient={patient} profiles={profiles} entries={history} error={historyError} />}
+      {activeTab === "history" && <HistoryTab patient={patient} profiles={profiles} sellers={sellers} entries={history} error={historyError} />}
 
       <AddExtraVisitModal
         open={addingExtra}

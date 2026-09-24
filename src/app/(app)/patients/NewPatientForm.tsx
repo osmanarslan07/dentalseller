@@ -9,7 +9,9 @@ import { useCelebrationSound } from "@/components/celebration-sound";
 import { fireConfetti, playChime } from "@/lib/celebrate";
 import { formatDate } from "@/lib/format";
 import { todayIsoLocal } from "@/lib/balance";
-import { Patient, Profile } from "@/types";
+import { Patient, Seller } from "@/types";
+import { SellerPick, SellerPicker } from "@/components/SellerPicker";
+import { sellerNameMap } from "@/lib/sellers";
 import { createPatient } from "./actions";
 import { Toggle } from "./detail/bits";
 
@@ -33,12 +35,17 @@ const RECALL_OPTIONS = [1, 2, 3, 4, 6, 9, 12];
  * extras go on the patient page right after. */
 export function NewPatientForm({
   duplicateFrom,
-  profiles,
+  sellers,
+  currentUserId,
+  isAdmin,
   existingPatients,
 }: {
   /** Prefill from an existing patient — for group bookings sharing a flight/hotel. */
   duplicateFrom: Patient | null;
-  profiles: Profile[];
+  sellers: Seller[];
+  currentUserId: string;
+  /** Admins can record a patient for any seller, or type a new one; sellers add their own. */
+  isAdmin: boolean;
   /** To warn when the name matches someone already entered. */
   existingPatients: Pick<Patient, "id" | "name" | "confirmation_date" | "responsible_seller_id">[];
 }) {
@@ -47,6 +54,7 @@ export function NewPatientForm({
   const { enabled: soundEnabled } = useCelebrationSound();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [seller, setSeller] = useState<SellerPick>({ sellerId: currentUserId, newName: null });
   const [needsVisit2, setNeedsVisit2] = useState(duplicateFrom ? duplicateFrom.needs_visit2 : true);
   const src = duplicateFrom;
   const recall = src?.visit2_recall_months ?? 3;
@@ -59,7 +67,8 @@ export function NewPatientForm({
     const name = String(formData.get("name") ?? "").trim();
     const dupes = existingPatients.filter((p) => p.name.trim().toLowerCase() === name.toLowerCase());
     if (dupes.length > 0) {
-      const sellerNameFor = (id: string) => profiles.find((p) => p.id === id)?.display_name || "Unknown seller";
+      const names = sellerNameMap(sellers);
+      const sellerNameFor = (id: string) => names.get(id) ?? "Unknown seller";
       const details = dupes
         .map((p) => `• Confirmed ${formatDate(p.confirmation_date)} — responsible: ${sellerNameFor(p.responsible_seller_id)}`)
         .join("\n");
@@ -117,6 +126,15 @@ export function NewPatientForm({
             <Label>Komo reference</Label>
             <Input name="komo_reference" placeholder="Lead link or ID" />
           </div>
+          {isAdmin && (
+            <div className="sm:col-span-2">
+              <Label>Seller</Label>
+              <SellerPicker sellers={sellers} value={seller} onChange={setSeller} currentUserId={currentUserId} allowNew formFields />
+              {(seller.newName != null || seller.sellerId !== currentUserId) && (
+                <p className="mt-1.5 text-xs text-slate-500">You&apos;ll be this patient&apos;s coordinator — the one who follows up.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="border-t border-slate-100" />

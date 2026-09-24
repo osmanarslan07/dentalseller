@@ -29,6 +29,18 @@ export interface Profile {
   updated_at: string;
 }
 
+/** Whoever gets credit (and commission) for a sale. Every clinic account has one with its own
+ * id, so `responsible_seller_id === user.id` still means "mine"; a seller without an account
+ * (profile_id null) is someone a coordinator records patients for — they never log in. */
+export interface Seller {
+  id: string;
+  /** Null only for an account that hasn't signed in and set a name yet. */
+  name: string | null;
+  profile_id: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
 export type VisitStatus = "upcoming" | "completed";
 
 export interface PatientExtraVisit {
@@ -84,6 +96,9 @@ export interface Patient {
    * and can be handed to a colleague via reassignment. See `visit*_earned_by_seller_id` for
    * who actually earns commission on a visit already paid, which reassignment can't change. */
   responsible_seller_id: string;
+  /** The team member who follows this patient up (transfers, hotel, visits, payments) —
+   * typically set when a coordinator enters a patient for a seller without an account. */
+  coordinator_id: string | null;
   name: string;
   phone: string | null;
   treatment: string | null;
@@ -161,6 +176,7 @@ export type PatientInput = Omit<
   Patient,
   | "id"
   | "responsible_seller_id"
+  | "coordinator_id"
   | "created_at"
   | "updated_at"
   | "extra_visits"

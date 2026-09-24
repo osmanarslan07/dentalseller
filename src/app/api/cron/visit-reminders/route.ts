@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 interface VisitRow {
   name: string;
   responsible_seller_id: string;
+  coordinator_id: string | null;
   treatment: string | null;
   visit1_date: string | null;
   visit1_arrival_date: string | null;
@@ -66,15 +67,20 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
   // Fetched up front (rather than only when building the send list) so every reminder line
   // below can name the responsible seller — the group now sees everyone's patients, not just
   // their own, so "who is this" is no longer implicit from whose chat it landed in.
-  const { data: profiles } = await supabase.from("profiles").select("id, telegram_chat_id, display_name, clinic_id");
-  const clinicBySeller = new Map((profiles ?? []).map((p) => [p.id, p.clinic_id as string | null]));
-  const chatBySeller = new Map((profiles ?? []).map((p) => [p.id, p.telegram_chat_id as string | null]));
-  const nameBySeller = new Map((profiles ?? []).map((p) => [p.id, (p.display_name as string | null) || "Unassigned"]));
+  // Sellers include those without an account (no chat of their own) — their patients'
+  // reminders still reach the clinic group and the patient's coordinator.
+  const [{ data: profiles }, { data: sellers }] = await Promise.all([
+    supabase.from("profiles").select("id, telegram_chat_id"),
+    supabase.from("sellers").select("id, name, clinic_id"),
+  ]);
+  const clinicBySeller = new Map((sellers ?? []).map((s) => [s.id, s.clinic_id as string | null]));
+  const chatByPerson = new Map((profiles ?? []).map((p) => [p.id, p.telegram_chat_id as string | null]));
+  const nameBySeller = new Map((sellers ?? []).map((s) => [s.id, (s.name as string | null) || "Unassigned"]));
 
   const { data, error } = await supabase
     .from("patients")
     .select(
-      "name, responsible_seller_id, treatment, visit1_date, visit1_arrival_date, visit1_arrival_time, visit1_arrival_flight_no, visit1_departure_date, visit1_departure_time, visit1_departure_flight_no, visit1_hotel_name, visit1_arrival_transfer_arranged, visit1_departure_transfer_arranged, visit1_hotel_arranged, visit2_date, visit2_arrival_date, visit2_arrival_time, visit2_arrival_flight_no, visit2_departure_date, visit2_departure_time, visit2_departure_flight_no, visit2_hotel_name, visit2_arrival_transfer_arranged, visit2_departure_transfer_arranged, visit2_hotel_arranged"
+      "name, responsible_seller_id, coordinator_id, treatment, visit1_date, visit1_arrival_date, visit1_arrival_time, visit1_arrival_flight_no, visit1_departure_date, visit1_departure_time, visit1_departure_flight_no, visit1_hotel_name, visit1_arrival_transfer_arranged, visit1_departure_transfer_arranged, visit1_hotel_arranged, visit2_date, visit2_arrival_date, visit2_arrival_time, visit2_arrival_flight_no, visit2_departure_date, visit2_departure_time, visit2_departure_flight_no, visit2_hotel_name, visit2_arrival_transfer_arranged, visit2_departure_transfer_arranged, visit2_hotel_arranged"
     )
     .or(
       [
@@ -95,12 +101,19 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Grouped per responsible seller — each seller gets only their own patients' reminders.
+  // Grouped per responsible seller — each seller gets only their own patients' reminders,
+  // and so does each of those patients' coordinators.
   const linesBySeller = new Map<string, string[]>();
-  const addLine = (sellerId: string, line: string) => {
-    const list = linesBySeller.get(sellerId) ?? [];
+  const coordinatorsBySeller = new Map<string, Set<string>>();
+  const addLine = (p: { responsible_seller_id: string; coordinator_id: string | null }, line: string) => {
+    const list = linesBySeller.get(p.responsible_seller_id) ?? [];
     list.push(line);
-    linesBySeller.set(sellerId, list);
+    linesBySeller.set(p.responsible_seller_id, list);
+    if (p.coordinator_id) {
+      const set = coordinatorsBySeller.get(p.responsible_seller_id) ?? new Set<string>();
+      set.add(p.coordinator_id);
+      coordinatorsBySeller.set(p.responsible_seller_id, set);
+    }
   };
 
   for (const p of (data ?? []) as VisitRow[]) {
@@ -147,7 +160,7 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
 
       if (arrivalDate === in7) {
         addLine(
-          p.responsible_seller_id,
+          p,
           card(`🗓 <b>${p.name}</b> — ${visit} arrival, in 7 days`, [
             sellerLine,
             treatmentLine,
@@ -158,7 +171,7 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
       }
       if (arrivalDate === in1) {
         addLine(
-          p.responsible_seller_id,
+          p,
           card(`🛬 <b>${p.name}</b> — ${visit} arrival, tomorrow`, [
             sellerLine,
             treatmentLine,
@@ -170,7 +183,7 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
       }
       if (departureDate === in1) {
         addLine(
-          p.responsible_seller_id,
+          p,
           card(`🛫 <b>${p.name}</b> — ${visit} departure, tomorrow`, [
             sellerLine,
             missingLine([{ label: "transfer", ok: departureTransferArranged }]),
@@ -181,10 +194,10 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
       // Patients without flight details: remind off the clinic visit date itself.
       if (!arrivalDate) {
         if (visitDate === in7) {
-          addLine(p.responsible_seller_id, card(`📍 <b>${p.name}</b> — ${visit}, in 7 days`, [sellerLine, treatmentLine]));
+          addLine(p, card(`📍 <b>${p.name}</b> — ${visit}, in 7 days`, [sellerLine, treatmentLine]));
         }
         if (visitDate === in1) {
-          addLine(p.responsible_seller_id, card(`📍 <b>${p.name}</b> — ${visit}, tomorrow`, [sellerLine, treatmentLine]));
+          addLine(p, card(`📍 <b>${p.name}</b> — ${visit}, tomorrow`, [sellerLine, treatmentLine]));
         }
       }
     }
@@ -193,7 +206,7 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
   const { data: extraVisits, error: extraError } = await supabase
     .from("patient_visits")
     .select(
-      "label, visit_date, arrival_date, arrival_transfer_arranged, hotel_arranged, status, patients(name, responsible_seller_id)"
+      "label, visit_date, arrival_date, arrival_transfer_arranged, hotel_arranged, status, patients(name, responsible_seller_id, coordinator_id)"
     )
     .in("visit_date", [in1, in7])
     .eq("status", "upcoming");
@@ -208,7 +221,7 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
     arrival_date: string | null;
     arrival_transfer_arranged: boolean;
     hotel_arranged: boolean;
-    patients: { name: string; responsible_seller_id: string } | null;
+    patients: { name: string; responsible_seller_id: string; coordinator_id: string | null } | null;
   }[]) {
     if (!v.patients) continue;
     const name = v.patients.name;
@@ -223,13 +236,13 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
       : null;
     if (v.visit_date === in7) {
       addLine(
-        v.patients.responsible_seller_id,
+        v.patients,
         card(`🦷 <b>${name}</b> — ${v.label}, in 7 days`, [`Seller: ${seller}`, warning])
       );
     }
     if (v.visit_date === in1) {
       addLine(
-        v.patients.responsible_seller_id,
+        v.patients,
         card(`🦷 <b>${name}</b> — ${v.label}, tomorrow`, [`Seller: ${seller}`, warning])
       );
     }
@@ -257,8 +270,10 @@ export const GET = monitoredCron("visit-reminders", async (request: NextRequest)
       if (!clinicId || !activeClinics.has(clinicId)) return; // suspended clinics get nothing
       totalCount += lines.length;
       const chatIds = new Set<string>();
-      const own = chatBySeller.get(sellerId);
-      if (own) chatIds.add(own);
+      for (const personId of [sellerId, ...(coordinatorsBySeller.get(sellerId) ?? [])]) {
+        const own = chatByPerson.get(personId);
+        if (own) chatIds.add(own);
+      }
       const fallback = getFallbackChatId(clinicId, envChatsClinicId);
       if (fallback) chatIds.add(fallback);
       const group = getGroupChatId(clinicId, groupByClinic.get(clinicId) ?? null, envChatsClinicId);

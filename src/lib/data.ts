@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Task, Transfer, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { visitCosts } from "@/lib/commission";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -268,6 +268,22 @@ export async function getProfiles(supabase: SupabaseClient): Promise<Profile[]> 
 
   if (error) throw error;
   return data as Profile[];
+}
+
+/** Everyone who can get credit for a sale — accounts and sellers without one — by name. */
+export async function getSellers(supabase: SupabaseClient): Promise<Seller[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from("sellers")
+      .select("id, name, profile_id, is_active, created_at")
+      .eq("clinic_id", clinicId)
+      .order("name", { ascending: true, nullsFirst: false })
+  );
+
+  if (error) throw error;
+  return data as Seller[];
 }
 
 export interface TeamMember {

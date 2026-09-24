@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useState, useTransition } from "react";
-import { ClinicConfig, CommissionSettings, Patient, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, Patient, Seller, TransferCompany } from "@/types";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
@@ -12,6 +12,7 @@ import { ExchangeRatePoint, TeamMember } from "@/lib/data";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
 import { AccountCard } from "./AccountCard";
 import { TeamCard } from "./TeamCard";
+import { SellerRecordRow, SellersCard } from "./SellersCard";
 import { TelegramCard } from "./TelegramCard";
 import { TelegramGroupCard } from "./TelegramGroupCard";
 import { SystemSettingsCard } from "./SystemSettingsCard";
@@ -44,6 +45,8 @@ export function SettingsClient({
   patients,
   rateHistory,
   teamMembers,
+  sellerRecords,
+  allSellers,
   currentUserId,
   currentUserEmail,
   currentDisplayName,
@@ -59,6 +62,9 @@ export function SettingsClient({
   patients: Patient[];
   rateHistory: ExchangeRatePoint[];
   teamMembers: TeamMember[];
+  /** Admins only: sellers without an account, with their patient count and rates. */
+  sellerRecords: SellerRecordRow[];
+  allSellers: Seller[];
   currentUserId: string;
   currentUserEmail: string;
   currentDisplayName: string;
@@ -413,6 +419,8 @@ export function SettingsClient({
       {activeTab === "clinic" && isAdmin && (
         <div className="space-y-6">
           <TeamCard members={teamMembers} currentUserId={currentUserId} isAdmin={isAdmin} />
+
+          <SellersCard rows={sellerRecords} allSellers={allSellers} currentUserId={currentUserId} />
 
           <TelegramGroupCard groupChatId={clinicConfig.telegramGroupChatId} />
 

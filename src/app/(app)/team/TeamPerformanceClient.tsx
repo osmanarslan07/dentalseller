@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Badge, Card, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { formatActivityTime } from "@/lib/activity-log";
-import { Profile } from "@/types";
 
 interface Row {
-  seller: Profile;
+  /** `role` null = a seller without an account (patients entered for them by a coordinator). */
+  seller: { id: string; name: string | null; role: "admin" | "seller" | null; isActive: boolean };
   currency: string;
   patientCount: number;
   patientsSoldInMonth: number;
@@ -85,9 +85,10 @@ export function TeamPerformanceClient({
                 <tr key={r.seller.id} className="border-b border-slate-50 last:border-0">
                   <td className="py-3 pl-4 pr-4 font-medium text-slate-800">
                     <span className="inline-flex items-center gap-1.5">
-                      {r.seller.display_name || "Invited — awaiting first login"}
+                      {r.seller.name || "Invited — awaiting first login"}
                       {r.seller.role === "admin" && <Badge tone="blue">Admin</Badge>}
-                      {!r.seller.is_active && <Badge tone="amber">Inactive</Badge>}
+                      {r.seller.role === null && <Badge tone="slate">No account</Badge>}
+                      {!r.seller.isActive && <Badge tone="amber">Inactive</Badge>}
                     </span>
                     <div className="text-xs font-normal text-slate-400">{r.patientCount} patients total</div>
                   </td>

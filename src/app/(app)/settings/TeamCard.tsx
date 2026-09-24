@@ -91,7 +91,7 @@ export function TeamCard({
   async function handleDelete(member: TeamMember) {
     if (
       !confirm(
-        `Permanently delete ${member.displayName || member.email || member.id}? This can't be undone. Any patients, quotes, and tasks they own will be reassigned to you.`
+        `Permanently delete ${member.displayName || member.email || member.id}? This can't be undone. Their patients and commission history stay with them as a seller without an account; their quotes and tasks will be reassigned to you.`
       )
     )
       return;

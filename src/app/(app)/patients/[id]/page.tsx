@@ -30,6 +30,7 @@ export default async function PatientPage({
       hotelOptions={ctx.hotelOptions}
       roomTypeOptions={ctx.roomTypeOptions}
       profiles={ctx.profiles}
+      sellers={ctx.sellers}
       currentUserId={ctx.currentUserId}
       isAdmin={ctx.isAdmin}
       transfers={transfers}

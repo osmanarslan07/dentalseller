@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { ActivityLogRow, describeActivity } from "@/lib/activity-log";
-import { Patient, Profile } from "@/types";
+import { Patient, Profile, Seller } from "@/types";
+import { peopleNameMap } from "@/lib/sellers";
 import { Pill, PillTone } from "./bits";
 
 type Filter = "All" | "Payments" | "Transfers" | "Visits" | "Details";
@@ -40,17 +41,19 @@ function dayLabel(iso: string): string {
 export function HistoryTab({
   patient,
   profiles,
+  sellers,
   entries,
   error,
 }: {
   patient: Patient;
   profiles: Profile[];
+  sellers: Seller[];
   /** Null while loading. */
   entries: ActivityLogRow[] | null;
   error: string | null;
 }) {
   const [filter, setFilter] = useState<Filter>("All");
-  const nameById = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
+  const nameById = peopleNameMap(profiles, sellers);
   const patientNameById = new Map([[patient.id, patient.name]]);
   const colourOf = (id: string | null) => {
     const i = profiles.findIndex((p) => p.id === id);

@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getSettings } from "@/lib/data";
+import { getPatients, getSellers, getSettings } from "@/lib/data";
 import { addMonths, currentMonthKey } from "@/lib/commission";
 import { StatCard } from "@/components/ui";
 import { CountUp } from "@/components/CountUp";
@@ -14,10 +14,10 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const user = await getViewerUser();
-  const [allPatients, settings, profiles] = await Promise.all([
+  const [allPatients, settings, sellers] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, user?.id ?? ""),
-    getProfiles(supabase),
+    getSellers(supabase),
   ]);
   // The stat cards above and the operational panel below are both scoped per-seller where it
   // matters: the panel's shared roster reveals no commission (that lives on /earnings) — those
@@ -123,7 +123,7 @@ export default async function DashboardPage() {
 
       <TeamOperationsPanel
         allPatients={allPatients}
-        profiles={profiles}
+        sellers={sellers}
         currentUserId={user?.id ?? ""}
         currency={settings.currency}
         todayIso={todayIso}

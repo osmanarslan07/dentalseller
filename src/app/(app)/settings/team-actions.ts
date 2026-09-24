@@ -150,10 +150,11 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
 }
 
 /** Admin-only. Permanently deletes the auth user (and, via FK cascade, their profile row).
- * Patients/visits/quotes/tasks all FK-cascade straight off `auth.users`, so a bare delete
- * would silently wipe anything they owned — instead everything they owned is handed to the
- * admin doing the deletion first, via the service-role client (quotes/tasks RLS is strictly
- * own-row-only, with no admin carve-out, so the RLS-scoped client can't do this reassignment). */
+ * Their patients stay theirs: patients point at the seller record, which just loses its login
+ * and carries on as a seller without an account (commission history intact). Quotes, tasks and
+ * the extra visits they created FK-cascade straight off `auth.users`, so those are handed to
+ * the admin doing the deletion first, via the service-role client (quotes/tasks RLS is
+ * strictly own-row-only, with no admin carve-out, so the RLS-scoped client can't do this). */
 export async function deleteSeller(sellerId: string): Promise<void> {
   const supabase = await createClient();
   const user = await getActingUser();
@@ -167,11 +168,14 @@ export async function deleteSeller(sellerId: string): Promise<void> {
     data: { user: targetUser },
   } = await admin.auth.admin.getUserById(sellerId);
 
+  // the seller record outlives the login, so it needs a name of its own if they never set one
+  const { data: sellerRow } = await admin.from("sellers").select("name").eq("id", sellerId).maybeSingle();
+  if (sellerRow && !sellerRow.name?.trim() && targetUser?.email) {
+    await admin.from("sellers").update({ name: targetUser.email.split("@")[0] }).eq("id", sellerId);
+  }
+
   const [{ count: patientCount }, { count: quoteCount }, { count: taskCount }] = await Promise.all([
-    admin
-      .from("patients")
-      .update({ responsible_seller_id: user.id }, { count: "exact" })
-      .eq("responsible_seller_id", sellerId),
+    admin.from("patients").select("id", { count: "exact", head: true }).eq("responsible_seller_id", sellerId),
     admin.from("quotes").update({ user_id: user.id }, { count: "exact" }).eq("user_id", sellerId),
     admin.from("tasks").update({ user_id: user.id }, { count: "exact" }).eq("user_id", sellerId),
   ]);
@@ -186,7 +190,7 @@ export async function deleteSeller(sellerId: string): Promise<void> {
     "seller_deleted",
     "profile",
     null,
-    `${targetUser?.email ?? sellerId} — reassigned ${patientCount ?? 0} patient(s), ${quoteCount ?? 0} quote(s), ${taskCount ?? 0} task(s) to self`
+    `${targetUser?.email ?? sellerId} — kept ${patientCount ?? 0} patient(s) as a seller without an account; reassigned ${quoteCount ?? 0} quote(s), ${taskCount ?? 0} task(s) to self`
   );
 
   revalidatePath("/settings");

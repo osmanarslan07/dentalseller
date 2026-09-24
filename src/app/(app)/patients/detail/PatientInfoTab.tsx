@@ -7,8 +7,10 @@ import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { isDueNow, todayIsoLocal } from "@/lib/balance";
 import { extrasTotalFor } from "@/lib/commission";
-import { Patient, Profile } from "@/types";
-import { reassignPatient, updatePatientFields } from "../actions";
+import { Patient, Profile, Seller } from "@/types";
+import { SellerPick, SellerPicker } from "@/components/SellerPicker";
+import { sellerLabel } from "@/lib/sellers";
+import { reassignPatient, setPatientCoordinator, updatePatientFields } from "../actions";
 import { EditButton, EditingChip, Field, gbp, Pill, Section, Toggle } from "./bits";
 import { forVisit, shortDate, VisitView } from "./visits";
 
@@ -117,6 +119,7 @@ export function PatientInfoTab({
   patient,
   visits,
   profiles,
+  sellers,
   currentUserId,
   isAdmin,
   onOpenVisit,
@@ -124,6 +127,7 @@ export function PatientInfoTab({
   patient: Patient;
   visits: VisitView[];
   profiles: Profile[];
+  sellers: Seller[];
   currentUserId: string;
   isAdmin: boolean;
   onOpenVisit: (key: string) => void;
@@ -169,7 +173,7 @@ export function PatientInfoTab({
 
         <TreatmentCard patient={patient} letterItems={letterItems} onSave={save} />
 
-        <SaleCard patient={patient} profiles={profiles} currentUserId={currentUserId} isAdmin={isAdmin} komoIsLink={komoIsLink} onSave={save} />
+        <SaleCard patient={patient} profiles={profiles} sellers={sellers} currentUserId={currentUserId} isAdmin={isAdmin} komoIsLink={komoIsLink} onSave={save} />
 
         <EditCard
           title="Notes"
@@ -302,6 +306,7 @@ function SecondVisitFields({ initial, recallMonths }: { initial: boolean; recall
 function SaleCard({
   patient,
   profiles,
+  sellers,
   currentUserId,
   isAdmin,
   komoIsLink,
@@ -309,6 +314,7 @@ function SaleCard({
 }: {
   patient: Patient;
   profiles: Profile[];
+  sellers: Seller[];
   currentUserId: string;
   isAdmin: boolean;
   komoIsLink: boolean;
@@ -317,17 +323,19 @@ function SaleCard({
   const router = useRouter();
   const { showToast } = useToast();
   const [reassigning, setReassigning] = useState(false);
-  const [sellerId, setSellerId] = useState(patient.responsible_seller_id);
+  const [pick, setPick] = useState<SellerPick>({ sellerId: patient.responsible_seller_id, newName: null });
   const [pending, startTransition] = useTransition();
   const canReassign = patient.responsible_seller_id === currentUserId || isAdmin;
-  const sellerName = profiles.find((p) => p.id === patient.responsible_seller_id)?.display_name || "Unknown";
+  const seller = sellers.find((s) => s.id === patient.responsible_seller_id);
+  const sellerName = sellerLabel(seller);
 
   function reassign() {
-    if (sellerId === patient.responsible_seller_id) return setReassigning(false);
+    if (pick.newName == null && pick.sellerId === patient.responsible_seller_id) return setReassigning(false);
+    if (pick.newName != null && !pick.newName.trim()) return showToast("Type the seller's name", "error");
     if (!confirm("Reassign this patient to another seller? They will earn the commission from now on.")) return;
     startTransition(async () => {
       try {
-        await reassignPatient(patient.id, sellerId);
+        await reassignPatient(patient.id, pick.newName != null ? { newSellerName: pick.newName } : { sellerId: pick.sellerId });
         showToast("Patient reassigned ✓");
         setReassigning(false);
         router.refresh();
@@ -344,21 +352,20 @@ function SaleCard({
       onSave={onSave}
       toPatch={(fd) => ({ confirmation_date: str(fd, "confirmation_date"), komo_reference: str(fd, "komo_reference") })}
       view={
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div id="reassign" className="flex flex-col gap-0.5 text-sm">
-            <span className="text-xs text-slate-500">Responsible seller</span>
+            <span className="text-xs text-slate-500">Seller</span>
             {reassigning ? (
               <div className="flex flex-col gap-2">
-                <Select value={sellerId} onChange={(e) => setSellerId(e.target.value)} disabled={pending} autoFocus>
-                  {profiles
-                    .filter((p) => p.is_active || p.id === patient.responsible_seller_id)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.display_name || "Unnamed seller"}
-                        {p.id === currentUserId ? " (you)" : ""}
-                      </option>
-                    ))}
-                </Select>
+                <SellerPicker
+                  sellers={sellers}
+                  value={pick}
+                  onChange={setPick}
+                  currentUserId={currentUserId}
+                  allowNew={isAdmin}
+                  disabled={pending}
+                  autoFocus
+                />
                 <div className="flex gap-2">
                   <Button size="sm" variant="secondary" onClick={() => setReassigning(false)}>
                     Cancel
@@ -370,15 +377,26 @@ function SaleCard({
               </div>
             ) : (
               <>
-                <span className="font-semibold">{sellerName}</span>
+                <span className="font-semibold">
+                  {sellerName}
+                  {seller && !seller.profile_id && <span className="ml-1.5 text-xs font-normal text-slate-400">no account</span>}
+                </span>
                 {canReassign && (
-                  <button type="button" onClick={() => setReassigning(true)} className="self-start text-xs font-semibold text-teal-700 hover:text-teal-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPick({ sellerId: patient.responsible_seller_id, newName: null });
+                      setReassigning(true);
+                    }}
+                    className="self-start text-xs font-semibold text-teal-700 hover:text-teal-800"
+                  >
                     Reassign…
                   </button>
                 )}
               </>
             )}
           </div>
+          <CoordinatorField patient={patient} profiles={profiles} currentUserId={currentUserId} />
           <Field label="Confirmed">{patient.confirmation_date ? shortDate(patient.confirmation_date, true) : <span className="font-normal text-slate-400">Not set</span>}</Field>
           <Field label="Komo reference">
             {patient.komo_reference ? (
@@ -405,10 +423,80 @@ function SaleCard({
             <Label>Komo reference</Label>
             <Input name="komo_reference" defaultValue={patient.komo_reference ?? ""} placeholder="Lead link or ID" />
           </div>
-          <p className="text-xs text-slate-400 sm:col-span-2">The seller is changed with “Reassign…”, not here.</p>
+          <p className="text-xs text-slate-400 sm:col-span-2">Seller and coordinator are changed on the card itself, not here.</p>
         </div>
       }
     />
+  );
+}
+
+/** The team member who follows this patient up. Anyone who can edit the patient can change it. */
+function CoordinatorField({ patient, profiles, currentUserId }: { patient: Patient; profiles: Profile[]; currentUserId: string }) {
+  const router = useRouter();
+  const { showToast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(patient.coordinator_id ?? "");
+  const [pending, startTransition] = useTransition();
+  const current = profiles.find((p) => p.id === patient.coordinator_id);
+  const team = profiles
+    .filter((p) => p.is_active || p.id === patient.coordinator_id)
+    .sort((a, b) => (a.display_name || "").localeCompare(b.display_name || ""));
+
+  function save() {
+    if (value === (patient.coordinator_id ?? "")) return setEditing(false);
+    startTransition(async () => {
+      try {
+        await setPatientCoordinator(patient.id, value || null);
+        showToast("Coordinator saved ✓");
+        setEditing(false);
+        router.refresh();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Failed to save coordinator", "error");
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5 text-sm">
+      <span className="text-xs text-slate-500">Coordinator</span>
+      {editing ? (
+        <div className="flex flex-col gap-2">
+          <Select value={value} onChange={(e) => setValue(e.target.value)} disabled={pending} autoFocus aria-label="Coordinator">
+            <option value="">No coordinator — the seller follows up</option>
+            {team.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.display_name || "Unnamed member"}
+                {p.id === currentUserId ? " (you)" : ""}
+              </option>
+            ))}
+          </Select>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={save} disabled={pending}>
+              {pending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <span className="font-semibold">
+            {current ? current.display_name || "Unnamed member" : <span className="font-normal text-slate-400">None — the seller follows up</span>}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setValue(patient.coordinator_id ?? "");
+              setEditing(true);
+            }}
+            className="self-start text-xs font-semibold text-teal-700 hover:text-teal-800"
+          >
+            Change…
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getSettings } from "@/lib/data";
+import { getPatients, getProfiles, getSellers, getSettings } from "@/lib/data";
 import {
   computeMonthlyAggregates,
   countPatientsWithCompletedVisitInMonth,
@@ -9,7 +9,7 @@ import {
   monthLabel,
 } from "@/lib/commission";
 import { describeActivity } from "@/lib/activity-log";
-import { Profile } from "@/types";
+import { peopleNameMap } from "@/lib/sellers";
 import { TeamPerformanceClient } from "./TeamPerformanceClient";
 import { getViewerUser } from "@/lib/viewer";
 
@@ -27,10 +27,15 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const { month: monthParam } = await searchParams;
   const selectedMonth = monthParam && MONTH_KEY_RE.test(monthParam) ? monthParam : currentMonthKey();
 
-  const allPatients = await getPatients(supabase);
+  const [allPatients, sellers] = await Promise.all([getPatients(supabase), getSellers(supabase)]);
+  const roleById = new Map(profiles.map((p) => [p.id, p.role]));
+
+  // Every seller, account or not — a seller without an account only once they have a patient
+  // or are still on the list (a retired one with no history just adds noise).
+  const shown = sellers.filter((s) => s.profile_id || s.is_active || allPatients.some((p) => p.responsible_seller_id === s.id));
 
   const rows = await Promise.all(
-    profiles.map(async (seller) => {
+    shown.map(async (seller) => {
       // Pipeline counts (patient count, sold-in-month) follow current ownership; money and
       // "came in month" follow visit-level attribution so reassigning a patient away doesn't
       // erase a seller's already-earned commission from their own breakdown here.
@@ -43,8 +48,14 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         (p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === selectedMonth
       ).length;
 
+      const role = roleById.get(seller.id);
       return {
-        seller,
+        seller: {
+          id: seller.id,
+          name: seller.name,
+          role: seller.profile_id ? (role === "admin" ? ("admin" as const) : ("seller" as const)) : null,
+          isActive: seller.is_active,
+        },
         currency: settings.currency,
         patientCount: sellerPatients.length,
         patientsSoldInMonth,
@@ -61,9 +72,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     .order("created_at", { ascending: false })
     .limit(50);
 
-  const nameById = new Map<string, string>(
-    profiles.map((p: Profile) => [p.id, p.display_name || "Unnamed seller"])
-  );
+  const nameById = peopleNameMap(profiles, sellers);
   const patientNameById = new Map(allPatients.map((p) => [p.id, p.name]));
 
   const activity = (logData ?? []).map((entry) => ({

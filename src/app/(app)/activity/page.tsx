@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles } from "@/lib/data";
+import { getPatients, getProfiles, getSellers } from "@/lib/data";
+import { peopleNameMap } from "@/lib/sellers";
 import { getViewer } from "@/lib/viewer";
 import { ActivityLogRow, describeActivity, formatActivityTime } from "@/lib/activity-log";
 import {
@@ -47,13 +48,18 @@ export default async function ActivityHistoryPage({ searchParams }: { searchPara
   if (to) query = query.lt("created_at", `${nextDay(to)}T00:00:00`);
   if (q) query = query.ilike("detail", `%${q.replace(/[%_]/g, "")}%`);
 
-  const [{ data, error }, profiles, patients] = await Promise.all([query, getProfiles(supabase), getPatients(supabase)]);
+  const [{ data, error }, profiles, patients, sellers] = await Promise.all([
+    query,
+    getProfiles(supabase),
+    getPatients(supabase),
+    getSellers(supabase),
+  ]);
   if (error) throw error;
 
   const rows = (data ?? []) as ActivityLogRow[];
   const hasMore = rows.length > ACTIVITY_PAGE_SIZE;
   const entries = rows.slice(0, ACTIVITY_PAGE_SIZE);
-  const nameById = new Map(profiles.map((p) => [p.id, p.display_name || "Unnamed seller"]));
+  const nameById = peopleNameMap(profiles, sellers);
   const patientNameById = new Map(patients.map((p) => [p.id, p.name]));
 
   const pageHref = (n: number) => {

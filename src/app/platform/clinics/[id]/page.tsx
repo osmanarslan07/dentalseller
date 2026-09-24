@@ -87,7 +87,7 @@ export default async function ClinicPage({ params }: { params: Promise<{ id: str
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="space-y-6">
           <ClinicDetailsCard clinic={clinic} />
-          <BillingCard clinicId={clinic.id} billing={clinic.billing} activeAccounts={stats.activeUsers} />
+          <BillingCard clinicId={clinic.id} billing={clinic.billing} modules={clinic.modules ?? []} activeAccounts={stats.activeUsers} />
         </div>
         <ClinicTeamCard members={members} />
       </div>

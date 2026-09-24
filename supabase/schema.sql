@@ -2836,7 +2836,7 @@ insert into public.permissions (key, module, description) values
   ('patients.edit',    null,         'Add and edit patients and visits'),
   ('patients.delete',  null,         'Delete any patient (the responsible seller can always delete their own)'),
   ('sellers.assign',   null,         'Record a patient for any seller, type a new seller, reassign any patient'),
-  ('sellers.manage',   'sales',      'Manage the seller list and sellers'' commission rates'),
+  ('sellers.manage',   null,         'Manage the seller list and sellers'' commission rates'),
   ('payments.record',  null,         'Record, edit and delete payments'),
   ('money.edit',       null,         'Change prices, extras and discounts'),
   ('transfers.manage', 'operations', 'Book transfers and hotels; add and edit drivers'),
@@ -3305,6 +3305,73 @@ begin
   perform set_config('app.seller_merge', '', true);
 end;
 $$;
+
+-- =====================================================================
+-- MODULES PER CLINIC (roadmap step C). Idempotent/safe to re-run.
+-- =====================================================================
+-- A clinic can buy parts of the product: operations (transfers, hotels, drivers), sales
+-- (quotes, commission) and accounting. Core (patients, payments, tasks, files, team,
+-- settings) is always on. A permission counts only while its module (permissions.module) is
+-- on for the member's clinic — checked inside has_permission(), so RLS, server actions and
+-- pages all follow. 'inbox' is reserved for the WhatsApp/Instagram inbox.
+alter table public.clinics add column if not exists modules text[] not null default array['operations', 'sales', 'accounting'];
+alter table public.clinics drop constraint if exists clinics_modules_check;
+alter table public.clinics add constraint clinics_modules_check
+  check (modules <@ array['operations', 'sales', 'accounting', 'inbox']);
+
+-- The modules of `uid`'s clinic — for a superadmin in support mode, the supported clinic's.
+create or replace function public.member_modules(uid uuid)
+returns text[]
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(
+    (select c.modules from public.clinics c
+     where c.id = case
+       when uid = auth.uid() and public.is_superadmin(uid) then public.support_clinic_id()
+       else (select p.clinic_id from public.profiles p where p.id = uid)
+     end),
+    array[]::text[]);
+$$;
+
+create or replace function public.has_permission(uid uuid, perm text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select uid is not null
+    and public.is_active_profile(uid)
+    and exists (
+      select 1
+      from public.role_permissions rp
+      join public.permissions p on p.key = rp.permission
+      where rp.permission = perm
+        and rp.role = any(public.member_roles(uid))
+        and (p.module is null or p.module = any(public.member_modules(uid)))
+    );
+$$;
+
+create or replace function public.my_permissions()
+returns text[]
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(array_agg(distinct rp.permission order by rp.permission), array[]::text[])
+  from public.role_permissions rp
+  join public.permissions p on p.key = rp.permission
+  where public.is_active_profile(auth.uid())
+    and rp.role = any(public.member_roles(auth.uid()))
+    and (p.module is null or p.module = any(public.member_modules(auth.uid())));
+$$;
+
+revoke execute on function public.member_modules(uuid) from public, anon;
+grant execute on function public.member_modules(uuid) to authenticated, service_role;
 
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.

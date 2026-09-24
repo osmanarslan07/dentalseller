@@ -107,7 +107,11 @@ Built as designed below. Notes:
 - Settings → Team: role checkboxes per member instead of Promote/Demote; roles chosen when
   adding a member. Guards: a clinic can never lose its last admin; nobody edits their own roles.
 
-### Step C — Modules per clinic ☐
+### Step C — Modules per clinic ◐ (built 2026-09-24, SQL not applied yet — waiting for your test)
+Built as designed below. Notes: `sellers.manage` is core (the seller list stays with Sales
+off; only the rates hide). Module switches sit in /platform → clinic → Plan & billing, next
+to the plan picker that prefills them. Operations off also hides the flights/hotel card and
+the dashboard's "Logistics not arranged" card.
 - `clinics.modules text[]`, default all three: `operations`, `sales`, `accounting` (`inbox`
   reserved). Each permission belongs to a module or to core (patients, payments, tasks, files,
   team, settings are core).

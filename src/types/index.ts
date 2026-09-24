@@ -23,6 +23,18 @@ export const ROLE_LABELS: Record<MemberRole, string> = {
   accountant: "Accountant",
 };
 
+/** Parts of the product a clinic can have switched on (clinics.modules). Core — patients,
+ * payments, tasks, files, team, settings — is always on. "inbox" is reserved. */
+export type ClinicModule = "operations" | "sales" | "accounting";
+
+export const CLINIC_MODULES: ClinicModule[] = ["operations", "sales", "accounting"];
+
+export const MODULE_LABELS: Record<ClinicModule, string> = {
+  operations: "Operations — transfers, hotels, drivers",
+  sales: "Sales — quotes, commission, earnings",
+  accounting: "Accounting",
+};
+
 export type Permission =
   | "patients.view"
   | "patients.edit"

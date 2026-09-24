@@ -15,7 +15,7 @@ import { MoneyCard } from "./MoneyCard";
 import { TransfersCard } from "./TransfersCard";
 import { forVisit, nightsBetween, shortDate, travelOf, VisitView } from "./visits";
 import { sellerLabel } from "@/lib/sellers";
-import { useCan } from "@/components/permissions";
+import { useCan, useModule } from "@/components/permissions";
 
 export interface VisitTabProps {
   patient: Patient;
@@ -48,6 +48,8 @@ export function visitStage(v: VisitView, today: string): { label: string; tone: 
 export function VisitTab(props: VisitTabProps) {
   const { patient, visit, transfers, profiles, sellers, currentUserId, surchargeRate, deductCosts, companies, transferDefaults, driverMessages } = props;
   const today = todayIsoLocal();
+  // flights, hotel and transfers belong to the Operations module
+  const operations = useModule("operations");
   const payments = forVisit(patient.payments, visit.key);
   const extras = forVisit(patient.extras, visit.key);
   const visitTransfers = forVisit(transfers, visit.key);
@@ -62,8 +64,8 @@ export function VisitTab(props: VisitTabProps) {
     <div className="flex flex-col gap-5">
       <SummaryStrip {...props} owed={owed} paid={paid} dueNow={dueNow} today={today} hasMoney={payments.length > 0 || extras.length > 0} hasTransfers={visitTransfers.length > 0} />
 
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <TravelCard {...props} />
+      <div className={`grid grid-cols-1 items-start gap-5 ${operations ? "lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" : ""}`}>
+        {operations && <TravelCard {...props} />}
         <MoneyCard
           patientId={patient.id}
           visit={visit}
@@ -78,6 +80,7 @@ export function VisitTab(props: VisitTabProps) {
         />
       </div>
 
+      {operations && (
       <TransfersCard
         key={visit.key}
         patientId={patient.id}
@@ -91,6 +94,7 @@ export function VisitTab(props: VisitTabProps) {
         deductCosts={deductCosts}
         driverMessages={driverMessages}
       />
+      )}
     </div>
   );
 }

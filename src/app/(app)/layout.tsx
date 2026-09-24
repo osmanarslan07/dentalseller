@@ -64,7 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen">
       <PresenceHeartbeat />
       <ToastProvider>
-        <PermissionsProvider permissions={viewer.permissions}>
+        <PermissionsProvider permissions={viewer.permissions} modules={viewer.modules}>
         <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
           <CelebrationSoundProvider initialEnabled={settings.celebration_sound}>
             {viewer.support && <SupportBar support={viewer.support} viewAsId={viewer.userId} />}

@@ -17,6 +17,7 @@ import { Patient, Seller } from "@/types";
 import { sellerLabel } from "@/lib/sellers";
 import { isMismatch, visitBalances } from "@/lib/balance";
 import { visitExpectedTotal } from "@/lib/commission";
+import { useModule } from "@/components/permissions";
 
 const EVENT_ICONS: Record<CalendarEventKind, string> = {
   visit1_arrival: "🛬",
@@ -95,6 +96,8 @@ export function TeamOperationsPanel({
   monthAheadIso: string;
 }) {
   const [scope, setScope] = useState<Scope>("mine");
+  // flights, hotels and transfers are the Operations module
+  const operations = useModule("operations");
   const [busyTargetKey, setBusyTargetKey] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const { showToast } = useToast();
@@ -475,6 +478,7 @@ export function TeamOperationsPanel({
           )}
         </Card>
 
+        {operations && (
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -553,6 +557,7 @@ export function TeamOperationsPanel({
             </ul>
           )}
         </Card>
+        )}
       </div>
 
       <Card className="p-5">

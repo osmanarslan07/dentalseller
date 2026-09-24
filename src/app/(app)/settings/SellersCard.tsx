@@ -15,6 +15,7 @@ import {
   saveSellerCommission,
   setSellerRecordActive,
 } from "./seller-actions";
+import { useModule } from "@/components/permissions";
 
 export interface SellerRecordRow {
   seller: Seller;
@@ -33,6 +34,8 @@ export function SellersCard({ rows, allSellers, currentUserId }: { rows: SellerR
   const router = useRouter();
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
+  // rates only mean something while the clinic has the Sales module
+  const sales = useModule("sales");
   const [name, setName] = useState("");
   const [panel, setPanel] = useState<Panel>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,8 +66,8 @@ export function SellersCard({ rows, allSellers, currentUserId }: { rows: SellerR
     <Card className="p-6">
       <h2 className="mb-1 text-base font-semibold text-slate-900">Sellers without an account</h2>
       <p className="mb-5 text-sm text-slate-500">
-        People who sell but never log in — a coordinator enters their patients and picks them as the seller. Their
-        commission shows on the Team page. Once someone gets an account, use <em>Link to account</em> to move their
+        People who sell but never log in — a coordinator enters their patients and picks them as the seller.
+        {sales && " Their commission shows on the Team page."} Once someone gets an account, use <em>Link to account</em> to move their
         patients and commission over.
       </p>
 
@@ -87,18 +90,24 @@ export function SellersCard({ rows, allSellers, currentUserId }: { rows: SellerR
                       )}
                     </span>
                     <span className="text-xs text-slate-500">
-                      {patientCount} patient{patientCount === 1 ? "" : "s"} · {pct(commission.tier1_rate)} / {pct(commission.tier2_rate)} /{" "}
-                      {pct(commission.tier3_rate)}
-                      {commission.fixed_monthly_payment > 0 && ` + ${formatCurrency(commission.fixed_monthly_payment, commission.currency)}/month`}
+                      {patientCount} patient{patientCount === 1 ? "" : "s"}
+                      {sales && (
+                        <>
+                          {" "}· {pct(commission.tier1_rate)} / {pct(commission.tier2_rate)} / {pct(commission.tier3_rate)}
+                          {commission.fixed_monthly_payment > 0 && ` + ${formatCurrency(commission.fixed_monthly_payment, commission.currency)}/month`}
+                        </>
+                      )}
                     </span>
                   </span>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Button size="sm" variant="secondary" disabled={pending} onClick={() => setPanel(open === "rename" ? null : { id: seller.id, kind: "rename" })}>
                       Rename
                     </Button>
-                    <Button size="sm" variant="secondary" disabled={pending} onClick={() => setPanel(open === "commission" ? null : { id: seller.id, kind: "commission" })}>
-                      Commission
-                    </Button>
+                    {sales && (
+                      <Button size="sm" variant="secondary" disabled={pending} onClick={() => setPanel(open === "commission" ? null : { id: seller.id, kind: "commission" })}>
+                        Commission
+                      </Button>
+                    )}
                     <Button size="sm" variant="secondary" disabled={pending} onClick={() => setPanel(open === "merge" ? null : { id: seller.id, kind: "merge" })}>
                       Link to account / merge
                     </Button>
@@ -124,7 +133,7 @@ export function SellersCard({ rows, allSellers, currentUserId }: { rows: SellerR
                 </div>
 
                 {open === "rename" && <RenameForm seller={seller} pending={pending} onSubmit={(n) => run(() => renameSellerRecord(seller.id, n), "Seller renamed ✓")} />}
-                {open === "commission" && (
+                {sales && open === "commission" && (
                   <CommissionForm
                     commission={commission}
                     pending={pending}

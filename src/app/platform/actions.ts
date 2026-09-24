@@ -12,6 +12,7 @@ import {
   ANNOUNCEMENT_MAX_LENGTH,
   AnnouncementLevel,
 } from "@/lib/announcements";
+import { CLINIC_MODULES } from "@/types";
 
 function generateTempPassword(): string {
   return randomBytes(12).toString("base64url");
@@ -216,8 +217,11 @@ export async function updateClinicBilling(clinicId: string, formData: FormData):
   const trialEndsAt = plan === "trial" ? String(formData.get("trial_ends_at") ?? "").trim() || null : null;
   if (trialEndsAt && !/^\d{4}-\d{2}-\d{2}$/.test(trialEndsAt)) throw new Error("Enter a valid trial end date");
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const modules = CLINIC_MODULES.filter((m) => formData.getAll("modules").includes(m));
 
   const admin = createAdminClient();
+  const { error: modulesError } = await admin.from("clinics").update({ modules }).eq("id", clinicId);
+  if (modulesError) throw new Error(modulesError.message);
   const { error } = await admin.from("clinic_billing").upsert({
     clinic_id: clinicId,
     plan,
@@ -234,6 +238,7 @@ export async function updateClinicBilling(clinicId: string, formData: FormData):
     seatLimit ? `${seatLimit} seats` : "unlimited seats",
     monthlyPrice !== null && `${formatPrice(monthlyPrice, currency)}/month`,
     trialEndsAt && `trial ends ${trialEndsAt}`,
+    `modules: ${modules.join(", ") || "core only"}`,
   ]
     .filter(Boolean)
     .join(" · ");

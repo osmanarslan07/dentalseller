@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { MemberRole, Permission, SellerRole } from "@/types";
+import { ClinicModule, MemberRole, Permission, SellerRole } from "@/types";
 
 export interface SupportContext {
   sessionId: string;
@@ -33,6 +33,9 @@ export interface Viewer {
    * viewed-as member's roles). Pages and menus shape themselves from this; RLS and the
    * server actions enforce the same list. */
   permissions: Permission[];
+  /** The clinic's switched-on modules (permissions already account for them; this is for
+   * hiding things no permission covers, like the travel and transfer cards). */
+  modules: ClinicModule[];
   clinicId: string;
   support: SupportContext | null;
 }
@@ -63,6 +66,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
       role: me.role as SellerRole,
       roles: (me.roles ?? []) as MemberRole[],
       permissions: await loadPermissions(supabase),
+      modules: await loadModules(supabase, me.clinic_id),
       clinicId: me.clinic_id,
       support: null,
     };
@@ -113,6 +117,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     role: viewAs?.role ?? "admin",
     roles: viewAs?.roles ?? ["admin"],
     permissions: await loadPermissions(supabase),
+    modules: await loadModules(admin, session.clinic_id),
     clinicId: session.clinic_id,
     support: {
       sessionId: session.id,
@@ -135,6 +140,18 @@ async function loadPermissions(supabase: Awaited<ReturnType<typeof createClient>
     return [];
   }
   return (data ?? []) as Permission[];
+}
+
+async function loadModules(
+  client: Pick<Awaited<ReturnType<typeof createClient>>, "from">,
+  clinicId: string
+): Promise<ClinicModule[]> {
+  const { data, error } = await client.from("clinics").select("modules").eq("id", clinicId).maybeSingle();
+  if (error) {
+    console.error("clinic modules read failed:", error.message);
+    return [];
+  }
+  return (data?.modules ?? []) as ClinicModule[];
 }
 
 /** For clinic-facing server actions that use the service-role client (which RLS's

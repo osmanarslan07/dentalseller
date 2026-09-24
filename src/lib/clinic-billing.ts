@@ -1,3 +1,5 @@
+import { ClinicModule } from "@/types";
+
 /** Per-clinic plan & billing record (clinic_billing). Pure helpers only — record-keeping,
  * no payments. Readable by superadmins alone; a clinic never sees its own row. */
 
@@ -10,6 +12,15 @@ export const PLAN_LABELS: Record<Plan, string> = {
   starter: "Starter",
   pro: "Pro",
   custom: "Custom",
+};
+
+/** What choosing a plan switches on — a starting point, still editable by hand. Custom keeps
+ * whatever is set. */
+export const PLAN_MODULES: Record<Plan, ClinicModule[] | null> = {
+  trial: ["operations", "sales", "accounting"],
+  starter: ["operations"],
+  pro: ["operations", "sales", "accounting"],
+  custom: null,
 };
 
 export const BILLING_CURRENCIES = ["EUR", "GBP", "USD", "TRY"] as const;

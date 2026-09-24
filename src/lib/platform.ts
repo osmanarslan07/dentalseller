@@ -12,7 +12,7 @@ import { REQUIRE_TERMS_ACCEPTANCE, TERMS_VERSION } from "@/lib/terms";
 import { ActivityLogRow } from "@/lib/activity-log";
 import { describeMaskedActivity } from "@/lib/activity-mask";
 import { ACTIVITY_CATEGORY_ACTIONS, ACTIVITY_PAGE_SIZE, ActivityCategory } from "@/lib/activity-categories";
-import { ProfileRole } from "@/types";
+import { ClinicModule, ProfileRole } from "@/types";
 
 export type MfaState = "verified" | "needs_setup" | "needs_code";
 
@@ -88,6 +88,8 @@ export interface Clinic {
   slug: string | null;
   is_active: boolean;
   created_at: string;
+  /** Switched-on parts of the product (clinics.modules). */
+  modules: ClinicModule[];
 }
 
 /** Aggregates only — the platform area never sees a patient's name, treatment or money.
@@ -322,7 +324,7 @@ function toClinicBilling(row: ClinicBillingRow | null): ClinicBilling | null {
   };
 }
 
-const CLINIC_COLUMNS = "id, name, slug, is_active, created_at";
+const CLINIC_COLUMNS = "id, name, slug, is_active, created_at, modules";
 
 export async function getClinicsWithStats(): Promise<ClinicWithStats[]> {
   const admin = createAdminClient();

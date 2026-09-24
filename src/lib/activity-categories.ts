@@ -73,6 +73,7 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "display_name_updated",
     "password_changed",
     "telegram_link_generated",
+    "telegram_linked",
   ],
 };
 

@@ -25,6 +25,8 @@ export async function setMyDisplayName(_prevState: NameState, formData: FormData
   const { error } = await supabase.from("profiles").update({ display_name: name }).eq("id", user.id);
   if (error) return { error: error.message };
 
+  await logActivity(supabase, user.id, "display_name_updated", "profile", user.id, `— → ${name} (first sign-in)`);
+
   redirect("/");
 }
 

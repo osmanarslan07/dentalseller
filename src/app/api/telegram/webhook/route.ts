@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { logActivity } from "@/lib/activity-log";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,8 @@ export async function POST(request: NextRequest) {
 
   await admin.from("telegram_link_codes").update({ used_at: new Date().toISOString() }).eq("code", code);
   await admin.from("profiles").update({ telegram_chat_id: String(chatId) }).eq("id", linkCode.user_id);
+  // the member's own action, finished here: the clinic comes from their profile
+  await logActivity(admin, linkCode.user_id, "telegram_linked", "profile", linkCode.user_id);
 
   await sendTelegramMessage(String(chatId), "✅ Telegram connected — you'll get your notifications here from now on.");
 

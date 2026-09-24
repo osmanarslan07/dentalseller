@@ -121,7 +121,9 @@ the dashboard's "Logistics not arranged" card.
   the seller list; the Seller field stays (reports by seller). Operations off: no Transfers
   page, driver settings or transfer/hotel cards. Accounting off: no Accounting page.
 
-### Step D — Activity log gaps ☐
+### Step D — Activity log gaps ◐ (built 2026-09-24, waiting for your test)
+Most gaps had already been closed on master (quotes, tasks, settings, profile, Telegram code).
+Added: the first-sign-in name, Telegram link completed (webhook), role changes. TODO.md trimmed.
 - Close every gap listed in `TODO.md` (quote lifecycle, commission/branding/system/dashboard
   settings, tasks, profile name/password, Telegram send + link code), then trim TODO.md.
 

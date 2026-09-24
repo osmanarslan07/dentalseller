@@ -33,6 +33,17 @@ function dayLabel(iso: string, today: string): string {
   return iso === today ? `Today · ${label}` : iso === tomorrow ? `Tomorrow · ${label}` : label;
 }
 
+/** One transfer detail: labelled on phones (two to a row, or a full row when `wide`), a plain
+ * inline value on wider screens where the row has room. */
+function Detail({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={`min-w-0 ${wide ? "col-span-2" : ""}`}>
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400 sm:hidden">{label}</dt>
+      <dd className="break-words">{children}</dd>
+    </div>
+  );
+}
+
 type DriverGroup = { key: string; driver: Driver | null; company: TransferCompany | null; items: TransferWithPatient[] };
 
 /** One day's transfers grouped by driver — unassigned first, since those need action. */
@@ -251,78 +262,104 @@ export function TransfersClient({
                   </div>
                   <ul className="divide-y divide-slate-100">
                     {g.items.map((t) => (
-                      <li key={t.id} className={`flex flex-wrap items-start gap-3 px-4 py-3 text-sm ${t.status === "done" ? "opacity-60" : ""}`}>
-                        <div className="w-14 shrink-0 text-base font-semibold tabular-nums text-slate-900">{t.transfer_time ?? "--:--"}</div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge tone={KIND[t.kind].tone}>{KIND[t.kind].label}</Badge>
-                            <span className="font-medium text-slate-800">
-                              {t.from_place || "?"} → {t.to_place || "?"}
+                      <li key={t.id} className={`px-4 py-3 text-sm ${t.status === "done" ? "opacity-60" : ""}`}>
+                        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:gap-4">
+                          {/* time — on phones with the badges beside it */}
+                          <div className="flex items-center gap-2 sm:w-14 sm:shrink-0">
+                            <span className="text-lg font-semibold tabular-nums text-slate-900 sm:text-base">{t.transfer_time ?? "--:--"}</span>
+                            <span className="ml-auto flex flex-wrap justify-end gap-1.5 sm:hidden">
+                              <Badge tone={KIND[t.kind].tone}>{KIND[t.kind].label}</Badge>
+                              <Badge tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Badge>
                             </span>
-                            <Badge tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Badge>
-                            <WhatsAppDelivery transfer={t} />
                           </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-                            <Link href={`/patients/${t.patient.id}`} className="font-medium text-teal-700 hover:underline">
-                              {t.patient.name}
-                            </Link>
-                            <span>{t.pax} pax</span>
-                            {t.flight_no && <span>✈ {t.flight_no}</span>}
-                            {t.patient.phone && (
-                              <>
-                                <a href={`tel:${t.patient.phone.replace(/[^\d+]/g, "")}`} className="hover:underline">
-                                  📞 {t.patient.phone}
-                                </a>
-                                {waDigits(t.patient.phone).length >= 8 && (
-                                  <a
-                                    href={`https://wa.me/${waDigits(t.patient.phone)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-emerald-700 hover:underline"
-                                  >
-                                    WhatsApp patient
-                                  </a>
-                                )}
-                              </>
-                            )}
+
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="hidden sm:inline-flex">
+                                <Badge tone={KIND[t.kind].tone}>{KIND[t.kind].label}</Badge>
+                              </span>
+                              <span className="text-[15px] font-semibold text-slate-900 sm:text-sm sm:font-medium sm:text-slate-800">
+                                {t.from_place || "?"} → {t.to_place || "?"}
+                              </span>
+                              <span className="hidden sm:inline-flex">
+                                <Badge tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Badge>
+                              </span>
+                              <WhatsAppDelivery transfer={t} />
+                            </div>
+
+                            {/* details — a labelled grid on phones, one compact line on wider screens */}
+                            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:flex sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1 sm:text-xs sm:text-slate-600">
+                              <Detail label="Patient" wide>
+                                <Link href={`/patients/${t.patient.id}`} className="font-semibold text-teal-700 hover:underline sm:font-medium">
+                                  {t.patient.name}
+                                </Link>
+                              </Detail>
+                              <Detail label="Pax">{t.pax} pax</Detail>
+                              {t.flight_no && <Detail label="Flight">✈ {t.flight_no}</Detail>}
+                              {t.patient.phone && (
+                                <Detail label="Patient phone" wide>
+                                  <span className="flex flex-wrap items-center gap-2">
+                                    <a href={`tel:${t.patient.phone.replace(/[^\d+]/g, "")}`} className="font-medium text-slate-800 hover:underline sm:font-normal sm:text-slate-600">
+                                      📞 {t.patient.phone}
+                                    </a>
+                                    {waDigits(t.patient.phone).length >= 8 && (
+                                      <a
+                                        href={`https://wa.me/${waDigits(t.patient.phone)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 sm:bg-transparent sm:p-0 sm:font-normal sm:hover:underline"
+                                      >
+                                        WhatsApp patient
+                                      </a>
+                                    )}
+                                  </span>
+                                </Detail>
+                              )}
+                              {t.notes && (
+                                <Detail label="Notes" wide>
+                                  <span className="text-slate-700 sm:text-slate-400">{t.notes}</span>
+                                </Detail>
+                              )}
+                            </dl>
                           </div>
-                          {t.notes && <p className="mt-0.5 text-xs text-slate-400">{t.notes}</p>}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2 text-xs font-medium">
-                          {g.driver && (
-                            <button
-                              type="button"
-                              onClick={() => messages.copy(driverMessage(t, t.patient.name, t.patient.phone))}
-                              className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700 hover:bg-slate-200"
-                              title="Copy the driver message to paste anywhere"
-                            >
-                              Copy
-                            </button>
-                          )}
-                          {g.driver && t.status !== "done" && driverMessages !== "off" && (() => {
-                            const one = oneSend(t, g.driver);
-                            const fallbackUrl = messages.fallbackUrl(one.key);
-                            return fallbackUrl ? (
-                              <FallbackLink url={fallbackUrl} onUse={() => messages.sentViaFallback(one)} />
-                            ) : (
+
+                          {/* actions — full-width buttons on phones */}
+                          <div className="flex gap-2 text-sm font-medium sm:shrink-0 sm:text-xs [&>*]:flex-1 [&>*]:text-center sm:[&>*]:flex-none">
+                            {g.driver && (
                               <button
                                 type="button"
-                                onClick={() => messages.send(one)}
-                                disabled={!isWhatsAppable(g.driver.phone) || busyId === t.id || messages.busyKey === t.id}
-                                className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                                onClick={() => messages.copy(driverMessage(t, t.patient.name, t.patient.phone))}
+                                className="rounded-lg bg-slate-100 px-2.5 py-2 text-slate-700 hover:bg-slate-200 sm:py-1"
+                                title="Copy the driver message to paste anywhere"
                               >
-                                {messages.busyKey === t.id ? "Sending…" : sendLabel(driverMessages, t.status !== "planned")}
+                                Copy
                               </button>
-                            );
-                          })()}
-                          <button
-                            type="button"
-                            onClick={() => run(t.id, () => setTransferStatus(t.id, t.status === "done" ? "sent" : "done"), t.status === "done" ? "Marked not done" : "Marked done ✓")}
-                            disabled={busyId === t.id}
-                            className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700 hover:bg-slate-200 disabled:opacity-40"
-                          >
-                            {t.status === "done" ? "Undo" : "Done ✓"}
-                          </button>
+                            )}
+                            {g.driver && t.status !== "done" && driverMessages !== "off" && (() => {
+                              const one = oneSend(t, g.driver);
+                              const fallbackUrl = messages.fallbackUrl(one.key);
+                              return fallbackUrl ? (
+                                <FallbackLink url={fallbackUrl} onUse={() => messages.sentViaFallback(one)} />
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => messages.send(one)}
+                                  disabled={!isWhatsAppable(g.driver.phone) || busyId === t.id || messages.busyKey === t.id}
+                                  className="rounded-lg bg-emerald-50 px-2.5 py-2 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 sm:py-1"
+                                >
+                                  {messages.busyKey === t.id ? "Sending…" : sendLabel(driverMessages, t.status !== "planned")}
+                                </button>
+                              );
+                            })()}
+                            <button
+                              type="button"
+                              onClick={() => run(t.id, () => setTransferStatus(t.id, t.status === "done" ? "sent" : "done"), t.status === "done" ? "Marked not done" : "Marked done ✓")}
+                              disabled={busyId === t.id}
+                              className="rounded-lg bg-slate-100 px-2.5 py-2 text-slate-700 hover:bg-slate-200 disabled:opacity-40 sm:py-1"
+                            >
+                              {t.status === "done" ? "Undo" : "Done ✓"}
+                            </button>
+                          </div>
                         </div>
                       </li>
                     ))}

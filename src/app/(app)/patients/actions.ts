@@ -27,7 +27,11 @@ function addMonthsToDateString(dateStr: string, months: number): string {
  * the patient's responsible seller, who may not be whoever's saving this particular edit
  * (any active seller can update a shared patient record). Best-effort: a failure here
  * should never break the patient save it's attached to. */
-async function maybeCreateFollowUpTask(patientId: string, responsibleSellerId: string, input: PatientInput) {
+async function maybeCreateFollowUpTask(
+  patientId: string,
+  responsibleSellerId: string,
+  input: Pick<PatientInput, "name" | "visit1_status" | "needs_visit2" | "visit1_date" | "visit2_date" | "visit2_recall_months">
+) {
   if (!(input.visit1_status === "completed" && input.needs_visit2 && input.visit1_date && !input.visit2_date)) return;
   try {
     const admin = createAdminClient();
@@ -383,37 +387,170 @@ export async function createPatient(formData: FormData) {
   return { id: (created?.id as string | undefined) ?? null, celebration };
 }
 
-export async function updatePatient(id: string, formData: FormData) {
+/** How each field saved on its own from the patient page is cleaned up — the page's cards save
+ * just their own fields, so each one is checked here rather than trusting the client's shape. */
+type FieldKind = "text" | "requiredText" | "date" | "time" | "money" | "pax" | "status" | "bool" | "months";
+
+function cleanField(kind: FieldKind, v: unknown): unknown {
+  switch (kind) {
+    case "text":
+    case "requiredText": {
+      const s = typeof v === "string" ? v.trim() : "";
+      if (kind === "requiredText" && !s) throw new Error("This field can't be empty");
+      return s || null;
+    }
+    case "date":
+      return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+    case "time": {
+      if (v == null || v === "") return null;
+      if (typeof v !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(v.trim())) {
+        throw new Error("Use 24-hour times, e.g. 14:30");
+      }
+      return v.trim();
+    }
+    case "money": {
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) throw new Error("Amounts must be 0 or more");
+      return n;
+    }
+    case "pax":
+      return parsePax(v as FormDataEntryValue | null);
+    case "status":
+      return v === "completed" ? "completed" : "upcoming";
+    case "bool":
+      return v === true;
+    case "months": {
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) && n > 0 ? n : 3;
+    }
+  }
+}
+
+function cleanPatch(patch: Record<string, unknown>, allowed: Record<string, FieldKind>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    const kind = allowed[key];
+    if (!kind) throw new Error(`Unknown field: ${key}`);
+    out[key] = cleanField(kind, value);
+  }
+  if (Object.keys(out).length === 0) throw new Error("Nothing to save");
+  return out;
+}
+
+const PATIENT_FIELD_KINDS: Record<string, FieldKind> = {
+  name: "requiredText",
+  phone: "text",
+  treatment: "text",
+  letter_treatment_items: "text",
+  notes: "text",
+  komo_reference: "text",
+  confirmation_date: "date",
+  needs_visit2: "bool",
+  visit2_recall_months: "months",
+};
+
+/** The per-visit fields, named once — visit 1/2 store them as `visit{n}_<field>`, an extra
+ * visit's own row as `<field>` (except the date, `visit_date`). */
+const VISIT_FIELD_KINDS: Record<string, FieldKind> = {
+  date: "date",
+  expected: "money",
+  status: "status",
+  pax: "pax",
+  arrival_date: "date",
+  arrival_time: "time",
+  arrival_flight_no: "text",
+  departure_date: "date",
+  departure_time: "time",
+  departure_flight_no: "text",
+  hotel_name: "text",
+  room_type: "text",
+  hotel_cost: "money",
+  hotel_arranged: "bool",
+};
+/** Only extra visits carry these on the visit itself (visit 1/2 use the patient's). */
+const EXTRA_ONLY_FIELD_KINDS: Record<string, FieldKind> = {
+  label: "requiredText",
+  treatment: "text",
+  notes: "text",
+};
+
+/** Saves some of a patient's own fields (one card of the patient page) — the rest stay as
+ * they are. Logged like a full save, and marking needs_visit2 off is refused while visit 2
+ * still has money on it. */
+export async function updatePatientFields(id: string, patch: Record<string, unknown>) {
   const supabase = await createClient();
   const user = await getActingUser();
 
-  const input = parseInput(formData);
-  if (!input.name) throw new Error("Name is required");
-
-  // Shared patients can be edited by any active seller — snapshot the before-state so the
-  // audit log records who actually changed money/date/status fields, not just that "someone did".
+  const input = cleanPatch(patch, PATIENT_FIELD_KINDS);
   const before = await getPatient(supabase, id);
+  if (!before) throw new Error("Patient not found");
+  if (input.needs_visit2 === false && before.needs_visit2) {
+    const v2 = (x: { visit_number: 1 | 2 | null }) => x.visit_number === 2;
+    if (before.payments.some(v2) || before.extras.some(v2)) {
+      throw new Error("Visit 2 has payments or extras — move or delete them first");
+    }
+  }
 
   const { error } = await supabase.from("patients").update(input).eq("id", id);
   if (error) throw new Error(error.message);
 
-  if (before) {
-    const changes = diffFields(before, input, PATIENT_AUDIT_FIELDS);
-    if (changes) await logActivity(supabase, user.actorId, "patient_updated", "patient", id, changes);
+  const changes = diffFields(before, { ...before, ...input }, PATIENT_AUDIT_FIELDS);
+  if (changes) await logActivity(supabase, user.actorId, "patient_updated", "patient", id, changes);
 
-    // Only on the actual upcoming → completed transition — not on every subsequent save of
-    // an already-completed visit 1, which would otherwise re-check (and re-skip) every time.
-    if (before.visit1_status !== "completed" && input.visit1_status === "completed") {
-      await maybeCreateFollowUpTask(id, before.responsible_seller_id, input);
+  revalidatePath("/patients");
+  revalidatePath("/");
+  revalidatePath("/tasks");
+  revalidatePath("/earnings");
+}
+
+/** Saves some fields of one visit — "visit1" | "visit2" | an extra visit's id — e.g. just the
+ * travel card, the price, or the status. Marking visit 1 completed creates the "book visit 2"
+ * task exactly like a full save does. */
+export async function updateVisitFields(patientId: string, visitKey: string, patch: Record<string, unknown>) {
+  const supabase = await createClient();
+  const user = await getActingUser();
+
+  if (visitKey === "visit1" || visitKey === "visit2") {
+    const cleaned = cleanPatch(patch, VISIT_FIELD_KINDS);
+    const input = Object.fromEntries(Object.entries(cleaned).map(([k, v]) => [`${visitKey}_${k}`, v]));
+    const before = await getPatient(supabase, patientId);
+    if (!before) throw new Error("Patient not found");
+
+    const { error } = await supabase.from("patients").update(input).eq("id", patientId);
+    if (error) throw new Error(error.message);
+
+    const after = { ...before, ...input } as Patient;
+    const changes = diffFields(before, after, PATIENT_AUDIT_FIELDS);
+    if (changes) await logActivity(supabase, user.actorId, "patient_updated", "patient", patientId, changes);
+    if (before.visit1_status !== "completed" && after.visit1_status === "completed") {
+      await maybeCreateFollowUpTask(patientId, before.responsible_seller_id, after);
     }
+  } else {
+    const cleaned = cleanPatch(patch, { ...VISIT_FIELD_KINDS, ...EXTRA_ONLY_FIELD_KINDS });
+    const input = Object.fromEntries(Object.entries(cleaned).map(([k, v]) => [k === "date" ? "visit_date" : k, v]));
+    const { data: before } = await supabase
+      .from("patient_visits")
+      .select("*")
+      .eq("id", visitKey)
+      .eq("patient_id", patientId)
+      .maybeSingle<PatientExtraVisit>();
+    if (!before) throw new Error("Visit not found");
 
-    // payments (and their celebrations) are recorded separately now — see payment-actions
+    const { error } = await supabase.from("patient_visits").update(input).eq("id", visitKey);
+    if (error) throw new Error(error.message);
+
+    const changes = diffFields(before, { ...before, ...input }, EXTRA_VISIT_AUDIT_FIELDS);
+    if (changes) {
+      await logActivity(supabase, user.actorId, "visit_updated", "patient", patientId, `${before.label}: ${changes}`);
+    }
   }
 
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath("/earnings");
+  revalidatePath("/transfers");
 }
 
 export async function sendPatientTelegramMessage(id: string, visitKey: string) {
@@ -510,9 +647,11 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
   const input = parseExtraVisitInput(formData);
   if (!input.label) throw new Error("Reason is required");
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("patient_visits")
-    .insert({ ...input, patient_id: patientId, created_by_seller_id: user.id });
+    .insert({ ...input, patient_id: patientId, created_by_seller_id: user.id })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
 
   await logActivity(supabase, user.actorId, "visit_added", "patient", patientId, input.label);
@@ -520,32 +659,7 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/earnings");
-}
-
-export async function updateExtraVisit(id: string, formData: FormData) {
-  const supabase = await createClient();
-  const user = await getActingUser();
-
-  const input = parseExtraVisitInput(formData);
-  if (!input.label) throw new Error("Reason is required");
-
-  const { data: before } = await supabase
-    .from("patient_visits")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle<PatientExtraVisit>();
-
-  const { error } = await supabase.from("patient_visits").update(input).eq("id", id);
-  if (error) throw new Error(error.message);
-
-  if (before) {
-    const changes = diffFields(before, input, EXTRA_VISIT_AUDIT_FIELDS);
-    if (changes) await logActivity(supabase, user.actorId, "visit_updated", "patient", before.patient_id, changes);
-  }
-
-  revalidatePath("/patients");
-  revalidatePath("/");
-  revalidatePath("/earnings");
+  return { id: data.id as string };
 }
 
 // Transfer "arranged" flags aren't toggled by hand any more — they follow the transfers
@@ -633,6 +747,13 @@ export async function deleteExtraVisit(id: string) {
     .select("*")
     .eq("id", id)
     .maybeSingle<PatientExtraVisit>();
+
+  // payments go with the visit (on delete cascade) — money recorded must never vanish silently
+  const { count } = await supabase
+    .from("patient_payments")
+    .select("id", { count: "exact", head: true })
+    .eq("extra_visit_id", id);
+  if (count) throw new Error("This visit has payments — move or delete them first");
 
   const { error } = await supabase.from("patient_visits").delete().eq("id", id);
   if (error) throw new Error(error.message);

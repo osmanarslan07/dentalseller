@@ -3,8 +3,14 @@ import { getClinicConfig, getPatientTransfers, getTransferCompanies } from "@/li
 import { PatientDetail } from "../PatientDetail";
 import { loadPatientPageContext } from "../detail-data";
 
-export default async function PatientPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function PatientPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const [{ id }, { tab }] = await Promise.all([params, searchParams]);
   const ctx = await loadPatientPageContext();
   const patient = ctx.patients.find((p) => p.id === id);
   if (!patient) notFound();
@@ -20,6 +26,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
       // every update: adding a transfer touches the patient row (derived flags) and would reset the tab
       key={patient.id}
       patient={patient}
+      initialTab={tab}
       hotelOptions={ctx.hotelOptions}
       roomTypeOptions={ctx.roomTypeOptions}
       profiles={ctx.profiles}

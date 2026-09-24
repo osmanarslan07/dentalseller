@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { diffFields, logActivity } from "@/lib/activity-log";
 import { Celebration, TaskInput, TaskStatus } from "@/types";
-import { getActingUser } from "@/lib/viewer";
+import { requirePermission } from "@/lib/permissions";
 
 const TASK_AUDIT_FIELDS: { key: keyof TaskInput; label: string }[] = [
   { key: "title", label: "title" },
@@ -34,7 +34,7 @@ function parseInput(formData: FormData): TaskInput {
 
 export async function createTask(formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("tasks.use");
 
   const input = parseInput(formData);
   if (!input.title) throw new Error("Title is required");
@@ -50,7 +50,7 @@ export async function createTask(formData: FormData) {
 
 export async function updateTask(id: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("tasks.use");
 
   const input = parseInput(formData);
   if (!input.title) throw new Error("Title is required");
@@ -76,7 +76,7 @@ export async function updateTask(id: string, formData: FormData) {
 
 export async function setTaskStatus(id: string, status: TaskStatus) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("tasks.use");
 
   const { error } = await supabase.from("tasks").update({ status }).eq("id", id);
   if (error) throw new Error(error.message);
@@ -91,7 +91,7 @@ export async function setTaskStatus(id: string, status: TaskStatus) {
 
 export async function deleteTask(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("tasks.use");
 
   // Grab the title before it's gone — the log has to be self-contained since the task row won't exist anymore.
   const { data: task } = await supabase.from("tasks").select("title").eq("id", id).maybeSingle();

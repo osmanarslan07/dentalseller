@@ -4,12 +4,14 @@ import { getClinicConfig, getQuote } from "@/lib/data";
 import { formatCurrency } from "@/lib/format";
 import { computeQuoteSplit } from "@/lib/quote-templates";
 import { PrintButton } from "@/components/PrintButton";
+import { requirePagePermission } from "@/lib/permissions";
 
 function todayLabel(): string {
   return new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
 }
 
 export default async function QuoteOfferPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePagePermission("quotes.use");
   const { id } = await params;
   const supabase = await createClient();
   const quote = await getQuote(supabase, id);

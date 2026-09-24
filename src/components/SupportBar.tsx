@@ -13,6 +13,7 @@ import {
   setSupportViewAs,
   unlockSupportEditing,
 } from "@/lib/support-actions";
+import { ROLE_LABELS } from "@/types";
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
@@ -70,7 +71,7 @@ export function SupportBar({ support, viewAsId }: { support: SupportContext; vie
             >
               {support.members.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name} ({m.role})
+                  {m.name} ({m.roles.map((r) => ROLE_LABELS[r]).join(", ") || m.role})
                 </option>
               ))}
             </select>

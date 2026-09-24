@@ -3,12 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { getPatients, getSellers, getSettings } from "@/lib/data";
 import { PatientsClient } from "./PatientsClient";
 import { getViewerUser } from "@/lib/viewer";
+import { requirePagePermission } from "@/lib/permissions";
 
 export default async function PatientsPage({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string; open?: string }>;
 }) {
+  await requirePagePermission("patients.view");
   const params = await searchParams;
   // old links (?open=<id>) opened the edit popup — the patient has its own page now
   if (params.open) redirect(`/patients/${params.open}`);

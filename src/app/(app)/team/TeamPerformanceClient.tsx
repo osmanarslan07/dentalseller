@@ -35,8 +35,9 @@ export function TeamPerformanceClient({
   selectedMonthLabel,
   monthOptions,
 }: {
-  rows: Row[];
-  activity: ActivityEntry[];
+  /** null: not allowed to see earnings / activity */
+  rows: Row[] | null;
+  activity: ActivityEntry[] | null;
   selectedMonth: string;
   selectedMonthLabel: string;
   monthOptions: MonthOption[];
@@ -47,11 +48,12 @@ export function TeamPerformanceClient({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Team performance</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{rows ? "Team performance" : "Team activity"}</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Admin-only — every seller&apos;s activity and commission. Not visible to anyone else.
+            {rows ? "Every seller’s sales and commission." : "What the team has been doing."} Only people whose role allows it see this page.
           </p>
         </div>
+        {rows && (
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">Month</label>
           <Select
@@ -66,8 +68,10 @@ export function TeamPerformanceClient({
             ))}
           </Select>
         </div>
+        )}
       </div>
 
+      {rows && (
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
@@ -113,7 +117,9 @@ export function TeamPerformanceClient({
           </table>
         </div>
       </Card>
+      )}
 
+      {activity && (
       <Card className="p-5">
         <div className="mb-3 flex items-baseline justify-between gap-3">
           <h2 className="text-base font-semibold text-slate-900">Recent activity</h2>
@@ -134,6 +140,7 @@ export function TeamPerformanceClient({
           </ul>
         )}
       </Card>
+      )}
     </div>
   );
 }

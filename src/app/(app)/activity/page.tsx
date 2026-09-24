@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPatients, getProfiles, getSellers } from "@/lib/data";
 import { peopleNameMap } from "@/lib/sellers";
-import { getViewer } from "@/lib/viewer";
+import { requirePagePermission } from "@/lib/permissions";
 import { ActivityLogRow, describeActivity, formatActivityTime } from "@/lib/activity-log";
 import {
   ACTIVITY_CATEGORY_ACTIONS,
@@ -23,8 +22,7 @@ const SUPPORT_ACTOR = "support";
  * filters. RLS (activity_log_select_admin) already limits this to admins of this clinic
  * (and to DentalSeller support inside the clinic). */
 export default async function ActivityHistoryPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const viewer = await getViewer();
-  if (!viewer || viewer.role !== "admin") redirect("/");
+  const viewer = await requirePagePermission("activity.view");
 
   const params = await searchParams;
   const category = parseActivityCategory(params.category);

@@ -14,6 +14,7 @@ import { updateVisitFields } from "../actions";
 import { RowMenu } from "./Menu";
 import { CheckIcon, gbp, LABEL_CAPS, PencilIcon, Pill, PillTone, Section, Segmented, Toggle } from "./bits";
 import { shortDate, VisitView } from "./visits";
+import { useCan } from "@/components/permissions";
 
 const METHOD_LABELS: Record<PaymentMethod, string> = { cash: "Cash", card: "Card", bank: "Bank" };
 const METHOD_TONES: Record<PaymentMethod, PillTone> = { cash: "green", card: "blue", bank: "slate" };
@@ -61,6 +62,12 @@ export function MoneyCard({
   const { showToast } = useToast();
   const { enabled: soundEnabled } = useCelebrationSound();
   const [editing, setEditing] = useState<Editing>(null);
+  // prices and extras need money.edit (a price is saved on the visit, so patients.edit too);
+  // payments need payments.record
+  const canExtras = useCan("money.edit");
+  const canEditVisit = useCan("patients.edit");
+  const canPrice = canExtras && canEditVisit;
+  const canPay = useCan("payments.record");
   const [pending, startTransition] = useTransition();
 
   const extrasTotal = round(extras.reduce((s, e) => s + e.total, 0));
@@ -102,12 +109,16 @@ export function MoneyCard({
       title="Money"
       actions={
         <>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setEditing({ type: "extra", id: null })}>
-            + Extra
-          </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setEditing({ type: "payment", id: null })}>
-            + Record payment
-          </Button>
+          {canExtras && (
+            <Button type="button" size="sm" variant="secondary" onClick={() => setEditing({ type: "extra", id: null })}>
+              + Extra
+            </Button>
+          )}
+          {canPay && (
+            <Button type="button" size="sm" variant="secondary" onClick={() => setEditing({ type: "payment", id: null })}>
+              + Record payment
+            </Button>
+          )}
         </>
       }
     >
@@ -133,9 +144,11 @@ export function MoneyCard({
               visit.kind === "main" && <span className="hidden text-xs text-slate-500 sm:inline">agreed by {sellerName}</span>
             )}
             <Amount>{visit.expected == null ? "—" : gbp(visit.expected)}</Amount>
-            <IconButton label="Edit price" onClick={() => setEditing({ type: "price" })}>
-              <PencilIcon />
-            </IconButton>
+            {canPrice && (
+              <IconButton label="Edit price" onClick={() => setEditing({ type: "price" })}>
+                <PencilIcon />
+              </IconButton>
+            )}
           </div>
         )}
 
@@ -167,13 +180,13 @@ export function MoneyCard({
                 {e.quantity} × {gbp(e.unit_price)}
               </span>
               <Amount>+ {gbp(e.total)}</Amount>
-              <RowMenu
+              {canExtras && <RowMenu
                 label="Extra actions"
                 items={[
                   { label: "Edit", onSelect: () => setEditing({ type: "extra", id: e.id }) },
                   { label: "Delete extra…", danger: true, divider: true, disabled: pending, onSelect: () => deleteExtra(e) },
                 ]}
-              />
+              />}
             </div>
           )
         )}
@@ -240,13 +253,13 @@ export function MoneyCard({
                   .join(" · ")}
               </span>
               <Amount>− {gbp(p.amount)}</Amount>
-              <RowMenu
+              {canPay && <RowMenu
                 label="Payment actions"
                 items={[
                   { label: "Edit", onSelect: () => setEditing({ type: "payment", id: p.id }) },
                   { label: "Delete payment…", danger: true, divider: true, disabled: pending, onSelect: () => deletePaymentRow(p) },
                 ]}
-              />
+              />}
             </div>
           )
         )}

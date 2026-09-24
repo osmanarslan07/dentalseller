@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getPatients, getProfiles, getSellers } from "@/lib/data";
-import { getViewerUser } from "@/lib/viewer";
+import { getViewer } from "@/lib/viewer";
+import { can } from "@/lib/permissions";
 import { Patient } from "@/types";
 
 function distinct(values: (string | null)[]): string[] {
@@ -12,10 +13,11 @@ function distinct(values: (string | null)[]): string[] {
 export async function loadPatientPageContext() {
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
-  const user = await getViewerUser();
-  const currentUserId = user?.id ?? "";
+  const viewer = await getViewer();
+  const currentUserId = viewer?.userId ?? "";
   const [patients, profiles, sellers] = await Promise.all([getPatients(supabase), getProfiles(supabase), getSellers(supabase)]);
-  const isAdmin = profiles.find((p) => p.id === currentUserId)?.role === "admin";
+  // record/reassign a patient for any seller, or type a new one
+  const canAssignSellers = can(viewer, "sellers.assign");
 
   return {
     supabase,
@@ -23,7 +25,7 @@ export async function loadPatientPageContext() {
     profiles,
     sellers,
     currentUserId,
-    isAdmin,
+    canAssignSellers,
     hotelOptions: distinct(patients.flatMap((p: Patient) => [p.visit1_hotel_name, p.visit2_hotel_name])),
     roomTypeOptions: distinct(patients.flatMap((p: Patient) => [p.visit1_room_type, p.visit2_room_type])),
   };

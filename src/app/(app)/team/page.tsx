@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPatients, getProfiles, getSellers, getSettings } from "@/lib/data";
 import {
@@ -11,18 +10,18 @@ import {
 import { describeActivity } from "@/lib/activity-log";
 import { peopleNameMap } from "@/lib/sellers";
 import { TeamPerformanceClient } from "./TeamPerformanceClient";
-import { getViewerUser } from "@/lib/viewer";
+import { can, requirePagePermission } from "@/lib/permissions";
 
 const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
 
 export default async function TeamPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
+  // every seller's earnings, and/or the clinic's activity — each part shows only with its permission
+  const viewer = await requirePagePermission(["earnings.all", "activity.view"]);
+  const showEarnings = can(viewer, "earnings.all");
+  const showActivity = can(viewer, "activity.view");
   const supabase = await createClient();
-  // in support mode this is the member being viewed as — every "my …" view is theirs
-  const user = await getViewerUser();
 
   const profiles = await getProfiles(supabase);
-  const me = profiles.find((p) => p.id === user?.id);
-  if (me?.role !== "admin") redirect("/");
 
   const { month: monthParam } = await searchParams;
   const selectedMonth = monthParam && MONTH_KEY_RE.test(monthParam) ? monthParam : currentMonthKey();
@@ -32,9 +31,11 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
 
   // Every seller, account or not — a seller without an account only once they have a patient
   // or are still on the list (a retired one with no history just adds noise).
-  const shown = sellers.filter((s) => s.profile_id || s.is_active || allPatients.some((p) => p.responsible_seller_id === s.id));
+  // (an account's record is active only while it has the Sales role, so a coordinator or
+  // accountant without patients doesn't show up as a seller)
+  const shown = sellers.filter((s) => s.is_active || allPatients.some((p) => p.responsible_seller_id === s.id));
 
-  const rows = await Promise.all(
+  const rows = !showEarnings ? null : await Promise.all(
     shown.map(async (seller) => {
       // Pipeline counts (patient count, sold-in-month) follow current ownership; money and
       // "came in month" follow visit-level attribution so reassigning a patient away doesn't
@@ -66,7 +67,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     })
   );
 
-  const { data: logData } = await supabase
+  const { data: logData } = !showActivity ? { data: null } : await supabase
     .from("activity_log")
     .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support")
     .order("created_at", { ascending: false })
@@ -75,7 +76,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const nameById = peopleNameMap(profiles, sellers);
   const patientNameById = new Map(allPatients.map((p) => [p.id, p.name]));
 
-  const activity = (logData ?? []).map((entry) => ({
+  const activity = !showActivity ? null : (logData ?? []).map((entry) => ({
     id: entry.id,
     createdAt: entry.created_at,
     description: describeActivity(entry, nameById, patientNameById),

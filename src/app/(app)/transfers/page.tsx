@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getTransferCompanies, getTransfersInRange } from "@/lib/data";
 import { getViewer } from "@/lib/viewer";
 import { TransfersClient } from "./TransfersClient";
+import { can, requirePagePermission } from "@/lib/permissions";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -22,6 +23,7 @@ export default async function TransfersPage({
 }: {
   searchParams: Promise<{ date?: string; days?: string }>;
 }) {
+  await requirePagePermission("transfers.manage");
   const params = await searchParams;
   const today = istanbulToday();
   const from = params.date && ISO_DATE.test(params.date) ? params.date : today;
@@ -41,7 +43,7 @@ export default async function TransfersPage({
       transfers={transfers}
       companies={companies}
       driverMessages={clinicConfig.driverMessages.mode}
-      isAdmin={viewer?.role === "admin"}
+      isAdmin={can(viewer, "drivers.manage")}
       from={from}
       days={days}
       today={today}

@@ -15,6 +15,7 @@ import { MoneyCard } from "./MoneyCard";
 import { TransfersCard } from "./TransfersCard";
 import { forVisit, nightsBetween, shortDate, travelOf, VisitView } from "./visits";
 import { sellerLabel } from "@/lib/sellers";
+import { useCan } from "@/components/permissions";
 
 export interface VisitTabProps {
   patient: Patient;
@@ -30,7 +31,6 @@ export interface VisitTabProps {
   deductCosts: boolean;
   transferDefaults: TransferDefaults;
   driverMessages: DriverMessagesMode;
-  isAdmin: boolean;
   hotelOptions: string[];
   roomTypeOptions: string[];
   /** Called after this visit is removed, so the page can move to another tab. */
@@ -46,7 +46,7 @@ export function visitStage(v: VisitView, today: string): { label: string; tone: 
 
 /** Everything about one visit: a summary strip, travel & hotel, money and transfers. */
 export function VisitTab(props: VisitTabProps) {
-  const { patient, visit, transfers, profiles, sellers, currentUserId, surchargeRate, deductCosts, companies, transferDefaults, driverMessages, isAdmin } = props;
+  const { patient, visit, transfers, profiles, sellers, currentUserId, surchargeRate, deductCosts, companies, transferDefaults, driverMessages } = props;
   const today = todayIsoLocal();
   const payments = forVisit(patient.payments, visit.key);
   const extras = forVisit(patient.extras, visit.key);
@@ -90,7 +90,6 @@ export function VisitTab(props: VisitTabProps) {
         defaults={transferDefaults}
         deductCosts={deductCosts}
         driverMessages={driverMessages}
-        isAdmin={isAdmin}
       />
     </div>
   );
@@ -125,6 +124,7 @@ function SummaryStrip({
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [editingDetails, setEditingDetails] = useState(false);
+  const canEdit = useCan("patients.edit");
   const stage = visitStage(visit, today);
   const due = Math.round((owed - paid) * 100) / 100;
 
@@ -165,7 +165,7 @@ function SummaryStrip({
   const letter = visit.kind === "main" && visit.arrival_flight_no;
   const blockRemove = hasMoney ? "payments and extras must be moved first" : visit.key === "visit2" && hasTransfers ? "delete its transfers first" : null;
   const menuItems: MenuItem[] = [
-    { label: visit.kind === "extra" ? "Change date / details" : "Change date", onSelect: () => setEditingDetails(true) },
+    ...(canEdit ? [{ label: visit.kind === "extra" ? "Change date / details" : "Change date", onSelect: () => setEditingDetails(true) }] : []),
     {
       label: "Send to Telegram",
       hint: "to the seller’s chat",
@@ -174,13 +174,15 @@ function SummaryStrip({
     },
     ...(opsSheet ? [{ label: "Open operations sheet", hint: "for the team", href: `/patients/${patient.id}/document?visit=${visit.kind === "main" ? visit.key.slice(-1) : visit.key}` }] : []),
     ...(letter ? [{ label: "Open confirmation letter", hint: "for the patient", href: `/patients/${patient.id}/confirmation-letter?visit=${visit.key.slice(-1)}` }] : []),
-    ...(visit.key !== "visit1"
+    ...(visit.key !== "visit1" && canEdit
       ? [{ label: "Remove this visit…", hint: blockRemove ?? "asks to confirm", danger: true, divider: true, disabled: !!blockRemove || pending, onSelect: remove }]
       : []),
   ];
 
   let primary: ReactNode;
-  if (!visit.date) {
+  if (!canEdit) {
+    primary = null;
+  } else if (!visit.date) {
     primary = <Button onClick={() => setEditingDetails(true)}>Set visit date</Button>;
   } else if (visit.status !== "completed") {
     primary = (
@@ -360,6 +362,7 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
   const router = useRouter();
   const { showToast } = useToast();
   const [editing, setEditing] = useState<TravelDraft | null>(null);
+  const canEdit = useCan("patients.edit");
   const [pending, startTransition] = useTransition();
 
   const hasTravel = !!(visit.arrival_date || visit.departure_date || visit.hotel_name);
@@ -409,10 +412,12 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
               : "Add them when the patient books — transfers can then be suggested in one click."}
           </span>
           <div className="mt-1 flex flex-wrap justify-center gap-2">
+            {canEdit && (
             <Button size="sm" onClick={() => setEditing(draftFrom(visit))}>
               Add flights &amp; hotel
             </Button>
-            {canCopy && (
+            )}
+            {canEdit && canCopy && (
               <Button
                 size="sm"
                 variant="secondary"

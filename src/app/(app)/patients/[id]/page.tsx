@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getClinicConfig, getPatientTransfers, getTransferCompanies } from "@/lib/data";
 import { PatientDetail } from "../PatientDetail";
 import { loadPatientPageContext } from "../detail-data";
+import { requirePagePermission } from "@/lib/permissions";
 
 export default async function PatientPage({
   params,
@@ -10,6 +11,7 @@ export default async function PatientPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string }>;
 }) {
+  await requirePagePermission("patients.view");
   const [{ id }, { tab }] = await Promise.all([params, searchParams]);
   const ctx = await loadPatientPageContext();
   const patient = ctx.patients.find((p) => p.id === id);
@@ -32,7 +34,7 @@ export default async function PatientPage({
       profiles={ctx.profiles}
       sellers={ctx.sellers}
       currentUserId={ctx.currentUserId}
-      isAdmin={ctx.isAdmin}
+      canAssignSellers={ctx.canAssignSellers}
       transfers={transfers}
       companies={companies}
       surchargeRate={clinicConfig.cardSurchargeRate}

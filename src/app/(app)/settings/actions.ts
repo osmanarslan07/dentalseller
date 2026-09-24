@@ -7,10 +7,11 @@ import { EARNINGS_CARD_IDS, OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
 import { getClinicConfig, getSettings } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
 import { assertViewerCanWrite, getActingUser } from "@/lib/viewer";
+import { requirePermission } from "@/lib/permissions";
 
 export async function saveSettings(formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("earnings.own");
 
   const tier1_threshold = Number(formData.get("tier1_threshold"));
   const tier1_rate = Number(formData.get("tier1_rate")) / 100;
@@ -71,15 +72,14 @@ export async function saveSettings(formData: FormData) {
   revalidatePath("/earnings");
 }
 
-/** Admin-only — enforced both here and by the clinic_config_update_admin RLS policy. Clinic-
+/** settings.clinic — enforced both here and by the clinic_config RLS policy + guard trigger. Clinic-
  * wide (see saveTelegramGroupChat above): every seller's confirmation letters and quote
  * offers use this one shared identity, not whatever their own `settings` row had. */
 export async function saveClinicBranding(formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("settings.clinic");
 
-  const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
-  if (myProfile?.role !== "admin") throw new Error("Admin only");
+  const myProfile = { clinic_id: user.viewer.clinicId };
   // the logo upload below uses the service role, which the DB's read-only rule can't see
   assertViewerCanWrite(user.viewer);
 
@@ -143,15 +143,14 @@ export async function saveClinicBranding(formData: FormData) {
   revalidatePath("/quotes/[id]/offer", "page");
 }
 
-/** Admin-only — enforced both here and by the clinic_config_update_admin RLS policy. Clinic-
+/** settings.clinic — enforced both here and by the clinic_config RLS policy + guard trigger. Clinic-
  * wide, unlike the commission/dashboard-cards settings below, so it lives in its own
  * singleton table rather than a per-seller `settings` row. */
 export async function saveTelegramGroupChat(formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("settings.clinic");
 
-  const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
-  if (myProfile?.role !== "admin") throw new Error("Admin only");
+  const myProfile = { clinic_id: user.viewer.clinicId };
 
   const raw = String(formData.get("telegram_group_chat_id") ?? "").trim();
   const telegram_group_chat_id = raw || null;
@@ -177,15 +176,14 @@ export async function saveTelegramGroupChat(formData: FormData) {
   revalidatePath("/settings");
 }
 
-/** Admin-only — enforced both here and by the clinic_config_update_admin RLS policy.
+/** settings.clinic — enforced both here and by the clinic_config RLS policy + guard trigger.
  * Clinic-wide rules for how money is counted: whether hotel/transfer costs come off before
  * commission, and the optional card surcharge rate. */
 export async function saveSystemSettings(formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("settings.clinic");
 
-  const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
-  if (myProfile?.role !== "admin") throw new Error("Admin only");
+  const myProfile = { clinic_id: user.viewer.clinicId };
 
   const deduct_costs_from_commission = formData.get("deduct_costs_from_commission") === "on";
   const card_surcharge_rate = Number(formData.get("card_surcharge_rate")) / 100;

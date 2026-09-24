@@ -6,6 +6,7 @@ import { getClinicConfig, getPatient, getSettings } from "@/lib/data";
 import { extraLabel, extrasFor, visitAmount } from "@/lib/balance";
 import { formatCurrency } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
+import { requirePagePermission } from "@/lib/permissions";
 
 /** Confirmation-letter dates read DD/MM/YYYY (or DD.MM.YYYY for flights) — matches the clinic's existing template. */
 function formatDMY(dateStr: string | null, sep: string = "/"): string {
@@ -65,6 +66,7 @@ export default async function ConfirmationLetterPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ visit?: string }>;
 }) {
+  await requirePagePermission("patients.view");
   const { id } = await params;
   const { visit } = await searchParams;
   const visitNum: 1 | 2 = visit === "2" ? 2 : 1;

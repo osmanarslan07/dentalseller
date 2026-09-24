@@ -14,6 +14,7 @@ import { SellerPick, SellerPicker } from "@/components/SellerPicker";
 import { sellerNameMap } from "@/lib/sellers";
 import { createPatient } from "./actions";
 import { Toggle } from "./detail/bits";
+import { pickableSellers } from "@/lib/sellers";
 
 /** Carried over from the patient being duplicated but not shown — the rest of the group
  * booking (same flights and hotel), edited later on the patient page like anyone else's. */
@@ -37,15 +38,15 @@ export function NewPatientForm({
   duplicateFrom,
   sellers,
   currentUserId,
-  isAdmin,
+  canAssignSellers,
   existingPatients,
 }: {
   /** Prefill from an existing patient — for group bookings sharing a flight/hotel. */
   duplicateFrom: Patient | null;
   sellers: Seller[];
   currentUserId: string;
-  /** Admins can record a patient for any seller, or type a new one; sellers add their own. */
-  isAdmin: boolean;
+  /** sellers.assign: record a patient for any seller, or type a new one; otherwise you add your own. */
+  canAssignSellers: boolean;
   /** To warn when the name matches someone already entered. */
   existingPatients: Pick<Patient, "id" | "name" | "confirmation_date" | "responsible_seller_id">[];
 }) {
@@ -54,7 +55,12 @@ export function NewPatientForm({
   const { enabled: soundEnabled } = useCelebrationSound();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [seller, setSeller] = useState<SellerPick>({ sellerId: currentUserId, newName: null });
+  // yourself when you sell; otherwise (a coordinator) the first seller on the list
+  const [seller, setSeller] = useState<SellerPick>(() => {
+    const pickable = pickableSellers(sellers, "");
+    const me = pickable.find((s) => s.id === currentUserId);
+    return { sellerId: me?.id ?? pickable[0]?.id ?? currentUserId, newName: null };
+  });
   const [needsVisit2, setNeedsVisit2] = useState(duplicateFrom ? duplicateFrom.needs_visit2 : true);
   const src = duplicateFrom;
   const recall = src?.visit2_recall_months ?? 3;
@@ -126,7 +132,7 @@ export function NewPatientForm({
             <Label>Komo reference</Label>
             <Input name="komo_reference" placeholder="Lead link or ID" />
           </div>
-          {isAdmin && (
+          {canAssignSellers && (
             <div className="sm:col-span-2">
               <Label>Seller</Label>
               <SellerPicker sellers={sellers} value={seller} onChange={setSeller} currentUserId={currentUserId} allowNew formFields />

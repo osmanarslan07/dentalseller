@@ -29,6 +29,7 @@ import {
   TrophyIcon,
 } from "@/components/StatIcons";
 import { getViewerUser } from "@/lib/viewer";
+import { requirePagePermission } from "@/lib/permissions";
 
 function tierTone(total: number, settings: CommissionSettings): "slate" | "amber" | "green" {
   if (total <= settings.tier1_threshold) return "slate";
@@ -37,6 +38,7 @@ function tierTone(total: number, settings: CommissionSettings): "slate" | "amber
 }
 
 export default async function EarningsPage() {
+  await requirePagePermission("earnings.own");
   const updatedAt = Date.now();
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs

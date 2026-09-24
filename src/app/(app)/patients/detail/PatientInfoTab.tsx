@@ -13,6 +13,7 @@ import { sellerLabel } from "@/lib/sellers";
 import { reassignPatient, setPatientCoordinator, updatePatientFields } from "../actions";
 import { EditButton, EditingChip, Field, gbp, Pill, Section, Toggle } from "./bits";
 import { forVisit, shortDate, VisitView } from "./visits";
+import { useCan } from "@/components/permissions";
 
 export interface DocLink {
   label: string;
@@ -121,7 +122,7 @@ export function PatientInfoTab({
   profiles,
   sellers,
   currentUserId,
-  isAdmin,
+  canAssignSellers,
   onOpenVisit,
 }: {
   patient: Patient;
@@ -129,7 +130,7 @@ export function PatientInfoTab({
   profiles: Profile[];
   sellers: Seller[];
   currentUserId: string;
-  isAdmin: boolean;
+  canAssignSellers: boolean;
   onOpenVisit: (key: string) => void;
 }) {
   const save = (patch: Record<string, unknown>) => updatePatientFields(patient.id, patch);
@@ -173,7 +174,7 @@ export function PatientInfoTab({
 
         <TreatmentCard patient={patient} letterItems={letterItems} onSave={save} />
 
-        <SaleCard patient={patient} profiles={profiles} sellers={sellers} currentUserId={currentUserId} isAdmin={isAdmin} komoIsLink={komoIsLink} onSave={save} />
+        <SaleCard patient={patient} profiles={profiles} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} komoIsLink={komoIsLink} onSave={save} />
 
         <EditCard
           title="Notes"
@@ -308,7 +309,7 @@ function SaleCard({
   profiles,
   sellers,
   currentUserId,
-  isAdmin,
+  canAssignSellers,
   komoIsLink,
   onSave,
 }: {
@@ -316,7 +317,7 @@ function SaleCard({
   profiles: Profile[];
   sellers: Seller[];
   currentUserId: string;
-  isAdmin: boolean;
+  canAssignSellers: boolean;
   komoIsLink: boolean;
   onSave: (patch: Record<string, unknown>) => Promise<void>;
 }) {
@@ -325,7 +326,8 @@ function SaleCard({
   const [reassigning, setReassigning] = useState(false);
   const [pick, setPick] = useState<SellerPick>({ sellerId: patient.responsible_seller_id, newName: null });
   const [pending, startTransition] = useTransition();
-  const canReassign = patient.responsible_seller_id === currentUserId || isAdmin;
+  const canEdit = useCan("patients.edit");
+  const canReassign = canEdit && (patient.responsible_seller_id === currentUserId || canAssignSellers);
   const seller = sellers.find((s) => s.id === patient.responsible_seller_id);
   const sellerName = sellerLabel(seller);
 
@@ -362,7 +364,7 @@ function SaleCard({
                   value={pick}
                   onChange={setPick}
                   currentUserId={currentUserId}
-                  allowNew={isAdmin}
+                  allowNew={canAssignSellers}
                   disabled={pending}
                   autoFocus
                 />
@@ -437,6 +439,7 @@ function CoordinatorField({ patient, profiles, currentUserId }: { patient: Patie
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(patient.coordinator_id ?? "");
   const [pending, startTransition] = useTransition();
+  const canEdit = useCan("patients.edit");
   const current = profiles.find((p) => p.id === patient.coordinator_id);
   const team = profiles
     .filter((p) => p.is_active || p.id === patient.coordinator_id)
@@ -484,6 +487,7 @@ function CoordinatorField({ patient, profiles, currentUserId }: { patient: Patie
           <span className="font-semibold">
             {current ? current.display_name || "Unnamed member" : <span className="font-normal text-slate-400">None — the seller follows up</span>}
           </span>
+          {canEdit && (
           <button
             type="button"
             onClick={() => {
@@ -494,6 +498,7 @@ function CoordinatorField({ patient, profiles, currentUserId }: { patient: Patie
           >
             Change…
           </button>
+          )}
         </>
       )}
     </div>

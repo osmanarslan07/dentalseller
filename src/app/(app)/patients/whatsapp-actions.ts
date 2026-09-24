@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
-import { getActingUser } from "@/lib/viewer";
 import { loadApiSettings, recordApiError, sendTemplate } from "@/lib/whatsapp";
 import { dayParams, singleParams, TransferForMessage } from "@/lib/whatsapp-templates";
 import { Transfer } from "@/types";
+import { requirePermission } from "@/lib/permissions";
 
 type Row = Transfer & {
   clinic_id: string;
@@ -25,7 +25,7 @@ export type SendResult = { ok: true; messages: number } | { ok: false; error: st
 export async function sendTransfersWhatsApp(transferIds: string[]): Promise<SendResult> {
   if (transferIds.length === 0) return { ok: false, error: "Nothing to send" };
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const config = await getClinicConfig(supabase);
   if (config.driverMessages.mode !== "api") return { ok: false, error: "WhatsApp API sending is turned off in Settings → Transfers" };

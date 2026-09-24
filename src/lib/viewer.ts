@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { SellerRole } from "@/types";
+import { MemberRole, Permission, SellerRole } from "@/types";
 
 export interface SupportContext {
   sessionId: string;
@@ -12,7 +12,7 @@ export interface SupportContext {
   editingUntil: string | null;
   canWrite: boolean;
   /** Everyone in the clinic, for the "view as" switcher. */
-  members: { id: string; name: string; role: SellerRole }[];
+  members: { id: string; name: string; role: SellerRole; roles: MemberRole[] }[];
 }
 
 /** Who the clinic app is being rendered for. For a clinic member: themselves. For a
@@ -26,7 +26,13 @@ export interface Viewer {
   /** Whose "me" the app renders: the signed-in member, or the member support is viewing as. */
   userId: string;
   displayName: string | null;
+  /** The old single role (admin or not) of whoever is being rendered for. */
   role: SellerRole;
+  roles: MemberRole[];
+  /** What the viewer may do — from the database, which also applies support mode (the
+   * viewed-as member's roles). Pages and menus shape themselves from this; RLS and the
+   * server actions enforce the same list. */
+  permissions: Permission[];
   clinicId: string;
   support: SupportContext | null;
 }
@@ -42,7 +48,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
 
   const { data: me } = await supabase
     .from("profiles")
-    .select("role, clinic_id, display_name")
+    .select("role, roles, clinic_id, display_name")
     .eq("id", user.id)
     .maybeSingle();
   if (!me) return null;
@@ -55,6 +61,8 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
       userId: user.id,
       displayName: me.display_name,
       role: me.role as SellerRole,
+      roles: (me.roles ?? []) as MemberRole[],
+      permissions: await loadPermissions(supabase),
       clinicId: me.clinic_id,
       support: null,
     };
@@ -82,7 +90,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     admin.from("clinics").select("name").eq("id", session.clinic_id).maybeSingle(),
     admin
       .from("profiles")
-      .select("id, display_name, role")
+      .select("id, display_name, role, roles")
       .eq("clinic_id", session.clinic_id)
       .order("created_at", { ascending: true }),
   ]);
@@ -90,6 +98,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     id: m.id as string,
     name: (m.display_name as string | null) || "Not signed in yet",
     role: m.role as SellerRole,
+    roles: (m.roles ?? []) as MemberRole[],
   }));
   const viewAs = memberList.find((m) => m.id === session.view_as_user_id) ?? memberList.find((m) => m.role === "admin");
 
@@ -102,6 +111,8 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     userId: viewAs?.id ?? user.id,
     displayName: viewAs?.name ?? me.display_name,
     role: viewAs?.role ?? "admin",
+    roles: viewAs?.roles ?? ["admin"],
+    permissions: await loadPermissions(supabase),
     clinicId: session.clinic_id,
     support: {
       sessionId: session.id,
@@ -114,6 +125,17 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     },
   };
 });
+
+/** The caller's permissions as the database sees them (my_permissions()). A failed read
+ * grants nothing — a page that can't tell shows less, never more. */
+async function loadPermissions(supabase: Awaited<ReturnType<typeof createClient>>): Promise<Permission[]> {
+  const { data, error } = await supabase.rpc("my_permissions");
+  if (error) {
+    console.error("my_permissions failed:", error.message);
+    return [];
+  }
+  return (data ?? []) as Permission[];
+}
 
 /** For clinic-facing server actions that use the service-role client (which RLS's
  * read-only rule can't see): support may only write while editing is unlocked. */

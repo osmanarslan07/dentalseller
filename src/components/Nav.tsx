@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { logout } from "@/lib/auth-actions";
+import { Permission } from "@/types";
 
 function HomeIcon({ className = "" }: { className?: string }) {
   return (
@@ -103,22 +104,28 @@ function SettingsIcon({ className = "" }: { className?: string }) {
   );
 }
 
-const BASE_LINKS: { href: string; label: string; icon: (props: { className?: string }) => ReactNode }[] = [
-  { href: "/", label: "Home", icon: HomeIcon },
-  { href: "/patients", label: "Patients", icon: PatientsIcon },
-  { href: "/quotes", label: "Quotes", icon: QuotesIcon },
-  { href: "/tasks", label: "Tasks", icon: TasksIcon },
-  { href: "/calendar", label: "Calendar", icon: CalendarIcon },
-  { href: "/transfers", label: "Transfers", icon: TransfersIcon },
-  { href: "/earnings", label: "Earnings", icon: EarningsIcon },
-  { href: "/accounting", label: "Accounting", icon: AccountingIcon },
-  { href: "/settings", label: "Settings", icon: SettingsIcon },
+/** Each page with what it takes to see it (null: everyone). */
+const ALL_LINKS: {
+  href: string;
+  label: string;
+  icon: (props: { className?: string }) => ReactNode;
+  needs: Permission[] | null;
+}[] = [
+  { href: "/", label: "Home", icon: HomeIcon, needs: null },
+  { href: "/patients", label: "Patients", icon: PatientsIcon, needs: ["patients.view"] },
+  { href: "/quotes", label: "Quotes", icon: QuotesIcon, needs: ["quotes.use"] },
+  { href: "/tasks", label: "Tasks", icon: TasksIcon, needs: ["tasks.use"] },
+  { href: "/calendar", label: "Calendar", icon: CalendarIcon, needs: ["patients.view"] },
+  { href: "/transfers", label: "Transfers", icon: TransfersIcon, needs: ["transfers.manage"] },
+  { href: "/earnings", label: "Earnings", icon: EarningsIcon, needs: ["earnings.own"] },
+  { href: "/accounting", label: "Accounting", icon: AccountingIcon, needs: ["accounting.view"] },
+  { href: "/settings", label: "Settings", icon: SettingsIcon, needs: null },
+  { href: "/team", label: "Team", icon: TeamIcon, needs: ["earnings.all", "activity.view"] },
 ];
-
-const TEAM_LINK = { href: "/team", label: "Team", icon: TeamIcon };
 
 /** The phone bar: the pages used most on the move. Everything else sits under "More". */
 const MOBILE_BAR = ["/", "/patients", "/transfers", "/tasks"];
+const MOBILE_BAR_SIZE = MOBILE_BAR.length;
 
 /** A page is active on its own path and on anything under it (/patients/123 → Patients). */
 function isActive(pathname: string, href: string): boolean {
@@ -145,20 +152,24 @@ function SignOutIcon({ className = "" }: { className?: string }) {
 export function Nav({
   email,
   displayName,
-  isAdmin = false,
+  permissions,
 }: {
   email: string;
   displayName: string;
-  isAdmin?: boolean;
+  permissions: Permission[];
 }) {
   const pathname = usePathname();
   const navRef = useRef<HTMLElement>(null);
   const linkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const LINKS = isAdmin ? [...BASE_LINKS, TEAM_LINK] : BASE_LINKS;
-  const barLinks = MOBILE_BAR.map((href) => LINKS.find((l) => l.href === href)!);
-  const moreLinks = LINKS.filter((l) => !MOBILE_BAR.includes(l.href));
+  const LINKS = ALL_LINKS.filter((l) => !l.needs || l.needs.some((p) => permissions.includes(p)));
+  // the usual four when allowed; a page someone can't see gives its place to the next one
+  const barLinks = [
+    ...MOBILE_BAR.map((href) => LINKS.find((l) => l.href === href)).filter((l) => !!l),
+    ...LINKS.filter((l) => !MOBILE_BAR.includes(l.href)),
+  ].slice(0, MOBILE_BAR_SIZE);
+  const moreLinks = LINKS.filter((l) => !barLinks.includes(l));
   const moreActive = moreLinks.some((l) => isActive(pathname, l.href));
 
   // the panel covers the page: no scrolling behind it, Escape closes it

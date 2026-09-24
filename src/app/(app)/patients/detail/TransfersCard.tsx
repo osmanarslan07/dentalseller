@@ -12,6 +12,7 @@ import { addTransfer, deleteTransfer, markTransferSent, setTransferStatus, sugge
 import { RowMenu } from "./Menu";
 import { gbp, Pill, PillTone, Section, Segmented } from "./bits";
 import { shortDate, transfersWithoutDriver } from "./visits";
+import { useCan } from "@/components/permissions";
 
 /** What the visit already knows — used to prefill new transfers and by "Suggest transfers". */
 export interface VisitTravel {
@@ -48,7 +49,6 @@ export function TransfersCard({
   defaults,
   deductCosts,
   driverMessages,
-  isAdmin,
 }: {
   patientId: string;
   patientName: string;
@@ -64,13 +64,14 @@ export function TransfersCard({
   deductCosts: boolean;
   /** Settings → Transfers → Driver messages. */
   driverMessages: DriverMessagesMode;
-  isAdmin: boolean;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [pending, startTransition] = useTransition();
   const messages = useDriverMessages(driverMessages);
+  const canSetUpDriverMessages = useCan("drivers.manage");
+  const canBook = useCan("transfers.manage");
 
   const canSuggest = !!(travel.arrivalDate || travel.departureDate || travel.date);
   const noDriver = transfersWithoutDriver(transfers).length;
@@ -158,6 +159,7 @@ export function TransfersCard({
         </>
       }
       actions={
+        canBook && (
         <>
           <Button
             type="button"
@@ -173,6 +175,7 @@ export function TransfersCard({
             + Add transfer
           </Button>
         </>
+        )
       }
     >
       {editing === "new" && form()}
@@ -219,6 +222,7 @@ export function TransfersCard({
                   onEdit={() => setEditing(t.id)}
                   onStatus={(s) => run(() => setTransferStatus(t.id, s), s === "done" ? "Marked as done ✓" : "Marked as not sent")}
                   onDelete={() => handleDelete(t)}
+                  readOnly={!canBook}
                 />
               )
             )}
@@ -226,7 +230,7 @@ export function TransfersCard({
         )
       )}
       {driverMessages === "off" ? (
-        isAdmin && <DriverMessagesOffHint />
+        canSetUpDriverMessages && <DriverMessagesOffHint />
       ) : (
         <p className="text-xs text-slate-500">
           Arrival and departure count as arranged once a driver is picked.{" "}
@@ -250,7 +254,10 @@ function TransferRow({
   onEdit,
   onStatus,
   onDelete,
+  readOnly,
 }: {
+  /** Can see transfers but not book them: no actions. */
+  readOnly: boolean;
   transfer: Transfer;
   companies: TransferCompany[];
   busy: boolean;
@@ -271,7 +278,9 @@ function TransferRow({
   const missingDriver = !driver && t.status !== "done";
 
   let action: ReactNode = null;
-  if (missingDriver) {
+  if (readOnly) {
+    action = null;
+  } else if (missingDriver) {
     action = (
       <button type="button" onClick={onEdit} className="rounded-lg bg-amber-700 px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-amber-800">
         Assign driver
@@ -346,6 +355,7 @@ function TransferRow({
       </div>
       <div className="flex items-center justify-end gap-2">
         {action}
+        {!readOnly && (
         <RowMenu
           label="Transfer actions"
           items={[
@@ -357,6 +367,7 @@ function TransferRow({
             { label: "Delete transfer…", danger: true, divider: true, onSelect: onDelete, disabled: busy },
           ]}
         />
+        )}
       </div>
     </div>
   );

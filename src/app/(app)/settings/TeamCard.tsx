@@ -4,13 +4,14 @@ import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { TeamMember } from "@/lib/data";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
+import { MEMBER_ROLES, MemberRole, ROLE_LABELS } from "@/types";
 import { useToast } from "@/components/Toast";
 import {
   addSeller,
   adminResetPassword,
   deleteSeller,
   setSellerActive,
-  setSellerRole,
+  setMemberRoles,
   AddSellerResult,
 } from "./team-actions";
 
@@ -21,14 +22,15 @@ interface CredentialResult extends AddSellerResult {
 export function TeamCard({
   members,
   currentUserId,
-  isAdmin,
+  canManage,
 }: {
   members: TeamMember[];
   currentUserId: string;
-  isAdmin: boolean;
+  canManage: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
+  const [newRoles, setNewRoles] = useState<MemberRole[]>(["sales"]);
   const [error, setError] = useState<string | null>(null);
   const [credentialResult, setCredentialResult] = useState<CredentialResult | null>(null);
   const [rowPendingId, setRowPendingId] = useState<string | null>(null);
@@ -42,10 +44,11 @@ export function TeamCard({
     setCredentialResult(null);
     startTransition(async () => {
       try {
-        const r = await addSeller(email);
+        const r = await addSeller(email, newRoles);
         setCredentialResult({ ...r, kind: "created" });
         setEmail("");
-        showToast("Seller added ✓");
+        setNewRoles(["sales"]);
+        showToast("Team member added ✓");
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to add seller");
@@ -72,17 +75,21 @@ export function TeamCard({
     }
   }
 
-  async function handleToggleRole(member: TeamMember) {
-    const nextRole = member.role === "admin" ? "seller" : "admin";
-    if (!confirm(`${nextRole === "admin" ? "Promote" : "Demote"} ${member.displayName || "this seller"}?`)) return;
+  async function handleToggleRole(member: TeamMember, role: MemberRole) {
+    const next = member.roles.includes(role) ? member.roles.filter((x) => x !== role) : [...member.roles, role];
+    if (next.length === 0) {
+      setRowError("Everyone needs at least one role — deactivate the account instead.");
+      return;
+    }
+    if (role === "admin" && !confirm(`${next.includes("admin") ? "Make" : "Remove"} ${member.displayName || "this member"} ${next.includes("admin") ? "an admin" : "as admin"}?`)) return;
     setRowError(null);
     setRowPendingId(member.id);
     try {
-      await setSellerRole(member.id, nextRole);
-      showToast(nextRole === "admin" ? "Promoted to admin ✓" : "Demoted to seller ✓");
+      await setMemberRoles(member.id, next);
+      showToast("Roles updated ✓");
       router.refresh();
     } catch (err) {
-      setRowError(err instanceof Error ? err.message : "Failed to update role");
+      setRowError(err instanceof Error ? err.message : "Failed to update roles");
     } finally {
       setRowPendingId(null);
     }
@@ -129,7 +136,8 @@ export function TeamCard({
     <Card className="p-6">
       <h2 className="mb-1 text-base font-semibold text-slate-900">Team</h2>
       <p className="mb-5 text-sm text-slate-500">
-        Sellers can see each other&apos;s patients and calendar, but never each other&apos;s commission.
+        Sales see every patient and the calendar, but only their own commission. Coordinators run patients,
+        visits, transfers and payments; accountants see the money. Someone can have several roles.
       </p>
 
       <ul className="mb-5 divide-y divide-slate-100">
@@ -137,17 +145,23 @@ export function TeamCard({
           const isSelf = m.id === currentUserId;
           const rowBusy = rowPendingId === m.id;
           return (
-            <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+            <li key={m.id} className="flex flex-col gap-2 py-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium text-slate-900">
                 {m.displayName || "Invited — awaiting first login"}
                 {isSelf && <span className="ml-1.5 text-xs font-normal text-slate-400">(you)</span>}
                 {m.email && <span className="ml-1.5 text-xs font-normal text-slate-400">{m.email}</span>}
               </span>
-              <div className="flex items-center gap-1.5">
-                {m.role === "admin" && <Badge tone="blue">Admin</Badge>}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(!canManage || isSelf) &&
+                  m.roles.map((role) => (
+                    <Badge key={role} tone={role === "admin" ? "blue" : "slate"}>
+                      {ROLE_LABELS[role]}
+                    </Badge>
+                  ))}
                 {!m.isActive && <Badge tone="amber">Inactive</Badge>}
                 {!m.displayName && <Badge tone="slate">Pending</Badge>}
-                {isAdmin && !isSelf && (
+                {canManage && !isSelf && (
                   <>
                     <Button
                       type="button"
@@ -157,15 +171,6 @@ export function TeamCard({
                       onClick={() => handleResetPassword(m)}
                     >
                       Reset password
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={rowBusy}
-                      onClick={() => handleToggleRole(m)}
-                    >
-                      {m.role === "admin" ? "Demote" : "Promote"}
                     </Button>
                     <Button
                       type="button"
@@ -188,6 +193,10 @@ export function TeamCard({
                   </>
                 )}
               </div>
+              </div>
+              {canManage && !isSelf && (
+                <RoleChips roles={m.roles} disabled={rowBusy} onToggle={(role) => handleToggleRole(m, role)} />
+              )}
             </li>
           );
         })}
@@ -195,21 +204,30 @@ export function TeamCard({
 
       {rowError && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{rowError}</p>}
 
-      <form onSubmit={handleSubmit} className="flex items-end gap-2">
-        <div className="flex-1">
-          <Label>Add a seller by email</Label>
-          <Input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="seller@example.com"
-          />
+      {canManage && (
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Label>Add a team member by email</Label>
+            <Input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
+            />
+          </div>
+          <Button type="submit" disabled={pending || newRoles.length === 0}>
+            {pending ? "Adding…" : "Add"}
+          </Button>
         </div>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Adding…" : "Add seller"}
-        </Button>
+        <RoleChips
+          roles={newRoles}
+          disabled={pending}
+          onToggle={(role) => setNewRoles((rs) => (rs.includes(role) ? rs.filter((x) => x !== role) : [...rs, role]))}
+        />
       </form>
+      )}
 
       {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
@@ -233,5 +251,40 @@ export function TeamCard({
         </div>
       )}
     </Card>
+  );
+}
+
+/** One tick-button per role; the member holds every role that's on. */
+function RoleChips({
+  roles,
+  disabled,
+  onToggle,
+}: {
+  roles: MemberRole[];
+  disabled?: boolean;
+  onToggle: (role: MemberRole) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Roles">
+      <span className="text-xs text-slate-500">Roles:</span>
+      {MEMBER_ROLES.map((role) => {
+        const on = roles.includes(role);
+        return (
+          <button
+            key={role}
+            type="button"
+            aria-pressed={on}
+            disabled={disabled}
+            onClick={() => onToggle(role)}
+            className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition disabled:opacity-50 ${
+              on ? "border-teal-200 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            {on ? "✓ " : ""}
+            {ROLE_LABELS[role]}
+          </button>
+        );
+      })}
+    </div>
   );
 }

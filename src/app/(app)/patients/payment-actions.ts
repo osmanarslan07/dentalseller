@@ -5,9 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getPatient, getPatients, getSettings } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
 import { detectTierJump } from "@/lib/commission";
-import { getActingUser } from "@/lib/viewer";
 import { visitLabel, visitRef } from "@/lib/visit-key";
 import { Celebration, Patient, PaymentMethod } from "@/types";
+import { requirePermission } from "@/lib/permissions";
 
 const METHODS: PaymentMethod[] = ["cash", "card", "bank"];
 const METHOD_NAMES: Record<PaymentMethod, string> = { cash: "cash", card: "card", bank: "bank transfer" };
@@ -63,7 +63,7 @@ export async function addPayment(
   formData: FormData
 ): Promise<{ celebration: Celebration | null }> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("payments.record");
 
   const input = await parsePayment(formData);
   const before = await getPatient(supabase, patientId);
@@ -102,7 +102,7 @@ export async function addPayment(
 
 export async function updatePayment(id: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("payments.record");
 
   const input = await parsePayment(formData);
   const { data: existing } = await supabase.from("patient_payments").select("method, surcharge_rate").eq("id", id).maybeSingle();
@@ -121,7 +121,7 @@ export async function updatePayment(id: string, formData: FormData) {
 
 export async function deletePayment(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("payments.record");
 
   const { data, error } = await supabase
     .from("patient_payments")

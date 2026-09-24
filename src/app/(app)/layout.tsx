@@ -16,6 +16,7 @@ import { REQUIRE_TERMS_ACCEPTANCE } from "@/lib/terms";
 import { hasAcceptedCurrentTerms } from "@/lib/terms-status";
 import { getViewer } from "@/lib/viewer";
 import { SupportBar } from "@/components/SupportBar";
+import { PermissionsProvider } from "@/components/permissions";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -63,16 +64,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen">
       <PresenceHeartbeat />
       <ToastProvider>
+        <PermissionsProvider permissions={viewer.permissions}>
         <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
           <CelebrationSoundProvider initialEnabled={settings.celebration_sound}>
             {viewer.support && <SupportBar support={viewer.support} viewAsId={viewer.userId} />}
             <AnnouncementBanner announcements={announcements} />
-            <Nav email={viewer.email} displayName={viewer.displayName ?? ""} isAdmin={viewer.role === "admin"} />
+            <Nav email={viewer.email} displayName={viewer.displayName ?? ""} permissions={viewer.permissions} />
             <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-8 lg:px-8">
               <PageTransition>{children}</PageTransition>
             </main>
           </CelebrationSoundProvider>
         </PrivacyProvider>
+        </PermissionsProvider>
       </ToastProvider>
     </div>
   );

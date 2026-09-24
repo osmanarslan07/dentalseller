@@ -18,7 +18,7 @@ export function sellerChoiceFromForm(formData: FormData): SellerChoice {
 
 /** Turns a picker choice into a seller id. A typed name that matches an existing seller
  * (ignoring case and spacing) reuses that seller rather than creating a duplicate; otherwise
- * a seller without an account is created — which only an admin may do (RLS). */
+ * a seller without an account is created — which needs sellers.assign or sellers.manage (RLS). */
 export async function resolveSellerChoice(
   supabase: SupabaseClient,
   choice: SellerChoice,
@@ -32,7 +32,7 @@ export async function resolveSellerChoice(
     if (name.length > 80) throw new Error("That name is too long");
     const { data, error } = await supabase.from("sellers").insert({ name }).select("id, name, profile_id, is_active, created_at").single();
     if (error) {
-      throw new Error(/row-level security/i.test(error.message) ? "Only an admin can add a new seller" : error.message);
+      throw new Error(/row-level security/i.test(error.message) ? "You don't have permission to add a new seller" : error.message);
     }
     seller = data;
   }

@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getPatient } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
-import { getActingUser } from "@/lib/viewer";
 import { visitLabel, visitRef } from "@/lib/visit-key";
 import { PatientExtraKind } from "@/types";
+import { requirePermission } from "@/lib/permissions";
 
 const KINDS: PatientExtraKind[] = ["night", "treatment", "other"];
 const KIND_NAMES: Record<PatientExtraKind, string> = {
@@ -43,7 +43,7 @@ function revalidate(patientId: string) {
 
 export async function addPatientExtra(patientId: string, visitKey: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("money.edit");
 
   const input = parseExtra(formData);
   const { error } = await supabase.from("patient_extras").insert({ ...input, ...visitRef(visitKey), patient_id: patientId });
@@ -63,7 +63,7 @@ export async function addPatientExtra(patientId: string, visitKey: string, formD
 
 export async function updatePatientExtra(id: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("money.edit");
 
   const input = parseExtra(formData);
   const { data, error } = await supabase.from("patient_extras").update(input).eq("id", id).select("patient_id").single();
@@ -75,7 +75,7 @@ export async function updatePatientExtra(id: string, formData: FormData) {
 
 export async function deletePatientExtra(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("money.edit");
 
   const { data, error } = await supabase
     .from("patient_extras")

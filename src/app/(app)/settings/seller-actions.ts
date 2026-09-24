@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSellers } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
 import { findSellerByName, sellerLabel } from "@/lib/sellers";
-import { getActingUser } from "@/lib/viewer";
+import { requirePermission } from "@/lib/permissions";
 
 /** Sellers without an account — people who get credit for sales but never log in; a
  * coordinator enters their patients. All admin-only: RLS allows these writes to a clinic
@@ -34,7 +34,7 @@ function refresh() {
 
 export async function addSellerRecord(rawName: string): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("sellers.manage");
   const name = cleanName(rawName);
 
   const existing = findSellerByName(await getSellers(supabase), name);
@@ -49,7 +49,7 @@ export async function addSellerRecord(rawName: string): Promise<void> {
 
 export async function renameSellerRecord(id: string, rawName: string): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("sellers.manage");
   const name = cleanName(rawName);
 
   const sellers = await getSellers(supabase);
@@ -68,7 +68,7 @@ export async function renameSellerRecord(id: string, rawName: string): Promise<v
 /** An inactive seller keeps their patients and history but is no longer offered in pickers. */
 export async function setSellerRecordActive(id: string, active: boolean): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("sellers.manage");
 
   const { error } = await supabase.from("sellers").update({ is_active: active }).eq("id", id).is("profile_id", null);
   if (error) throw new Error(friendly(error.message));
@@ -80,7 +80,7 @@ export async function setSellerRecordActive(id: string, active: boolean): Promis
 /** Only possible while nothing is credited to them — the database refuses otherwise. */
 export async function deleteSellerRecord(id: string): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("sellers.manage");
 
   const current = (await getSellers(supabase)).find((s) => s.id === id);
   if (!current || current.profile_id) throw new Error("Seller not found");
@@ -97,7 +97,7 @@ export async function deleteSellerRecord(id: string): Promise<void> {
  * account they've since been given. */
 export async function mergeSellerRecord(fromId: string, intoId: string): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("sellers.manage");
 
   const sellers = await getSellers(supabase);
   const from = sellers.find((s) => s.id === fromId);
@@ -114,7 +114,7 @@ export async function mergeSellerRecord(fromId: string, intoId: string): Promise
 /** Commission rates of a seller without an account (accounts set their own in Settings). */
 export async function saveSellerCommission(id: string, formData: FormData): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("sellers.manage");
 
   const n = (k: string) => Number(formData.get(k));
   const tier1_threshold = n("tier1_threshold");

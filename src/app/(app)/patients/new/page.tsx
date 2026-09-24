@@ -1,7 +1,9 @@
 import { NewPatientForm } from "../NewPatientForm";
 import { loadPatientPageContext } from "../detail-data";
+import { requirePagePermission } from "@/lib/permissions";
 
 export default async function NewPatientPage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
+  await requirePagePermission("patients.edit");
   const { from } = await searchParams;
   const ctx = await loadPatientPageContext();
   const duplicateFrom = from ? ctx.patients.find((p) => p.id === from) ?? null : null;
@@ -12,7 +14,7 @@ export default async function NewPatientPage({ searchParams }: { searchParams: P
       duplicateFrom={duplicateFrom}
       sellers={ctx.sellers}
       currentUserId={ctx.currentUserId}
-      isAdmin={ctx.isAdmin}
+      canAssignSellers={ctx.canAssignSellers}
       existingPatients={ctx.patients.map(({ id, name, confirmation_date, responsible_seller_id }) => ({
         id,
         name,

@@ -2,11 +2,46 @@ import { DashboardCardId, DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards"
 
 export type { DashboardCardId };
 
+/** The old single role, still kept in sync by the database: "admin" exactly when `roles`
+ * includes admin. New code reads `roles` / permissions instead. */
 export type SellerRole = "seller" | "admin";
 
 /** `superadmin` runs the platform (every clinic), belongs to no clinic, and never appears in
  * a clinic's own team — only in the /platform area. */
 export type ProfileRole = SellerRole | "superadmin";
+
+/** A clinic member can hold several. What each may do lives in the database
+ * (role_permissions); see src/lib/permissions.ts. */
+export type MemberRole = "admin" | "sales" | "coordinator" | "accountant";
+
+export const MEMBER_ROLES: MemberRole[] = ["admin", "sales", "coordinator", "accountant"];
+
+export const ROLE_LABELS: Record<MemberRole, string> = {
+  admin: "Admin",
+  sales: "Sales",
+  coordinator: "Coordinator",
+  accountant: "Accountant",
+};
+
+export type Permission =
+  | "patients.view"
+  | "patients.edit"
+  | "patients.delete"
+  | "sellers.assign"
+  | "sellers.manage"
+  | "payments.record"
+  | "money.edit"
+  | "transfers.manage"
+  | "drivers.manage"
+  | "quotes.use"
+  | "earnings.own"
+  | "earnings.all"
+  | "accounting.view"
+  | "files.manage"
+  | "tasks.use"
+  | "team.manage"
+  | "settings.clinic"
+  | "activity.view";
 
 /** Returned by a handful of server actions alongside their normal result, so the client can
  * react to a genuinely good moment (a sale, a payment, a tier jump) with confetti/a toast
@@ -21,6 +56,8 @@ export interface Profile {
   id: string;
   display_name: string | null;
   role: ProfileRole;
+  /** Empty for a superadmin. */
+  roles: MemberRole[];
   /** Null only for a superadmin (and, for a moment, a brand-new account not yet assigned). */
   clinic_id: string | null;
   telegram_chat_id: string | null;

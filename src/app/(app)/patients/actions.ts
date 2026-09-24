@@ -11,11 +11,12 @@ import { SellerChoice, resolveSellerChoice, sellerChoiceFromForm } from "@/lib/s
 import { getEnvChatsClinicId, getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
 import { ActivityLogRow, diffFields, logActivity } from "@/lib/activity-log";
 import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
-import { getActingUser, getViewer } from "@/lib/viewer";
+import { getViewer } from "@/lib/viewer";
 import { recordSupportEvent } from "@/lib/support-log";
 import { recordRef } from "@/lib/activity-mask";
 import { visitExpectedTotal } from "@/lib/commission";
 import { extraLabel, extrasFor } from "@/lib/balance";
+import { can, requirePermission } from "@/lib/permissions";
 
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
  * parses as UTC) so this can't drift a day depending on the server's timezone offset. */
@@ -363,13 +364,17 @@ function parseInput(formData: FormData): PatientInput {
 
 export async function createPatient(formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
 
   // Entering a patient for someone else makes you its coordinator — the one who follows up.
-  const seller = await resolveSellerChoice(supabase, sellerChoiceFromForm(formData), user.id);
+  const choice = sellerChoiceFromForm(formData);
+  if ((choice.newSellerName || (choice.sellerId && choice.sellerId !== user.id)) && !can(user.viewer, "sellers.assign")) {
+    throw new Error("You can only add patients as yourself");
+  }
+  const seller = await resolveSellerChoice(supabase, choice, user.id);
   const coordinatorId = seller.id === user.id ? null : user.id;
 
   const { data: created, error } = await supabase
@@ -378,7 +383,7 @@ export async function createPatient(formData: FormData) {
     .select("id")
     .single();
   if (error) {
-    throw new Error(/row-level security/i.test(error.message) ? "Only an admin can add a patient for another seller" : error.message);
+    throw new Error(/row-level security/i.test(error.message) ? "You can only add patients as yourself" : error.message);
   }
 
   await logActivity(supabase, user.actorId, "patient_created", "patient", created?.id ?? null, input.name);
@@ -504,7 +509,7 @@ const EXTRA_ONLY_FIELD_KINDS: Record<string, FieldKind> = {
  * still has money on it. */
 export async function updatePatientFields(id: string, patch: Record<string, unknown>) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   const input = cleanPatch(patch, PATIENT_FIELD_KINDS);
   const before = await getPatient(supabase, id);
@@ -533,7 +538,7 @@ export async function updatePatientFields(id: string, patch: Record<string, unkn
  * task exactly like a full save does. */
 export async function updateVisitFields(patientId: string, visitKey: string, patch: Record<string, unknown>) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   if (visitKey === "visit1" || visitKey === "visit2") {
     const cleaned = cleanPatch(patch, VISIT_FIELD_KINDS);
@@ -579,7 +584,7 @@ export async function updateVisitFields(patientId: string, visitKey: string, pat
 
 export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.view");
 
   const patient = await getPatient(supabase, id);
   if (!patient) throw new Error("Patient not found");
@@ -594,12 +599,16 @@ export async function sendPatientTelegramMessage(id: string, visitKey: string) {
 /** Hands the patient to another seller — they earn commission on any visit not yet paid.
  * A DB trigger locks in credit for visits already paid before the handoff, so this never
  * moves commission the previous seller already earned (see visit*_earned_by_seller_id).
- * A separate DB trigger enforces that only the current responsible seller or an admin may
- * reassign at all. */
+ * A separate DB trigger enforces that only the current responsible seller or someone with
+ * sellers.assign may reassign at all. */
 export async function reassignPatient(id: string, choice: SellerChoice) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
+  if (!can(user.viewer, "sellers.assign")) {
+    const { data: current } = await supabase.from("patients").select("responsible_seller_id").eq("id", id).maybeSingle();
+    if (current?.responsible_seller_id !== user.id) throw new Error("Only the patient's seller or a coordinator can reassign it");
+  }
   const seller = await resolveSellerChoice(supabase, choice, "");
   const { error } = await supabase
     .from("patients")
@@ -619,7 +628,7 @@ export async function reassignPatient(id: string, choice: SellerChoice) {
  * patient can set it — the database checks they belong to this clinic. */
 export async function setPatientCoordinator(id: string, coordinatorId: string | null) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   const { error } = await supabase.from("patients").update({ coordinator_id: coordinatorId || null }).eq("id", id);
   if (error) throw new Error(error.message);
@@ -632,11 +641,15 @@ export async function setPatientCoordinator(id: string, coordinatorId: string | 
 
 export async function deletePatient(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   // Grab the name before it's gone — the log has to be self-contained since the patient
   // row (and any later name lookup by id) won't exist anymore.
   const patient = await getPatient(supabase, id);
+  if (!patient) throw new Error("Patient not found");
+  if (!can(user.viewer, "patients.delete") && patient.responsible_seller_id !== user.id) {
+    throw new Error("Only the patient's own seller or an admin can delete this patient");
+  }
 
   const { error } = await supabase.from("patients").delete().eq("id", id);
   if (error) throw new Error(error.message);
@@ -683,7 +696,7 @@ function parseExtraVisitInput(formData: FormData) {
 
 export async function addExtraVisit(patientId: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   const input = parseExtraVisitInput(formData);
   if (!input.label) throw new Error("Reason is required");
@@ -727,7 +740,7 @@ const EXTRA_VISIT_LOGISTICS_FIELD_LABELS: Record<ExtraVisitLogisticsField, strin
 export async function setPatientLogisticsFlag(patientId: string, field: PatientLogisticsField, value: boolean) {
   if (!PATIENT_LOGISTICS_FIELDS.includes(field)) throw new Error("Invalid field");
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   const { error } = await supabase.from("patients").update({ [field]: value }).eq("id", patientId);
   if (error) throw new Error(error.message);
@@ -753,7 +766,7 @@ export async function setExtraVisitLogisticsFlag(
 ) {
   if (!EXTRA_VISIT_LOGISTICS_FIELDS.includes(field)) throw new Error("Invalid field");
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   const { data: visit } = await supabase
     .from("patient_visits")
@@ -781,7 +794,7 @@ export async function setExtraVisitLogisticsFlag(
 
 export async function deleteExtraVisit(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("patients.edit");
 
   const { data: before } = await supabase
     .from("patient_visits")
@@ -816,7 +829,7 @@ export async function deleteExtraVisit(id: string) {
  * deactivated account), and the log read is pinned to that same clinic. */
 export async function getPatientActivity(patientId: string): Promise<ActivityLogRow[]> {
   const supabase = await createClient();
-  const { viewer } = await getActingUser({ forRead: true });
+  const { viewer } = await requirePermission("patients.view", { forRead: true });
 
   const { data: patient } = await supabase.from("patients").select("clinic_id").eq("id", patientId).maybeSingle();
   if (!patient) throw new Error("Patient not found");

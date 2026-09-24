@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
-import { getActingUser } from "@/lib/viewer";
+import { requirePermission } from "@/lib/permissions";
 
 /** Companies and drivers are the clinic's shared operations list — any active member can add
  * and edit them (RLS enforces clinic + active), only an admin can delete (RLS again).
@@ -21,7 +21,7 @@ function revalidate() {
 
 export async function saveTransferCompany(id: string | null, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const name = str(formData, "name");
   if (!name) throw new Error("Company name is required");
@@ -46,7 +46,7 @@ export async function saveTransferCompany(id: string | null, formData: FormData)
 
 export async function setTransferCompanyActive(id: string, isActive: boolean) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const { data: company } = await supabase
     .from("transfer_companies")
@@ -72,7 +72,7 @@ export async function setTransferCompanyActive(id: string, isActive: boolean) {
 
 export async function deleteTransferCompany(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("drivers.manage");
 
   const { data: company } = await supabase
     .from("transfer_companies")
@@ -91,14 +91,13 @@ export async function deleteTransferCompany(id: string) {
   revalidate();
 }
 
-/** Admin-only (clinic_config is admin-writable). A driver must work for the chosen company,
- * and both must be this clinic's — checked here through RLS-scoped reads. */
+/** drivers.manage (the database lets it write just these clinic_config columns). A driver must
+ * work for the chosen company, and both must be this clinic's — checked through RLS-scoped reads. */
 export async function saveTransferDefaults(formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("drivers.manage");
 
-  const { data: myProfile } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
-  if (myProfile?.role !== "admin") throw new Error("Only an admin can change the defaults");
+  const clinicId = user.viewer.clinicId;
 
   async function pair(kind: "airport" | "local") {
     const companyId = str(formData, `${kind}_company_id`);
@@ -117,7 +116,7 @@ export async function saveTransferDefaults(formData: FormData) {
   const local = await pair("local");
 
   const { error } = await supabase.from("clinic_config").upsert({
-    clinic_id: myProfile.clinic_id,
+    clinic_id: clinicId,
     default_airport_company_id: airport.companyId,
     default_airport_driver_id: airport.driverId,
     default_local_company_id: local.companyId,
@@ -131,7 +130,7 @@ export async function saveTransferDefaults(formData: FormData) {
 
 export async function saveDriver(id: string | null, companyId: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const name = str(formData, "name");
   if (!name) throw new Error("Driver name is required");
@@ -156,7 +155,7 @@ export async function saveDriver(id: string | null, companyId: string, formData:
 
 export async function setDriverActive(id: string, isActive: boolean) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const { data, error } = await supabase.from("drivers").update({ is_active: isActive }).eq("id", id).select("name").single();
   if (error) throw new Error(error.message);
@@ -174,7 +173,7 @@ export async function setDriverActive(id: string, isActive: boolean) {
 
 export async function deleteDriver(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("drivers.manage");
 
   const { data: driver } = await supabase.from("drivers").select("name").eq("id", id).maybeSingle();
   if (!driver) throw new Error("Driver not found");

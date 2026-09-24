@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, Patient, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, Patient, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { visitCosts } from "@/lib/commission";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -290,6 +290,7 @@ export interface TeamMember {
   id: string;
   displayName: string | null;
   role: ProfileRole;
+  roles: MemberRole[];
   isActive: boolean;
   /** Only ever populated for an admin caller — sellers must never see a colleague's email,
    * registered or still-invited. */
@@ -303,7 +304,7 @@ export async function getTeamMembers(profiles: Profile[], isAdmin: boolean): Pro
   if (!isAdmin) {
     return profiles
       .filter((p) => p.display_name)
-      .map((p) => ({ id: p.id, displayName: p.display_name, role: p.role, isActive: p.is_active, email: null }));
+      .map((p) => ({ id: p.id, displayName: p.display_name, role: p.role, roles: p.roles ?? [], isActive: p.is_active, email: null }));
   }
 
   const admin = createAdminClient();
@@ -315,6 +316,7 @@ export async function getTeamMembers(profiles: Profile[], isAdmin: boolean): Pro
     id: p.id,
     displayName: p.display_name,
     role: p.role,
+    roles: p.roles ?? [],
     isActive: p.is_active,
     email: emailById.get(p.id) ?? null,
   }));

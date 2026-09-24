@@ -7,8 +7,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity } from "@/lib/activity-log";
 import { assertSeatAvailable } from "@/lib/seats";
-import { assertViewerCanWrite, getActingUser } from "@/lib/viewer";
-import { SellerRole } from "@/types";
+import { assertViewerCanWrite } from "@/lib/viewer";
+import { MEMBER_ROLES, MemberRole, ROLE_LABELS } from "@/types";
+import { requirePermission } from "@/lib/permissions";
 
 function generateTempPassword(): string {
   return randomBytes(12).toString("base64url");
@@ -19,16 +20,26 @@ export interface AddSellerResult {
   tempPassword: string;
 }
 
-/** Any active seller can add another — new accounts are always created as role 'seller'
- * (never 'admin'), so this can't be used to self-escalate privilege. */
-export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
+/** At least one known role, each once — anything else from the client is refused. */
+function cleanRoles(roles: MemberRole[]): MemberRole[] {
+  const clean = MEMBER_ROLES.filter((r) => roles.includes(r));
+  if (clean.length === 0) throw new Error("Pick at least one role");
+  if (roles.some((r) => !MEMBER_ROLES.includes(r))) throw new Error("Unknown role");
+  return clean;
+}
+
+const rolesText = (roles: MemberRole[]) => roles.map((r) => ROLE_LABELS[r]).join(", ");
+
+/** team.manage. New members get the roles chosen here (Sales if none are passed). */
+export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sales"]): Promise<AddSellerResult> {
   const email = rawEmail.trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error("Enter a valid email address");
   }
+  const roles = cleanRoles(rawRoles);
 
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("team.manage");
 
   const { data: myProfile, error: profileError } = await supabase
     .from("profiles")
@@ -56,17 +67,16 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
     throw new Error(error.message);
   }
 
-  // handle_new_user() only inserts a bare row (id, default role/clinic_id null) — the new
-  // seller belongs to the inviting seller's own clinic, set via the admin client since RLS
-  // only lets an admin update someone else's row (this action is deliberately open to any
-  // active seller, not just admins).
+  // handle_new_user() only inserts a bare row (id, default roles, clinic_id null) — the new
+  // member belongs to the inviting admin's own clinic, set via the admin client since a
+  // profile's clinic is only ever assigned by the service role.
   const { error: clinicIdError } = await admin
     .from("profiles")
-    .update({ clinic_id: myProfile.clinic_id })
+    .update({ clinic_id: myProfile.clinic_id, roles })
     .eq("id", data.user.id);
   if (clinicIdError) throw new Error(clinicIdError.message);
 
-  await logActivity(supabase, user.actorId, "seller_added", "profile", null, email);
+  await logActivity(supabase, user.actorId, "seller_added", "profile", null, `${email} (${rolesText(roles)})`);
 
   revalidatePath("/settings");
   revalidatePath("/team");
@@ -76,7 +86,7 @@ export async function addSeller(rawEmail: string): Promise<AddSellerResult> {
 /** Admin-only — enforced both here and by the profiles_guard_privilege DB trigger. */
 export async function setSellerActive(sellerId: string, active: boolean): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("team.manage");
   if (sellerId === user.id) throw new Error("You can't deactivate your own account");
 
   // Reactivating takes a seat back; RLS already confines this to the caller's own clinic.
@@ -94,28 +104,41 @@ export async function setSellerActive(sellerId: string, active: boolean): Promis
   revalidatePath("/team");
 }
 
-/** Admin-only — enforced both here and by the profiles_guard_privilege DB trigger. */
-export async function setSellerRole(sellerId: string, role: SellerRole): Promise<void> {
+/** team.manage — enforced both here and by the profiles_guard_privilege DB trigger, which also
+ * refuses changing your own roles and removing a clinic's last admin. */
+export async function setMemberRoles(memberId: string, rawRoles: MemberRole[]): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
-  if (sellerId === user.id) throw new Error("You can't change your own role");
+  const user = await requirePermission("team.manage");
+  if (memberId === user.id) throw new Error("You can't change your own roles");
+  const roles = cleanRoles(rawRoles);
 
-  const { error } = await supabase.from("profiles").update({ role }).eq("id", sellerId);
+  const { data: before } = await supabase.from("profiles").select("roles").eq("id", memberId).maybeSingle();
+  if (!before) throw new Error("Team member not found");
+
+  const { error } = await supabase.from("profiles").update({ roles }).eq("id", memberId);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.actorId, role === "admin" ? "seller_promoted" : "seller_demoted", "profile", sellerId);
+  await logActivity(
+    supabase,
+    user.actorId,
+    "member_roles_changed",
+    "profile",
+    memberId,
+    `${rolesText((before.roles ?? []) as MemberRole[]) || "none"} → ${rolesText(roles)}`
+  );
 
   revalidatePath("/settings");
   revalidatePath("/team");
 }
 
-/** For the two actions below that use the service-role client, which bypasses RLS: this JS
+/** For the two actions below that use the service-role client, which bypasses RLS (the caller's
+ * team.manage is checked by requirePermission first): this JS
  * check is the only thing keeping a clinic admin to their own clinic's accounts. The target
  * must share the caller's clinic; any mismatch (another clinic, a superadmin, no such id)
  * reads as "not found", so ids from other clinics can't even be probed for existence. */
 async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: string, targetId: string): Promise<void> {
-  const { data: me } = await supabase.from("profiles").select("role, clinic_id").eq("id", callerId).maybeSingle();
-  if (me?.role !== "admin" || !me.clinic_id) throw new Error("Admin only");
+  const { data: me } = await supabase.from("profiles").select("clinic_id").eq("id", callerId).maybeSingle();
+  if (!me?.clinic_id) throw new Error("Admin only");
 
   const admin = createAdminClient();
   const { data: target } = await admin.from("profiles").select("clinic_id").eq("id", targetId).maybeSingle();
@@ -127,7 +150,7 @@ async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: strin
  * DB trigger to fall back on for this one. */
 export async function adminResetPassword(sellerId: string): Promise<AddSellerResult> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("team.manage");
   if (sellerId === user.id) throw new Error("Use 'Change password' in Your account instead");
 
   await assertAdminOfSameClinic(supabase, user.id, sellerId);
@@ -157,7 +180,7 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
  * strictly own-row-only, with no admin carve-out, so the RLS-scoped client can't do this). */
 export async function deleteSeller(sellerId: string): Promise<void> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("team.manage");
   if (sellerId === user.id) throw new Error("You can't delete your own account");
 
   await assertAdminOfSameClinic(supabase, user.id, sellerId);

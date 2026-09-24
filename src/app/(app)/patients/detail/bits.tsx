@@ -2,6 +2,8 @@
 
 import { ReactNode } from "react";
 import { formatCurrency } from "@/lib/format";
+import { useCan } from "@/components/permissions";
+import { Permission } from "@/types";
 
 export const gbp = (n: number) => formatCurrency(n, "GBP");
 
@@ -47,8 +49,21 @@ export function CheckIcon({ size = 14 }: { size?: number }) {
   );
 }
 
-/** The "Edit" link at the top right of a read-only card. */
-export function EditButton({ onClick, label = "Edit", disabled }: { onClick: () => void; label?: string; disabled?: boolean }) {
+/** The "Edit" link at the top right of a read-only card — shown only to people allowed to
+ * make that edit (`perm`, patients.edit by default). */
+export function EditButton({
+  onClick,
+  label = "Edit",
+  disabled,
+  perm = "patients.edit",
+}: {
+  onClick: () => void;
+  label?: string;
+  disabled?: boolean;
+  perm?: Permission;
+}) {
+  const allowed = useCan(perm);
+  if (!allowed) return null;
   return (
     <button
       type="button"

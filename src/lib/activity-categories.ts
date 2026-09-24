@@ -52,6 +52,7 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "seller_deactivated",
     "seller_promoted",
     "seller_demoted",
+    "member_roles_changed",
     "seller_deleted",
     "password_reset",
     "seller_record_added",

@@ -6,6 +6,7 @@ import { extraLabel, extrasFor, visitAmount } from "@/lib/balance";
 import { visitExpectedTotal } from "@/lib/commission";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
+import { requirePagePermission } from "@/lib/permissions";
 
 function Field({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
@@ -56,6 +57,7 @@ export default async function PatientDocumentPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ visit?: string }>;
 }) {
+  await requirePagePermission("patients.view");
   const { id } = await params;
   const { visit } = await searchParams;
 

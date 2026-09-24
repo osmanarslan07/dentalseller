@@ -5,9 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getPatient } from "@/lib/data";
 import { departurePickup, LOCAL_PICKUP_TIME } from "@/lib/transfer-times";
 import { logActivity } from "@/lib/activity-log";
-import { getActingUser } from "@/lib/viewer";
 import { Patient, TransferKind, TransferStatus } from "@/types";
 import { visitLabel, visitRef } from "@/lib/visit-key";
+import { requirePermission } from "@/lib/permissions";
 
 /** Places offered (and used by "Suggest transfers") alongside the visit's hotel. */
 const AIRPORT = "Airport";
@@ -75,7 +75,7 @@ function revalidate(patientId: string) {
 
 export async function addTransfer(patientId: string, visitKey: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const input = parseTransfer(formData);
   const { error } = await supabase.from("transfers").insert({ ...input, ...visitRef(visitKey), patient_id: patientId });
@@ -88,7 +88,7 @@ export async function addTransfer(patientId: string, visitKey: string, formData:
 
 export async function updateTransfer(id: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const input = parseTransfer(formData);
   const { data, error } = await supabase.from("transfers").update(input).eq("id", id).select("patient_id").single();
@@ -100,7 +100,7 @@ export async function updateTransfer(id: string, formData: FormData) {
 
 export async function deleteTransfer(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const { data, error } = await supabase
     .from("transfers")
@@ -120,7 +120,7 @@ export async function deleteTransfer(id: string) {
  * defaults (Settings → Transfers), so often there's nothing left to fill in. */
 export async function suggestTransfers(patientId: string, visitKey: string): Promise<{ created: number }> {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const patient = await getPatient(supabase, patientId);
   if (!patient) throw new Error("Patient not found");
@@ -239,7 +239,7 @@ export async function suggestTransfers(patientId: string, visitKey: string): Pro
  * already marked done stays done. */
 export async function markTransferSent(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const { data: current, error: readError } = await supabase
     .from("transfers")
@@ -270,7 +270,7 @@ export async function markTransferSent(id: string) {
 export async function setTransferStatus(id: string, status: TransferStatus) {
   if (!STATUSES.includes(status)) throw new Error("Invalid status");
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("transfers.manage");
 
   const { data, error } = await supabase
     .from("transfers")

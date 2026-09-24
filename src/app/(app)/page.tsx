@@ -8,12 +8,17 @@ import { CountUp } from "@/components/CountUp";
 import { OPERATIONAL_CARD_IDS, DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
 import { TeamOperationsPanel } from "./TeamOperationsPanel";
 import { CheckCircleIcon, PeopleIcon, UserPlusIcon } from "@/components/StatIcons";
-import { getViewerUser } from "@/lib/viewer";
+import { getViewer } from "@/lib/viewer";
+import { can } from "@/lib/permissions";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
-  const user = await getViewerUser();
+  const viewer = await getViewer();
+  const user = viewer ? { id: viewer.userId } : null;
+  // "my sales" cards are for people who sell; transfers for people who book them
+  const sells = can(viewer, "earnings.own");
+  const booksTransfers = can(viewer, "transfers.manage");
   const [allPatients, settings, sellers] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, user?.id ?? ""),
@@ -87,7 +92,7 @@ export default async function DashboardPage() {
 
   const cardById = new Map(DASHBOARD_CARDS.map((c) => [c.id, c]));
   const visibleCards = settings.dashboard_cards
-    .filter((id) => OPERATIONAL_CARD_IDS.includes(id))
+    .filter((id) => sells && OPERATIONAL_CARD_IDS.includes(id))
     .map((id) => cardById.get(id))
     .filter((c): c is (typeof DASHBOARD_CARDS)[number] => c != null);
 
@@ -105,12 +110,14 @@ export default async function DashboardPage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-slate-500">Today&apos;s visits, follow-ups and logistics for the whole team.</p>
+        {booksTransfers && (
         <Link
           href="/transfers"
           className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-teal-50 px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-100"
         >
           🚗 Today&apos;s &amp; tomorrow&apos;s transfers →
         </Link>
+        )}
       </div>
 
       {visibleCards.length > 0 && (

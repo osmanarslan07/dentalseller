@@ -18,6 +18,7 @@ import { VisitTab, visitStage } from "./detail/VisitTab";
 import { documentLinks, PatientInfoTab } from "./detail/PatientInfoTab";
 import { HistoryTab } from "./detail/HistoryTab";
 import { sellerLabel } from "@/lib/sellers";
+import { useCan } from "@/components/permissions";
 
 const PAGE_TABS = ["info", "history"] as const;
 
@@ -32,7 +33,7 @@ export function PatientDetail({
   profiles = [],
   sellers = [],
   currentUserId = "",
-  isAdmin = false,
+  canAssignSellers = false,
   transfers = [],
   companies = [],
   surchargeRate = 0.03,
@@ -50,7 +51,7 @@ export function PatientDetail({
   /** The clinic's seller list — accounts and sellers without one. */
   sellers?: Seller[];
   currentUserId?: string;
-  isAdmin?: boolean;
+  canAssignSellers?: boolean;
   /** Every transfer of this patient, all visits. */
   transfers?: Transfer[];
   companies?: TransferCompany[];
@@ -64,6 +65,8 @@ export function PatientDetail({
   driverMessages?: DriverMessagesMode;
 }) {
   const router = useRouter();
+  const canEdit = useCan("patients.edit");
+  const canDelete = useCan("patients.delete");
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [addingExtra, setAddingExtra] = useState(false);
@@ -267,20 +270,22 @@ export function PatientDetail({
               heading="Patient"
               buttonClassName="rounded-xl bg-slate-100 px-2.5 py-2 text-slate-700 hover:bg-slate-200"
               items={[
-                { label: "Duplicate for a group booking", hint: "same flights & hotel", onSelect: () => router.push(`/patients/new?from=${patient.id}`) },
-                {
+                ...(canEdit ? [{ label: "Duplicate for a group booking", hint: "same flights & hotel", onSelect: () => router.push(`/patients/new?from=${patient.id}`) }] : []),
+                ...(canEdit && (canAssignSellers || patient.responsible_seller_id === currentUserId) ? [{
                   label: "Reassign seller…",
                   hint: `${sellerName} now`,
                   onSelect: () => {
                     setTab("info");
                     setTimeout(() => document.getElementById("reassign")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
                   },
-                },
+                }] : []),
                 {
                   label: "Export to CSV",
                   onSelect: () => downloadCsv(`${patient.name.replace(/[^\w\- ]+/g, "").trim() || "patient"}.csv`, patientsToCsv([patient])),
                 },
-                { label: "Delete patient…", hint: "asks to confirm", danger: true, divider: true, disabled: pending, onSelect: handleDelete },
+                ...(canDelete || (canEdit && patient.responsible_seller_id === currentUserId)
+                  ? [{ label: "Delete patient…", hint: "asks to confirm", danger: true, divider: true, disabled: pending, onSelect: handleDelete }]
+                  : []),
               ]}
             />
           </div>
@@ -299,6 +304,7 @@ export function PatientDetail({
               </span>
             </button>
           ))}
+          {canEdit && (
           <Menu
             trigger={<>+ Visit</>}
             heading="Add a visit"
@@ -310,6 +316,7 @@ export function PatientDetail({
               { label: "Extra visit", hint: "e.g. temporary crown fix", onSelect: () => setAddingExtra(true) },
             ]}
           />
+          )}
           <div className="min-w-4 grow" />
           <button type="button" onClick={() => setTab("info")} className={tabClass("info")} aria-current={activeTab === "info" ? "page" : undefined}>
             <span className="whitespace-nowrap">Patient info</span>
@@ -339,14 +346,13 @@ export function PatientDetail({
           deductCosts={deductCosts}
           transferDefaults={transferDefaults}
           driverMessages={driverMessages}
-          isAdmin={isAdmin}
           hotelOptions={hotelOptions}
           roomTypeOptions={roomTypeOptions}
           onRemoved={() => setTab(visits[0].key)}
         />
       )}
       {activeTab === "info" && (
-        <PatientInfoTab patient={patient} visits={visits} profiles={profiles} sellers={sellers} currentUserId={currentUserId} isAdmin={isAdmin} onOpenVisit={setTab} />
+        <PatientInfoTab patient={patient} visits={visits} profiles={profiles} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} onOpenVisit={setTab} />
       )}
       {activeTab === "history" && <HistoryTab patient={patient} profiles={profiles} sellers={sellers} entries={history} error={historyError} />}
 

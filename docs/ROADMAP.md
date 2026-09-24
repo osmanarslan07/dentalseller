@@ -75,7 +75,17 @@ To do:
 | Discount | **Per visit, £ or %**, optional reason. Comes off that visit's total (treatment + extras). **Anyone who can edit money** may give one, no cap; always logged. |
 | Files | **Plain list** per patient (no categories, not tied to visits). Private storage, clinic-only, expiring links, 20 MB per file. |
 
-### Step B — Roles and permissions ☐
+### Step B — Roles and permissions ◐ (built 2026-09-24, SQL not applied yet — waiting for your test)
+Built as designed below. Notes:
+- Catalog in `permissions` / `role_permissions`; `has_permission()`, `my_permissions()`,
+  `member_roles()` (support mode → viewed-as member's roles, admin when viewing as nobody).
+- Sales keeps two own-record rules outside the catalog, exactly as before: the responsible
+  seller can reassign and delete their own patient.
+- Prices (visit expected amounts) additionally need `money.edit` (DB trigger); coordinators
+  may write only the transfer-default / driver-message columns of `clinic_config` (trigger).
+- Adding team members now needs `team.manage` (the UI already only showed it to admins).
+- Settings → Team: role tick-buttons per member and on the add form; last-admin and
+  own-roles guards are in the database.
 - `profiles.roles text[]` (multi-role: `admin`, `sales`, `coordinator`, `accountant`).
   Backfill: admin → {admin, sales}; seller → {sales} — nobody's access changes. Keep the old
   `profiles.role` column in sync by trigger (admin if 'admin' in roles, else seller) so the

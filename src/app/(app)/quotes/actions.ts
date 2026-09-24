@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { computeQuoteSplit } from "@/lib/quote-templates";
 import { diffFields, logActivity } from "@/lib/activity-log";
 import { Celebration, QuoteInput } from "@/types";
-import { getActingUser } from "@/lib/viewer";
+import { requirePermission } from "@/lib/permissions";
 
 const QUOTE_AUDIT_FIELDS: { key: keyof QuoteInput; label: string }[] = [
   { key: "name", label: "name" },
@@ -56,7 +56,7 @@ function parseInput(formData: FormData): QuoteInput {
 
 export async function createQuote(formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("quotes.use");
 
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
@@ -76,7 +76,7 @@ export async function createQuote(formData: FormData) {
 
 export async function updateQuote(id: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("quotes.use");
 
   const input = parseInput(formData);
   if (!input.name) throw new Error("Name is required");
@@ -97,7 +97,7 @@ export async function updateQuote(id: string, formData: FormData) {
 
 export async function duplicateQuote(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("quotes.use");
 
   const { data: quote, error: fetchError } = await supabase.from("quotes").select("*").eq("id", id).single();
   if (fetchError) throw new Error(fetchError.message);
@@ -131,7 +131,7 @@ export async function duplicateQuote(id: string) {
 
 export async function deleteQuote(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission("quotes.use");
 
   // Grab the name before it's gone — the log has to be self-contained since the quote row won't exist anymore.
   const { data: quote } = await supabase.from("quotes").select("name").eq("id", id).maybeSingle();
@@ -147,7 +147,7 @@ export async function deleteQuote(id: string) {
 /** Turns an accepted quote into a real patient record once travel gets scheduled — quote stays as a record of the offer sent. */
 export async function convertQuoteToPatient(id: string) {
   const supabase = await createClient();
-  const user = await getActingUser();
+  const user = await requirePermission(["quotes.use"]);
 
   const { data: quote, error: quoteError } = await supabase
     .from("quotes")

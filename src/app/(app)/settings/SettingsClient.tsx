@@ -1,7 +1,8 @@
 "use client";
 
 import { ChangeEvent, useState, useTransition } from "react";
-import { ClinicConfig, CommissionSettings, Patient, Seller, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, Patient, Permission, Seller, TransferCompany } from "@/types";
+import { usePermissions } from "@/components/permissions";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
@@ -24,21 +25,16 @@ const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
 
 type TabId = "account" | "commission" | "cards" | "transfers" | "clinic" | "system" | "data";
 
-function tabsFor(isAdmin: boolean): { id: TabId; label: string }[] {
-  return [
-    { id: "account", label: "Account" },
-    { id: "commission", label: "Commission" },
-    { id: "cards", label: "Cards" },
-    { id: "transfers", label: "Transfers" },
-    ...(isAdmin
-      ? [
-          { id: "clinic" as const, label: "Team & clinic" },
-          { id: "system" as const, label: "System" },
-        ]
-      : []),
-    { id: "data", label: "Data" },
-  ];
-}
+/** Each tab with what it takes to see it (null: everyone). */
+const TABS: { id: TabId; label: string; needs: Permission[] | null }[] = [
+  { id: "account", label: "Account", needs: null },
+  { id: "commission", label: "Commission", needs: ["earnings.own"] },
+  { id: "cards", label: "Cards", needs: ["earnings.own"] },
+  { id: "transfers", label: "Transfers", needs: ["transfers.manage", "drivers.manage"] },
+  { id: "clinic", label: "Team & clinic", needs: ["team.manage", "sellers.manage", "settings.clinic"] },
+  { id: "system", label: "System", needs: ["settings.clinic"] },
+  { id: "data", label: "Data", needs: ["patients.view"] },
+];
 
 export function SettingsClient({
   settings,
@@ -53,7 +49,6 @@ export function SettingsClient({
   telegramConnected,
   clinicConfig,
   transferCompanies,
-  isAdmin,
   initialTab,
   whatsappSecrets,
   webhookUrl,
@@ -71,7 +66,6 @@ export function SettingsClient({
   telegramConnected: boolean;
   clinicConfig: ClinicConfig;
   transferCompanies: TransferCompany[];
-  isAdmin: boolean;
   /** From ?tab= — e.g. the "Turn on in Settings" link opens Transfers. */
   initialTab?: string;
   /** Admins only: which WhatsApp secrets are saved (never the secrets). */
@@ -92,7 +86,9 @@ export function SettingsClient({
   const [brandingSaved, setBrandingSaved] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(clinicConfig.clinicLogoUrl);
   const { hidden, tryRate } = usePrivacy();
-  const tabs = tabsFor(isAdmin);
+  const permissions = usePermissions();
+  const has = (p: Permission) => permissions.includes(p);
+  const tabs = TABS.filter((t) => !t.needs || t.needs.some(has));
   const [activeTab, setActiveTab] = useState<TabId>(() =>
     tabs.some((t) => t.id === initialTab) ? (initialTab as TabId) : "account"
   );
@@ -416,14 +412,15 @@ export function SettingsClient({
         </div>
       )}
 
-      {activeTab === "clinic" && isAdmin && (
+      {activeTab === "clinic" && tabs.some((t) => t.id === "clinic") && (
         <div className="space-y-6">
-          <TeamCard members={teamMembers} currentUserId={currentUserId} isAdmin={isAdmin} />
+          {has("team.manage") && <TeamCard members={teamMembers} currentUserId={currentUserId} canManage />}
 
-          <SellersCard rows={sellerRecords} allSellers={allSellers} currentUserId={currentUserId} />
+          {has("sellers.manage") && <SellersCard rows={sellerRecords} allSellers={allSellers} currentUserId={currentUserId} />}
 
-          <TelegramGroupCard groupChatId={clinicConfig.telegramGroupChatId} />
+          {has("settings.clinic") && <TelegramGroupCard groupChatId={clinicConfig.telegramGroupChatId} />}
 
+          {has("settings.clinic") && (
           <Card className="p-6">
             <h2 className="mb-1 text-base font-semibold text-slate-900">Confirmation letter branding</h2>
             <p className="mb-5 text-sm text-slate-500">
@@ -493,17 +490,18 @@ export function SettingsClient({
               </div>
             </form>
           </Card>
+          )}
         </div>
       )}
 
       {activeTab === "transfers" && (
         <div className="space-y-6">
-          <DriverMessagesCard config={clinicConfig.driverMessages} isAdmin={isAdmin} secrets={whatsappSecrets} webhookUrl={webhookUrl} />
-          <TransfersCard companies={transferCompanies} defaults={clinicConfig.transferDefaults} isAdmin={isAdmin} />
+          <DriverMessagesCard config={clinicConfig.driverMessages} isAdmin={has("drivers.manage")} secrets={whatsappSecrets} webhookUrl={webhookUrl} />
+          <TransfersCard companies={transferCompanies} defaults={clinicConfig.transferDefaults} isAdmin={has("drivers.manage")} />
         </div>
       )}
 
-      {activeTab === "system" && isAdmin && (
+      {activeTab === "system" && has("settings.clinic") && (
         <div className="space-y-6">
           <SystemSettingsCard clinicConfig={clinicConfig} />
         </div>

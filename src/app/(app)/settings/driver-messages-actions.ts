@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity } from "@/lib/activity-log";
-import { getActingUser } from "@/lib/viewer";
+import { requirePermission } from "@/lib/permissions";
 import { encryptSecret, loadApiSettings, newVerifyToken, recordApiError, sendTemplate } from "@/lib/whatsapp";
 import { cleanParam } from "@/lib/whatsapp-templates";
 import { DriverMessagesMode } from "@/types";
@@ -13,10 +13,8 @@ const MODE_NAMES: Record<DriverMessagesMode, string> = { app: "WhatsApp app", ap
 
 async function requireAdmin() {
   const supabase = await createClient();
-  const user = await getActingUser();
-  const { data: me } = await supabase.from("profiles").select("role, clinic_id").eq("id", user.id).maybeSingle();
-  if (me?.role !== "admin" || !me.clinic_id) throw new Error("Only an admin can change how drivers get their messages");
-  return { supabase, user, clinicId: me.clinic_id as string };
+  const user = await requirePermission("drivers.manage");
+  return { supabase, user, clinicId: user.viewer.clinicId };
 }
 
 function revalidate() {

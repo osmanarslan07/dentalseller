@@ -2749,6 +2749,564 @@ revoke execute on function public.merge_sellers(uuid, uuid) from public, anon;
 grant execute on function public.merge_sellers(uuid, uuid) to authenticated;
 
 -- =====================================================================
+-- ROLES AND PERMISSIONS (roadmap step B). Idempotent/safe to re-run.
+-- =====================================================================
+-- A member can hold several roles: admin, sales, coordinator, accountant. What each role may
+-- do is data (role_permissions), checked everywhere through has_permission(). The old single
+-- profiles.role column stays, kept in sync both ways by a trigger, so code that still reads
+-- it (and is_admin()) keeps working: role = 'admin' exactly when 'admin' is in roles.
+
+-- ---------- roles on profiles ----------
+alter table public.profiles add column if not exists roles text[];
+
+-- Backfill once (only rows that have none yet): admin → {admin, sales}; seller → {sales} —
+-- nobody's access changes. A superadmin is no clinic member and has no roles.
+update public.profiles
+set roles = case role when 'admin' then array['admin', 'sales'] when 'seller' then array['sales'] else array[]::text[] end
+where roles is null;
+
+alter table public.profiles alter column roles set default array['sales'];
+alter table public.profiles alter column roles set not null;
+alter table public.profiles drop constraint if exists profiles_roles_check;
+alter table public.profiles add constraint profiles_roles_check
+  check (roles <@ array['admin', 'sales', 'coordinator', 'accountant']);
+
+-- roles ↔ role, whichever one a change came through. A change to roles wins; a change to the
+-- old role column (code that predates roles) promotes/demotes within roles.
+create or replace function public.sync_profile_roles()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.role = 'superadmin' then
+    new.roles := array[]::text[];
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and new.roles is distinct from old.roles then
+    new.roles := array(select distinct unnest(new.roles) order by 1);
+    new.role := case when 'admin' = any(new.roles) then 'admin' else 'seller' end;
+  elsif tg_op = 'INSERT' or new.role is distinct from old.role then
+    if new.role = 'admin' and not ('admin' = any(new.roles)) then
+      new.roles := array_append(new.roles, 'admin');
+    elsif new.role = 'seller' then
+      new.roles := array_remove(new.roles, 'admin');
+      if cardinality(new.roles) = 0 then
+        new.roles := array['sales'];
+      end if;
+    end if;
+    new.roles := array(select distinct unnest(new.roles) order by 1);
+  end if;
+  return new;
+end;
+$$;
+
+-- named to run after profiles_guard_privilege (same-timing triggers fire in name order), so
+-- the guard sees exactly what the caller asked for
+drop trigger if exists profiles_sync_roles on public.profiles;
+create trigger profiles_sync_roles
+  before insert or update on public.profiles
+  for each row execute function public.sync_profile_roles();
+
+-- ---------- the permission catalog ----------
+-- `module` (step C) says which part of the product a permission belongs to; null = core.
+create table if not exists public.permissions (
+  key text primary key,
+  module text,
+  description text
+);
+
+create table if not exists public.role_permissions (
+  role text not null check (role in ('admin', 'sales', 'coordinator', 'accountant')),
+  permission text not null references public.permissions(key) on delete cascade,
+  primary key (role, permission)
+);
+
+alter table public.permissions enable row level security;
+alter table public.role_permissions enable row level security;
+drop policy if exists "permissions_select_all" on public.permissions;
+create policy "permissions_select_all" on public.permissions for select using (auth.uid() is not null);
+drop policy if exists "role_permissions_select_all" on public.role_permissions;
+create policy "role_permissions_select_all" on public.role_permissions for select using (auth.uid() is not null);
+
+-- This file is the source of truth: re-running it resets the catalog to exactly this.
+insert into public.permissions (key, module, description) values
+  ('patients.view',    null,         'See patients, visits and the calendar'),
+  ('patients.edit',    null,         'Add and edit patients and visits'),
+  ('patients.delete',  null,         'Delete any patient (the responsible seller can always delete their own)'),
+  ('sellers.assign',   null,         'Record a patient for any seller, type a new seller, reassign any patient'),
+  ('sellers.manage',   'sales',      'Manage the seller list and sellers'' commission rates'),
+  ('payments.record',  null,         'Record, edit and delete payments'),
+  ('money.edit',       null,         'Change prices, extras and discounts'),
+  ('transfers.manage', 'operations', 'Book transfers and hotels; add and edit drivers'),
+  ('drivers.manage',   'operations', 'Delete drivers and companies, transfer defaults, driver messages'),
+  ('quotes.use',       'sales',      'Make and send quotes'),
+  ('earnings.own',     'sales',      'See your own commission'),
+  ('earnings.all',     'sales',      'See every seller''s earnings (Team page)'),
+  ('accounting.view',  'accounting', 'Accounting page'),
+  ('files.manage',     null,         'Upload, rename and delete patient files'),
+  ('tasks.use',        null,         'Tasks'),
+  ('team.manage',      null,         'Add, remove and change team members'' roles'),
+  ('settings.clinic',  null,         'Clinic settings: branding, Telegram group, money rules'),
+  ('activity.view',    null,         'Activity log')
+on conflict (key) do update set module = excluded.module, description = excluded.description;
+
+delete from public.role_permissions;
+insert into public.role_permissions (role, permission)
+select 'admin', key from public.permissions
+union all
+-- exactly what a seller could do before roles existed
+select 'sales', unnest(array['patients.view', 'patients.edit', 'payments.record', 'money.edit', 'transfers.manage',
+                             'quotes.use', 'earnings.own', 'accounting.view', 'files.manage', 'tasks.use'])
+union all
+select 'coordinator', unnest(array['patients.view', 'patients.edit', 'sellers.assign', 'payments.record', 'money.edit',
+                                   'transfers.manage', 'drivers.manage', 'accounting.view', 'files.manage', 'tasks.use'])
+union all
+select 'accountant', unnest(array['patients.view', 'payments.record', 'accounting.view', 'earnings.all', 'tasks.use']);
+
+-- ---------- has_permission ----------
+-- The roles that count for `uid`: their own, or — for a superadmin in support mode — those of
+-- the member support is viewing as (an admin's when viewing as nobody). Support's read-only
+-- lock still applies on top (the restrictive policies), whatever the roles say.
+create or replace function public.member_roles(uid uuid)
+returns text[]
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select case
+    when uid = auth.uid() and public.is_superadmin(uid) and public.support_clinic_id() is not null then
+      coalesce(
+        (select p.roles
+         from public.support_sessions s
+         join public.profiles p on p.id = s.view_as_user_id and p.clinic_id = s.clinic_id
+         where s.superadmin_id = uid and s.ended_at is null and s.expires_at > now()
+         order by s.started_at desc
+         limit 1),
+        array['admin'])
+    else
+      coalesce((select p.roles from public.profiles p where p.id = uid and p.clinic_id is not null), array[]::text[])
+  end;
+$$;
+
+create or replace function public.has_permission(uid uuid, perm text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select uid is not null
+    and public.is_active_profile(uid)
+    and exists (
+      select 1 from public.role_permissions rp
+      where rp.permission = perm and rp.role = any(public.member_roles(uid))
+    );
+$$;
+
+-- Everything the caller may do, for the app to shape its pages and menus.
+create or replace function public.my_permissions()
+returns text[]
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(array_agg(distinct rp.permission order by rp.permission), array[]::text[])
+  from public.role_permissions rp
+  where public.is_active_profile(auth.uid())
+    and rp.role = any(public.member_roles(auth.uid()));
+$$;
+
+revoke execute on function public.member_roles(uuid) from public, anon;
+revoke execute on function public.has_permission(uuid, text) from public, anon;
+revoke execute on function public.my_permissions() from public, anon;
+grant execute on function public.member_roles(uuid) to authenticated, service_role;
+grant execute on function public.has_permission(uuid, text) to authenticated, service_role;
+grant execute on function public.my_permissions() to authenticated;
+
+-- A seller record counts as a live seller only for members with the Sales role (the others
+-- are hidden from seller pickers); a seller without an account is unaffected.
+create or replace function public.sync_seller_from_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.clinic_id is null or new.role = 'superadmin' then
+    return new;
+  end if;
+  insert into public.sellers (id, clinic_id, name, profile_id, is_active)
+  values (new.id, new.clinic_id, new.display_name, new.id, new.is_active and 'sales' = any(new.roles))
+  on conflict (id) do update
+    set name = coalesce(excluded.name, public.sellers.name),
+        is_active = excluded.is_active;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_sync_seller on public.profiles;
+create trigger profiles_sync_seller
+  after insert or update of clinic_id, display_name, is_active, role, roles on public.profiles
+  for each row execute function public.sync_seller_from_profile();
+
+update public.sellers s
+set is_active = p.is_active and 'sales' = any(p.roles)
+from public.profiles p
+where p.id = s.profile_id and s.is_active is distinct from (p.is_active and 'sales' = any(p.roles));
+
+-- ---------- who may change roles ----------
+-- Only team.manage changes roles or active status; nobody changes their own roles; a clinic
+-- never loses its last active admin. The service role (no auth.uid()) provisions accounts.
+create or replace function public.guard_profile_privilege_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    if old.clinic_id is not null and new.clinic_id is distinct from old.clinic_id then
+      raise exception 'clinic_id cannot be changed once assigned';
+    end if;
+    return new;
+  end if;
+  if (new.role is distinct from old.role or new.roles is distinct from old.roles
+      or new.is_active is distinct from old.is_active)
+     and not public.has_permission(auth.uid(), 'team.manage') then
+    raise exception 'Only an admin can change roles or active status';
+  end if;
+  if (new.role is distinct from old.role or new.roles is distinct from old.roles) and new.id = auth.uid() then
+    raise exception 'You can''t change your own roles';
+  end if;
+  if new.clinic_id is distinct from old.clinic_id then
+    raise exception 'clinic_id cannot be changed directly';
+  end if;
+  -- the roles sync runs after this trigger, so work out whether they stay an admin from
+  -- whichever column this change came through
+  if old.is_active and old.role = 'admin'
+     and not (new.is_active and (case when new.roles is distinct from old.roles then 'admin' = any(new.roles)
+                                      else new.role = 'admin' end))
+     and not exists (
+       select 1 from public.profiles o
+       where o.clinic_id = old.clinic_id and o.id <> old.id and o.is_active and o.role = 'admin'
+     ) then
+    raise exception 'A clinic needs at least one active admin';
+  end if;
+  return new;
+end;
+$$;
+
+drop policy if exists "profiles_update_self_or_admin" on public.profiles;
+create policy "profiles_update_self_or_admin" on public.profiles
+  for update using (
+    auth.uid() = id or (public.has_permission(auth.uid(), 'team.manage') and clinic_id = public.my_clinic_id())
+  )
+  with check (
+    auth.uid() = id or (public.has_permission(auth.uid(), 'team.manage') and clinic_id = public.my_clinic_id())
+  );
+
+-- ---------- patients ----------
+drop policy if exists "patients_select_active_sellers" on public.patients;
+create policy "patients_select_active_sellers" on public.patients
+  for select using (public.has_permission(auth.uid(), 'patients.view') and clinic_id = public.my_clinic_id());
+
+-- Anyone who adds patients adds them as themselves; sellers.assign records one for any
+-- seller of the clinic, account or not.
+drop policy if exists "patients_insert_self" on public.patients;
+create policy "patients_insert_self" on public.patients
+  for insert with check (
+    public.has_permission(auth.uid(), 'patients.edit')
+    and clinic_id = public.my_clinic_id()
+    and (
+      responsible_seller_id = auth.uid()
+      or (public.has_permission(auth.uid(), 'sellers.assign') and public.is_clinic_seller(responsible_seller_id, public.my_clinic_id()))
+    )
+  );
+
+drop policy if exists "patients_update_active_sellers" on public.patients;
+create policy "patients_update_active_sellers" on public.patients
+  for update using (public.has_permission(auth.uid(), 'patients.edit') and clinic_id = public.my_clinic_id())
+  with check (public.has_permission(auth.uid(), 'patients.edit') and clinic_id = public.my_clinic_id());
+
+-- The responsible seller can always delete their own patient (as before roles); anyone else
+-- needs patients.delete.
+drop policy if exists "patients_delete_owner_or_admin" on public.patients;
+create policy "patients_delete_owner_or_admin" on public.patients
+  for delete using (
+    clinic_id = public.my_clinic_id()
+    and (
+      public.has_permission(auth.uid(), 'patients.delete')
+      or (responsible_seller_id = auth.uid() and public.has_permission(auth.uid(), 'patients.edit'))
+    )
+  );
+
+create or replace function public.guard_patient_reassignment()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.responsible_seller_id is distinct from old.responsible_seller_id
+     and coalesce(current_setting('app.seller_merge', true), '') <> 'on'
+     and not (auth.uid() = old.responsible_seller_id or public.has_permission(auth.uid(), 'sellers.assign')) then
+    raise exception 'Only the responsible seller or someone who assigns sellers can reassign this patient';
+  end if;
+  return new;
+end;
+$$;
+
+-- Prices need money.edit, even for someone who can otherwise edit the patient. (Paid amounts
+-- — the `actual` columns — follow the payments and are written by their trigger.)
+create or replace function public.guard_patient_money()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or public.has_permission(auth.uid(), 'money.edit') then
+    return new;
+  end if;
+  if tg_table_name = 'patients' then
+    if (tg_op = 'INSERT' and (new.visit1_expected is not null or new.visit2_expected is not null))
+       or (tg_op = 'UPDATE' and (new.visit1_expected is distinct from old.visit1_expected
+                                 or new.visit2_expected is distinct from old.visit2_expected)) then
+      raise exception 'You don''t have permission to change prices';
+    end if;
+  elsif (tg_op = 'INSERT' and new.expected is not null)
+        or (tg_op = 'UPDATE' and new.expected is distinct from old.expected) then
+    raise exception 'You don''t have permission to change prices';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists patients_guard_money on public.patients;
+create trigger patients_guard_money
+  before insert or update on public.patients
+  for each row execute function public.guard_patient_money();
+drop trigger if exists patient_visits_guard_money on public.patient_visits;
+create trigger patient_visits_guard_money
+  before insert or update on public.patient_visits
+  for each row execute function public.guard_patient_money();
+
+-- ---------- extra visits ----------
+drop policy if exists "patient_visits_select_active_sellers" on public.patient_visits;
+create policy "patient_visits_select_active_sellers" on public.patient_visits
+  for select using (public.has_permission(auth.uid(), 'patients.view') and clinic_id = public.my_clinic_id());
+drop policy if exists "patient_visits_insert_active_sellers" on public.patient_visits;
+create policy "patient_visits_insert_active_sellers" on public.patient_visits
+  for insert with check (
+    created_by_seller_id = auth.uid() and public.has_permission(auth.uid(), 'patients.edit') and clinic_id = public.my_clinic_id()
+  );
+drop policy if exists "patient_visits_update_active_sellers" on public.patient_visits;
+create policy "patient_visits_update_active_sellers" on public.patient_visits
+  for update using (public.has_permission(auth.uid(), 'patients.edit') and clinic_id = public.my_clinic_id())
+  with check (public.has_permission(auth.uid(), 'patients.edit') and clinic_id = public.my_clinic_id());
+drop policy if exists "patient_visits_delete_active_sellers" on public.patient_visits;
+create policy "patient_visits_delete_active_sellers" on public.patient_visits
+  for delete using (public.has_permission(auth.uid(), 'patients.edit') and clinic_id = public.my_clinic_id());
+
+-- ---------- extras, payments, transfers: see with patients.view, write with their own permission ----------
+do $$
+declare
+  t text;
+  perm text;
+begin
+  foreach t in array array['patient_extras', 'patient_payments', 'transfers'] loop
+    perm := case t when 'patient_extras' then 'money.edit' when 'patient_payments' then 'payments.record' else 'transfers.manage' end;
+    execute format('drop policy if exists %I on public.%I', t || '_select_active', t);
+    execute format('create policy %I on public.%I for select using (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
+                   t || '_select_active', t, 'patients.view');
+    execute format('drop policy if exists %I on public.%I', t || '_insert_active', t);
+    execute format('create policy %I on public.%I for insert with check (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
+                   t || '_insert_active', t, perm);
+    execute format('drop policy if exists %I on public.%I', t || '_update_active', t);
+    execute format('create policy %I on public.%I for update using (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id()) with check (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
+                   t || '_update_active', t, perm, perm);
+    execute format('drop policy if exists %I on public.%I', t || '_delete_active', t);
+    execute format('create policy %I on public.%I for delete using (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
+                   t || '_delete_active', t, perm);
+  end loop;
+end $$;
+
+-- ---------- transfer companies and drivers ----------
+-- Everyone sees the list (names on transfers); transfers.manage adds and edits (as sellers
+-- always could); drivers.manage deletes.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['transfer_companies', 'drivers'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_insert_active', t);
+    execute format('create policy %I on public.%I for insert with check (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
+                   t || '_insert_active', t, 'transfers.manage');
+    execute format('drop policy if exists %I on public.%I', t || '_update_active', t);
+    execute format('create policy %I on public.%I for update using (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id()) with check (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
+                   t || '_update_active', t, 'transfers.manage', 'transfers.manage');
+    execute format('drop policy if exists %I on public.%I', t || '_delete_admin', t);
+    execute format('create policy %I on public.%I for delete using (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
+                   t || '_delete_admin', t, 'drivers.manage');
+  end loop;
+end $$;
+
+-- ---------- sellers ----------
+-- sellers.assign may add a seller by typing a new name (on a patient); sellers.manage runs
+-- the list.
+drop policy if exists "sellers_insert_admin" on public.sellers;
+create policy "sellers_insert_admin" on public.sellers
+  for insert with check (
+    (public.has_permission(auth.uid(), 'sellers.manage') or public.has_permission(auth.uid(), 'sellers.assign'))
+    and clinic_id = public.my_clinic_id() and profile_id is null
+  );
+
+drop policy if exists "sellers_update_admin" on public.sellers;
+create policy "sellers_update_admin" on public.sellers
+  for update using (public.has_permission(auth.uid(), 'sellers.manage') and clinic_id = public.my_clinic_id() and profile_id is null)
+  with check (public.has_permission(auth.uid(), 'sellers.manage') and clinic_id = public.my_clinic_id() and profile_id is null);
+
+drop policy if exists "sellers_delete_admin" on public.sellers;
+create policy "sellers_delete_admin" on public.sellers
+  for delete using (public.has_permission(auth.uid(), 'sellers.manage') and clinic_id = public.my_clinic_id() and profile_id is null);
+
+-- ---------- commission settings ----------
+drop policy if exists "settings_select_admin" on public.settings;
+create policy "settings_select_admin" on public.settings
+  for select using (
+    (public.has_permission(auth.uid(), 'earnings.all') or public.has_permission(auth.uid(), 'sellers.manage'))
+    and clinic_id = public.my_clinic_id()
+  );
+
+drop policy if exists "settings_admin_insert_no_account" on public.settings;
+create policy "settings_admin_insert_no_account" on public.settings
+  for insert with check (
+    public.has_permission(auth.uid(), 'sellers.manage') and clinic_id = public.my_clinic_id()
+    and exists (select 1 from public.sellers s where s.id = user_id and s.clinic_id = public.my_clinic_id() and s.profile_id is null)
+  );
+drop policy if exists "settings_admin_update_no_account" on public.settings;
+create policy "settings_admin_update_no_account" on public.settings
+  for update using (
+    public.has_permission(auth.uid(), 'sellers.manage') and clinic_id = public.my_clinic_id()
+    and exists (select 1 from public.sellers s where s.id = user_id and s.clinic_id = public.my_clinic_id() and s.profile_id is null)
+  )
+  with check (public.has_permission(auth.uid(), 'sellers.manage') and clinic_id = public.my_clinic_id());
+
+-- ---------- quotes: still private per member, and only with quotes.use ----------
+drop policy if exists "quotes_select_own" on public.quotes;
+create policy "quotes_select_own" on public.quotes
+  for select using (auth.uid() = user_id and clinic_id = public.my_clinic_id() and public.has_permission(auth.uid(), 'quotes.use'));
+drop policy if exists "quotes_insert_own" on public.quotes;
+create policy "quotes_insert_own" on public.quotes
+  for insert with check (auth.uid() = user_id and clinic_id = public.my_clinic_id() and public.has_permission(auth.uid(), 'quotes.use'));
+drop policy if exists "quotes_update_own" on public.quotes;
+create policy "quotes_update_own" on public.quotes
+  for update using (auth.uid() = user_id and clinic_id = public.my_clinic_id() and public.has_permission(auth.uid(), 'quotes.use'))
+  with check (auth.uid() = user_id and clinic_id = public.my_clinic_id() and public.has_permission(auth.uid(), 'quotes.use'));
+drop policy if exists "quotes_delete_own" on public.quotes;
+create policy "quotes_delete_own" on public.quotes
+  for delete using (auth.uid() = user_id and clinic_id = public.my_clinic_id() and public.has_permission(auth.uid(), 'quotes.use'));
+
+-- ---------- activity log ----------
+drop policy if exists "activity_log_select_admin" on public.activity_log;
+create policy "activity_log_select_admin" on public.activity_log
+  for select using (public.has_permission(auth.uid(), 'activity.view') and clinic_id = public.my_clinic_id());
+
+-- ---------- clinic settings ----------
+-- settings.clinic writes the clinic's settings; drivers.manage writes just the transfer
+-- defaults and driver-message columns (checked column by column below).
+drop policy if exists "clinic_config_insert_admin" on public.clinic_config;
+create policy "clinic_config_insert_admin" on public.clinic_config
+  for insert with check (
+    (public.has_permission(auth.uid(), 'settings.clinic') or public.has_permission(auth.uid(), 'drivers.manage'))
+    and clinic_id = public.my_clinic_id()
+  );
+drop policy if exists "clinic_config_update_admin" on public.clinic_config;
+create policy "clinic_config_update_admin" on public.clinic_config
+  for update using (
+    (public.has_permission(auth.uid(), 'settings.clinic') or public.has_permission(auth.uid(), 'drivers.manage'))
+    and clinic_id = public.my_clinic_id()
+  );
+
+create or replace function public.guard_clinic_config_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  driver_cols text[] := array['default_airport_company_id', 'default_airport_driver_id', 'default_local_company_id',
+    'default_local_driver_id', 'driver_messages_mode', 'whatsapp_phone_number_id', 'whatsapp_business_account_id',
+    'whatsapp_template_single', 'whatsapp_template_day', 'whatsapp_template_lang', 'whatsapp_verified_at',
+    'whatsapp_last_error', 'whatsapp_last_error_at', 'updated_at'];
+begin
+  if auth.uid() is null or public.has_permission(auth.uid(), 'settings.clinic') then
+    return new;
+  end if;
+  -- (a clinic's row exists from its first settings save; a first insert isn't checked)
+  if tg_op = 'UPDATE' and (to_jsonb(new) - driver_cols) is distinct from (to_jsonb(old) - driver_cols) then
+    raise exception 'Only an admin can change the clinic''s settings';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists clinic_config_guard_change on public.clinic_config;
+create trigger clinic_config_guard_change
+  before insert or update on public.clinic_config
+  for each row execute function public.guard_clinic_config_change();
+
+-- ---------- merge sellers: sellers.manage ----------
+create or replace function public.merge_sellers(from_id uuid, into_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cid uuid := public.my_clinic_id();
+begin
+  if not public.has_permission(auth.uid(), 'sellers.manage') then
+    raise exception 'You don''t have permission to manage sellers';
+  end if;
+  -- security definer skips RLS, so support's read-only lock is checked by hand
+  if public.is_superadmin(auth.uid()) and not public.support_can_write() then
+    raise exception 'Support is read-only until editing is unlocked';
+  end if;
+  if from_id = into_id then
+    raise exception 'Pick a different seller';
+  end if;
+  if not exists (select 1 from public.sellers where id = from_id and clinic_id = cid and profile_id is null) then
+    raise exception 'Only a seller without an account can be merged away';
+  end if;
+  if not public.is_clinic_seller(into_id, cid) then
+    raise exception 'Seller not found';
+  end if;
+
+  perform set_config('app.seller_merge', 'on', true);
+
+  update public.patients set responsible_seller_id = into_id where responsible_seller_id = from_id;
+  update public.patients set visit1_earned_by_seller_id = into_id where visit1_earned_by_seller_id = from_id;
+  update public.patients set visit2_earned_by_seller_id = into_id where visit2_earned_by_seller_id = from_id;
+  update public.patient_visits set earned_by_seller_id = into_id where earned_by_seller_id = from_id;
+
+  if exists (select 1 from public.settings where user_id = into_id) then
+    delete from public.settings where user_id = from_id;
+  else
+    update public.settings set user_id = into_id where user_id = from_id;
+  end if;
+
+  delete from public.sellers where id = from_id;
+
+  perform set_config('app.seller_merge', '', true);
+end;
+$$;
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

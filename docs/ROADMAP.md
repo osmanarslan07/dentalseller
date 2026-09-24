@@ -157,23 +157,97 @@ to the support access log (`record_file_opened`).
 - Patient info tab: "Files" card — upload (several at once; phone camera works), list with
   name / size / who / when, open, rename, delete (uploader or admin). Logged in History.
 
-### Finish ☐
-- One consolidated test checklist for the user; merge to master after approval.
+### Finish ◐ — apply the SQL, test, then merge
+- ☐ **Apply the SQL** (not applied yet: the cloud session that built B–F couldn't reach the
+  Supabase API). In the Supabase SQL editor, run everything in `supabase/schema.sql` from the
+  line `-- ROLES AND PERMISSIONS (roadmap step B)` down to just before
+  `-- ONE-TIME MANUAL STEP`. It is safe to run twice and keeps the current master code
+  working (tested on a local Postgres copy of the schema: backfill, re-run, every role, support
+  mode, modules, discount checks, file policies). Do it **before** opening the preview — the
+  new code expects the new columns. (Running the whole file from the top is not safe to
+  re-run: the oldest sections use plain `create policy`.)
+- ☐ Your test — the checklist below, on the Vercel preview of `feature/roles-modules`, with
+  TEST patients only (the preview uses the production database).
+- ☐ Merge to master after approval.
+
+#### Consolidated test checklist (steps A–F)
+
+Setup: in Settings → Team & clinic, add three TEST accounts (or reuse ones): one with only
+**Coordinator**, one with only **Accountant**, one with only **Sales**. Keep your own admin.
+
+Sellers without an account (A)
+1. As admin, New patient → Seller → "+ New seller (no account)" → type "TEST Ahmet". Save.
+   You are shown as the coordinator; Settings → Team & clinic lists TEST Ahmet.
+2. Settings → Sellers without an account: rename, set commission, deactivate/reactivate.
+3. Team page shows TEST Ahmet with "No account".
+4. Link TEST Ahmet to an account (merge) → the patient moves to that account.
+5. Phone numbers on the patient save as +44… (country code required).
+
+Roles (B)
+6. Team card: tick-buttons per member; you can't change your own; removing the last admin is refused.
+7. **Sales** account: sees Patients, Calendar, Quotes, Tasks, Transfers, Earnings, Accounting;
+   no Team page, no clinic settings. Can add a patient only as themselves; can reassign/delete
+   only their own patients. Exactly like a seller today.
+8. **Coordinator** account: sees Patients, Calendar, Tasks, Transfers, Accounting; no Quotes,
+   no Earnings, no Commission tab. New patient → can pick any seller or type a new one;
+   can reassign any patient; can't delete patients. Settings → Transfers: can change the
+   defaults and driver messages; Team & clinic tab is hidden.
+9. **Accountant** account: sees Patients (no edit buttons, no + Visit, no transfer actions),
+   Accounting, Team page (every seller's earnings, no activity); can record/edit payments but
+   not extras, prices or discounts.
+10. Phone (narrow window): the bottom bar and More menu show only the allowed pages.
+11. Support mode (platform): view as the Sales account → the app shows the Sales menus.
+
+Modules (C)
+12. /platform → the clinic → Plan & billing: switch plan to Starter → only Operations ticked;
+    Save. In the clinic: Quotes, Earnings, commission settings and Accounting are gone; the
+    Team page shows only activity; seller list has no rates.
+13. Untick Operations (Custom): Transfers page, Settings → Transfers, flights/hotel and
+    transfer cards on the patient and the dashboard's "Logistics not arranged" are gone.
+14. Set it back to Pro (all three) afterwards.
+
+Activity log (D)
+15. Change a TEST member's roles → Activity shows "changed X's roles (Sales → Coordinator)".
+16. Link Telegram from Settings → Activity shows "connected their Telegram".
+
+Discounts (E)
+17. TEST patient, visit 1 price £1,000 + one extra £100 → Money card: + Discount → 10% "TEST".
+    Owed shows £990; Still due, the visit badge, Patients list, Accounting and the patient's
+    header all use £990.
+18. Change it to £ 2,000 → owed becomes £0 (never negative). Remove it → back to £1,100.
+19. Earnings: expected commission follows the discounted amount; paid commission unchanged.
+20. Telegram → send visit 1 → message has an "İndirim" line. Operations sheet shows the
+    discount. Patient → Export to CSV has a "Visit 1 Discount" column.
+21. History tab shows "gave … a discount" / "removed a discount".
+
+Patient files (F)
+22. TEST patient → Patient info → Files → + Upload: pick two files (a photo and a PDF). Both
+    listed with size, who, when. On a phone, the picker offers the camera.
+23. Open (new tab) and Download work; the link stops working after an hour.
+24. Rename and delete your own file. As the Sales account, a file you (admin) uploaded has no
+    Rename/Delete. The Accountant can open but not upload.
+25. A file over 20 MB, or a .zip, is refused with a message.
+26. Delete the TEST patient → their files are gone from Storage (Supabase → Storage →
+    patient-files) too.
 
 ## Working notes for a new session (cloud or local)
 
 - Next.js here is newer than training data — read `node_modules/next/dist/docs/` before
   unfamiliar APIs (see AGENTS.md).
 - `supabase/schema.sql` is the single idempotent migration file: append new sections before
-  the "ONE-TIME MANUAL STEP" block, always safe to re-run. It has CRLF line endings.
+  the "ONE-TIME MANUAL STEP" block, each section safe to re-run. It is LF in git (CRLF only in
+  a Windows checkout with autocrlf).
 - Apply SQL through the Supabase Management API:
   `POST https://api.supabase.com/v1/projects/{ref}/database/query` with header
   `Authorization: Bearer $SUPABASE_ACCESS_TOKEN`, JSON body `{"query": "..."}`; `ref` is the
   subdomain of `NEXT_PUBLIC_SUPABASE_URL`. Dry-run first inside `begin; … rollback;`. Test RLS
   with `set local role authenticated` plus
   `select set_config('request.jwt.claims', '{"sub":"<user id>","role":"authenticated"}', true)`.
-  A cloud session needs those two env vars in its environment, otherwise it can only write the
-  SQL for the user to apply.
+  A cloud session needs those two env vars **and** `api.supabase.com` allowed by its network
+  policy, otherwise it can only write the SQL for the user to apply. It can still test SQL on a
+  local Postgres 16 (installed in the cloud image): stub the `auth` / `storage` schemas
+  (`auth.uid()` reading `request.jwt.claims`, roles `authenticated` / `service_role`), apply
+  schema.sql, then the new section twice, then run RLS checks as each role.
 - Never put `$$` in a JS `String.replace` replacement string (it becomes `$`) — use a function
   replacer when editing schema.sql from scripts.
 - Verify with `npx tsc --noEmit` and `npx eslint src --quiet`. Two lint errors are pre-existing

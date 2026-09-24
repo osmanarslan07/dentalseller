@@ -14,7 +14,7 @@ import { Celebration, Patient, PatientExtraVisit, PatientInput } from "@/types";
 import { getViewer } from "@/lib/viewer";
 import { recordSupportEvent } from "@/lib/support-log";
 import { recordRef } from "@/lib/activity-mask";
-import { visitExpectedTotal } from "@/lib/commission";
+import { visitDiscount, visitDiscountSetting, visitExpectedTotal } from "@/lib/commission";
 import { extraLabel, extrasFor } from "@/lib/balance";
 import { can, requirePermission } from "@/lib/permissions";
 
@@ -263,6 +263,7 @@ function buildVisitMessage(patient: Patient, visitKey: string): string {
   // purposes — whoever's arranging visit2 logistics needs to know what visit1 already
   // brought in, and vice versa. Extra visits stay single-payment, as before.
   // expected amounts include the extras sold on that visit (paid amounts already do)
+  const rawExpected = expected;
   expected = visitExpectedTotal(patient, visitKey, expected);
   const visit1Expected = visitExpectedTotal(patient, "visit1", patient.visit1_expected);
   const visit2Expected = visitExpectedTotal(patient, "visit2", patient.visit2_expected);
@@ -270,6 +271,14 @@ function buildVisitMessage(patient: Patient, visitKey: string): string {
   const paymentLines: (string | null)[] = extrasFor(patient, visitKey).map(
     (e) => `<b>Ekstra:</b> ${extraLabel(e, "tr")} — £${e.total}`
   );
+  const discount = visitDiscountSetting(patient, visitKey);
+  if (discount) {
+    const base = (rawExpected ?? 0) + extrasFor(patient, visitKey).reduce((sum, e) => sum + e.total, 0);
+    const off = visitDiscount(patient, visitKey, base);
+    paymentLines.push(
+      `<b>İndirim:</b> −£${off}${discount.type === "percent" ? ` (%${discount.value})` : ""}${discount.reason ? ` — ${discount.reason}` : ""}`
+    );
+  }
   if (visitKey === "visit1") {
     paymentLines.push(paymentLine("İlk visit ödeme", actual, expected));
     if (patient.needs_visit2) {

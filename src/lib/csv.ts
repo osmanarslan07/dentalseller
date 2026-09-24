@@ -1,5 +1,10 @@
 import { Patient } from "@/types";
-import { extrasTotalFor } from "@/lib/commission";
+import { extrasTotalFor, visitDiscount } from "@/lib/commission";
+
+/** The visit's discount in money, or blank when there's none. */
+function discountFor(p: Patient, visitKey: string, expected: number | null): number | null {
+  return visitDiscount(p, visitKey, (expected ?? 0) + extrasTotalFor(p, visitKey)) || null;
+}
 
 const HEADERS = [
   "Name",
@@ -11,11 +16,13 @@ const HEADERS = [
   "Visit 1 Actual",
   "Visit 1 Status",
   "Visit 1 Extras",
+  "Visit 1 Discount",
   "Visit 2 Date",
   "Visit 2 Expected",
   "Visit 2 Actual",
   "Visit 2 Status",
   "Visit 2 Extras",
+  "Visit 2 Discount",
   "Notes",
 ];
 
@@ -37,11 +44,13 @@ export function patientsToCsv(patients: Patient[]): string {
       p.visit1_actual,
       p.visit1_status,
       extrasTotalFor(p, "visit1") || null,
+      discountFor(p, "visit1", p.visit1_expected),
       p.visit2_date,
       p.visit2_expected,
       p.visit2_actual,
       p.visit2_status,
       extrasTotalFor(p, "visit2") || null,
+      discountFor(p, "visit2", p.visit2_expected),
       p.notes,
     ]
       .map(escapeCsv)

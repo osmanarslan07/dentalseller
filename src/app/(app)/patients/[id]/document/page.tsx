@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPatient, getSettings } from "@/lib/data";
 import { extraLabel, extrasFor, visitAmount } from "@/lib/balance";
-import { visitExpectedTotal } from "@/lib/commission";
+import { visitDiscount, visitDiscountSetting, visitExpectedTotal } from "@/lib/commission";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
 import { requirePagePermission } from "@/lib/permissions";
@@ -77,6 +77,11 @@ export default async function PatientDocumentPage({
   const secondVisitPayment = visitAmount(patient, "visit2");
   const visitKey = mode === "extra" ? extraVisit!.id : mode;
   const extras = extrasFor(patient, visitKey);
+  const discount = visitDiscountSetting(patient, visitKey);
+  const discountBase = (() => {
+    const expected = mode === "extra" ? extraVisit!.expected : mode === "visit1" ? patient.visit1_expected : patient.visit2_expected;
+    return (expected ?? 0) + extras.reduce((sum, e) => sum + e.total, 0);
+  })();
   const totalPayment = (firstVisitPayment ?? 0) + (secondVisitPayment ?? 0);
 
   const travel =
@@ -247,6 +252,14 @@ export default async function PatientDocumentPage({
               />
               <Field label="Total payment" value={formatCurrency(totalPayment, settings.currency)} strong />
             </div>
+          )}
+          {discount && (
+            <p className="mt-4 border-t border-teal-100 pt-3 text-sm text-slate-800">
+              <span className="font-semibold">Discount on this visit (taken off above):</span>{" "}
+              {formatCurrency(visitDiscount(patient, visitKey, discountBase), settings.currency)}
+              {discount.type === "percent" && ` (${discount.value}%)`}
+              {discount.reason && ` — ${discount.reason}`}
+            </p>
           )}
           {extras.length > 0 && (
             <div className="mt-4 border-t border-teal-100 pt-3">

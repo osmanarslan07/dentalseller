@@ -1,14 +1,58 @@
-import { Celebration, CommissionSettings, Patient } from "@/types";
+import { Celebration, CommissionSettings, DiscountType, Patient } from "@/types";
 import { formatCurrency } from "@/lib/format";
 
 export function monthKey(dateStr: string): string {
   return dateStr.slice(0, 7); // 'YYYY-MM'
 }
 
+/** Everything the patient is expected to pay across all visits: prices + extras − discounts. */
 export function treatmentTotal(p: Patient): number {
-  const extra = p.extra_visits.reduce((sum, v) => sum + (v.expected ?? 0), 0);
-  const extras = p.extras.reduce((sum, e) => sum + e.total, 0);
-  return (p.visit1_expected ?? 0) + (p.visit2_expected ?? 0) + extra + extras;
+  const keys: [string, number | null][] = [
+    ["visit1", p.visit1_expected],
+    ["visit2", p.visit2_expected],
+    ...p.extra_visits.map((v) => [v.id, v.expected] as [string, number | null]),
+  ];
+  // extras not tied to one of these visits still count, as before
+  const known = new Set(keys.map(([k]) => k));
+  const orphanExtras = p.extras
+    .filter((e) => !known.has(e.extra_visit_id ?? `visit${e.visit_number}`))
+    .reduce((sum, e) => sum + e.total, 0);
+  return keys.reduce((sum, [key, expected]) => sum + (visitExpectedTotal(p, key, expected) ?? 0), 0) + orphanExtras;
+}
+
+export interface VisitDiscountSetting {
+  type: DiscountType;
+  value: number;
+  reason: string | null;
+}
+
+/** The discount stored on a visit ("visit1" | "visit2" | an extra visit's id), or null. */
+export function visitDiscountSetting(p: Patient, visitKey: string): VisitDiscountSetting | null {
+  const [type, value, reason] =
+    visitKey === "visit1"
+      ? [p.visit1_discount_type, p.visit1_discount_value, p.visit1_discount_reason]
+      : visitKey === "visit2"
+      ? [p.visit2_discount_type, p.visit2_discount_value, p.visit2_discount_reason]
+      : (() => {
+          const v = p.extra_visits.find((x) => x.id === visitKey);
+          return [v?.discount_type ?? null, v?.discount_value ?? null, v?.discount_reason ?? null];
+        })();
+  if (!type || value == null || !(Number(value) > 0)) return null;
+  return { type, value: Number(value), reason: reason ?? null };
+}
+
+/** How much comes off a visit whose price + extras is `base`: a % of it or a fixed amount,
+ * never more than the base itself. The one place a discount becomes money — every total
+ * (owed, still due, expected commission, reports, messages) goes through visitExpectedTotal. */
+export function visitDiscount(p: Patient, visitKey: string, base: number): number {
+  return discountAmount(visitDiscountSetting(p, visitKey), base);
+}
+
+/** The rule itself, for a discount setting and a visit's price + extras. */
+export function discountAmount(d: VisitDiscountSetting | null, base: number): number {
+  if (!d || base <= 0) return 0;
+  const off = d.type === "percent" ? (base * Math.min(d.value, 100)) / 100 : d.value;
+  return Math.round(Math.min(off, base) * 100) / 100;
 }
 
 /** Total of the extras sold on one visit ("visit1" | "visit2" | an extra visit's id). */
@@ -40,11 +84,12 @@ function afterCosts(p: Patient, visitKey: string, amount: number | null): number
 }
 
 /** What the patient is expected to pay for a visit: the agreed treatment price plus any
- * extras sold on it. Null only when neither exists. */
+ * extras sold on it, minus its discount. Null only when there's neither price nor extras. */
 export function visitExpectedTotal(p: Patient, visitKey: string, expected: number | null): number | null {
   const extras = extrasTotalFor(p, visitKey);
   if (expected == null && extras === 0) return null;
-  return (expected ?? 0) + extras;
+  const base = (expected ?? 0) + extras;
+  return Math.round((base - visitDiscount(p, visitKey, base)) * 100) / 100;
 }
 
 export function monthLabel(key: string): string {

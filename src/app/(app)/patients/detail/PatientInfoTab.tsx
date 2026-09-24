@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { isDueNow, todayIsoLocal } from "@/lib/balance";
-import { extrasTotalFor } from "@/lib/commission";
+import { visitExpectedTotal } from "@/lib/commission";
 import { Patient, Profile, Seller } from "@/types";
 import { SellerPick, SellerPicker } from "@/components/SellerPicker";
 import { sellerLabel } from "@/lib/sellers";
@@ -508,7 +508,7 @@ function CoordinatorField({ patient, profiles, currentUserId }: { patient: Patie
 function VisitsAtAGlance({ patient, visits, onOpenVisit }: { patient: Patient; visits: VisitView[]; onOpenVisit: (key: string) => void }) {
   const today = todayIsoLocal();
   const rows = visits.map((v) => {
-    const owed = Math.round(((v.expected ?? 0) + extrasTotalFor(patient, v.key)) * 100) / 100;
+    const owed = Math.round((visitExpectedTotal(patient, v.key, v.expected) ?? 0) * 100) / 100;
     const paid = Math.round(forVisit(patient.payments, v.key).reduce((s, p) => s + p.amount, 0) * 100) / 100;
     const due = Math.round((owed - paid) * 100) / 100;
     const now = isDueNow({ key: v.key, label: v.label, date: v.date, status: v.status, owed, paid, due }, today);

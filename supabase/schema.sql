@@ -3374,6 +3374,63 @@ revoke execute on function public.member_modules(uuid) from public, anon;
 grant execute on function public.member_modules(uuid) to authenticated, service_role;
 
 -- =====================================================================
+-- DISCOUNTS (roadmap step E). Idempotent/safe to re-run.
+-- =====================================================================
+-- One optional discount per visit: a fixed amount or a % of the visit's price + extras, with
+-- an optional reason. The app turns it into money in one place (visitDiscount) and takes it
+-- off every expected total; paid commission is unaffected (it's the sum of payments).
+do $$
+declare
+  col text;
+begin
+  foreach col in array array['visit1_discount', 'visit2_discount'] loop
+    execute format('alter table public.patients add column if not exists %I text', col || '_type');
+    execute format('alter table public.patients add column if not exists %I numeric(10,2)', col || '_value');
+    execute format('alter table public.patients add column if not exists %I text', col || '_reason');
+    execute format('alter table public.patients drop constraint if exists %I', 'patients_' || col || '_check');
+    execute format(
+      'alter table public.patients add constraint %I check ((%I is null and %I is null) or (%I in (''amount'', ''percent'') and %I is not null and %I > 0 and (%I = ''amount'' or %I <= 100)))',
+      'patients_' || col || '_check', col || '_type', col || '_value', col || '_type', col || '_value', col || '_value', col || '_type', col || '_value');
+  end loop;
+end $$;
+
+alter table public.patient_visits add column if not exists discount_type text;
+alter table public.patient_visits add column if not exists discount_value numeric(10,2);
+alter table public.patient_visits add column if not exists discount_reason text;
+alter table public.patient_visits drop constraint if exists patient_visits_discount_check;
+alter table public.patient_visits add constraint patient_visits_discount_check
+  check ((discount_type is null and discount_value is null) or (discount_type in ('amount', 'percent') and discount_value is not null and discount_value > 0
+                                   and (discount_type = 'amount' or discount_value <= 100)));
+
+-- Prices and discounts need money.edit (step B's guard, now covering discounts too).
+create or replace function public.guard_patient_money()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  money_cols text[] := case tg_table_name
+    when 'patients' then array['visit1_expected', 'visit2_expected',
+      'visit1_discount_type', 'visit1_discount_value', 'visit1_discount_reason',
+      'visit2_discount_type', 'visit2_discount_value', 'visit2_discount_reason']
+    else array['expected', 'discount_type', 'discount_value', 'discount_reason'] end;
+  col text;
+begin
+  if auth.uid() is null or public.has_permission(auth.uid(), 'money.edit') then
+    return new;
+  end if;
+  foreach col in array money_cols loop
+    if (tg_op = 'INSERT' and to_jsonb(new) ->> col is not null)
+       or (tg_op = 'UPDATE' and to_jsonb(new) -> col is distinct from to_jsonb(old) -> col) then
+      raise exception 'You don''t have permission to change prices or discounts';
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+
+-- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.
 -- Promote exactly one existing account to superadmin (there's no self-serve path to
 -- becoming the first one, same as today's "first admin" reality). Run by hand, once,

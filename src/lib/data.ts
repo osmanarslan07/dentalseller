@@ -56,11 +56,14 @@ function normalizePatient(row: Record<string, unknown>, deductCosts: boolean): P
     visit1_actual: p.visit1_actual != null ? Number(p.visit1_actual) : null,
     visit2_expected: p.visit2_expected != null ? Number(p.visit2_expected) : null,
     visit2_actual: p.visit2_actual != null ? Number(p.visit2_actual) : null,
+    visit1_discount_value: num(p.visit1_discount_value),
+    visit2_discount_value: num(p.visit2_discount_value),
     extra_visits: (p.extra_visits ?? []).map((v) => ({
       ...v,
       expected: v.expected != null ? Number(v.expected) : null,
       actual: v.actual != null ? Number(v.actual) : null,
       hotel_cost: num(v.hotel_cost),
+      discount_value: num(v.discount_value),
     })),
   };
   if (deductCosts) {

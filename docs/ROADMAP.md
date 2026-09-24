@@ -127,7 +127,11 @@ Added: the first-sign-in name, Telegram link completed (webhook), role changes. 
 - Close every gap listed in `TODO.md` (quote lifecycle, commission/branding/system/dashboard
   settings, tasks, profile name/password, Telegram send + link code), then trim TODO.md.
 
-### Step E — Discounts ☐
+### Step E — Discounts ◐ (built 2026-09-24, SQL not applied yet — waiting for your test)
+Built as designed below: `visitDiscount()` / `visitExpectedTotal()` in `src/lib/commission.ts`
+are the one place a discount becomes money. Money card: Price → Extras → Discount → Owed.
+Also on the operations sheet, the Telegram visit message ("İndirim") and the CSV export.
+Changing a discount needs `money.edit` (DB trigger); set/remove is logged.
 - Columns: `visit1_/visit2_discount_type` ('amount' | 'percent'), `_discount_value`,
   `_discount_reason` on patients; `discount_type/value/reason` on patient_visits.
   Discount = % of (price + extras) or the amount, never more than the total.

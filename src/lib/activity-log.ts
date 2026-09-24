@@ -127,6 +127,14 @@ export function describeActivity(
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       return `${actor} deleted a payment for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
     }
+    case "discount_set": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} gave ${patientName} a discount${entry.detail ? ` — ${entry.detail}` : ""}`;
+    }
+    case "discount_removed": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} removed a discount for ${patientName}${entry.detail ? ` — ${entry.detail}` : ""}`;
+    }
     case "extra_added": {
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       return `${actor} added an extra for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;

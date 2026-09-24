@@ -1,7 +1,7 @@
 import { Patient, PatientExtra, PatientExtraKind } from "@/types";
-import { extrasTotalFor, visitExpectedTotal } from "@/lib/commission";
+import { visitExpectedTotal } from "@/lib/commission";
 
-/** Owed vs paid for one visit. Owed = the agreed treatment price + extras sold on the visit;
+/** Owed vs paid for one visit. Owed = the agreed treatment price + extras sold on the visit − its discount;
  * paid = its payments (card surcharges excluded — they're on top, not toward the bill). */
 export interface VisitBalance {
   key: string;
@@ -26,7 +26,8 @@ export function visitBalances(p: Patient): VisitBalance[] {
     status: "upcoming" | "completed",
     expected: number | null
   ): VisitBalance => {
-    const owed = round((expected ?? 0) + extrasTotalFor(p, key));
+    // price + extras − discount
+    const owed = round(visitExpectedTotal(p, key, expected) ?? 0);
     const paid = round(paidFor(key));
     return { key, label, date, status, owed, paid, due: round(owed - paid) };
   };

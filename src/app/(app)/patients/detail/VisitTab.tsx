@@ -16,6 +16,7 @@ import { TransfersCard } from "./TransfersCard";
 import { forVisit, nightsBetween, shortDate, travelOf, VisitView } from "./visits";
 import { sellerLabel } from "@/lib/sellers";
 import { useCan, useModule } from "@/components/permissions";
+import { visitDiscountSetting, visitExpectedTotal } from "@/lib/commission";
 
 export interface VisitTabProps {
   patient: Patient;
@@ -53,8 +54,8 @@ export function VisitTab(props: VisitTabProps) {
   const payments = forVisit(patient.payments, visit.key);
   const extras = forVisit(patient.extras, visit.key);
   const visitTransfers = forVisit(transfers, visit.key);
-  const extrasTotal = extras.reduce((s, e) => s + e.total, 0);
-  const owed = Math.round(((visit.expected ?? 0) + extrasTotal) * 100) / 100;
+  // price + extras − discount
+  const owed = Math.round((visitExpectedTotal(patient, visit.key, visit.expected) ?? 0) * 100) / 100;
   const paid = Math.round(payments.reduce((s, p) => s + p.amount, 0) * 100) / 100;
   const dueNow = isDueNow({ key: visit.key, label: visit.label, date: visit.date, status: visit.status, owed, paid, due: owed - paid }, today);
   const seller = sellers.find((s) => s.id === patient.responsible_seller_id);
@@ -77,6 +78,7 @@ export function VisitTab(props: VisitTabProps) {
           costs={deductCosts ? visitCosts(patient, visit.key) : null}
           dueNow={dueNow}
           sellerName={sellerName}
+          discount={visitDiscountSetting(patient, visit.key)}
         />
       </div>
 

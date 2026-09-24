@@ -26,6 +26,8 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "payment_added",
     "payment_updated",
     "payment_deleted",
+    "discount_set",
+    "discount_removed",
     "extra_added",
     "extra_updated",
     "extra_deleted",

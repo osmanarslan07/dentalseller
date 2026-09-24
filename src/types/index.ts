@@ -92,6 +92,9 @@ export interface Seller {
 
 export type VisitStatus = "upcoming" | "completed";
 
+/** A visit's discount: a fixed £ amount or a % of the visit's price + extras. */
+export type DiscountType = "amount" | "percent";
+
 export interface PatientExtraVisit {
   id: string;
   patient_id: string;
@@ -123,6 +126,11 @@ export interface PatientExtraVisit {
   departure_transfer_arranged: boolean;
   hotel_arranged: boolean;
 
+  /** Discount off this visit's price + extras (see visitDiscount); null type = none. */
+  discount_type: DiscountType | null;
+  discount_value: number | null;
+  discount_reason: string | null;
+
   created_at: string;
   updated_at: string;
 }
@@ -137,6 +145,10 @@ export type PatientExtraVisitInput = Omit<
   | "actual"
   | "arrival_transfer_arranged"
   | "departure_transfer_arranged"
+  // set on their own from the Money card (money.edit)
+  | "discount_type"
+  | "discount_value"
+  | "discount_reason"
 >;
 
 export interface Patient {
@@ -191,6 +203,10 @@ export interface Patient {
   visit1_arrival_transfer_arranged: boolean;
   visit1_departure_transfer_arranged: boolean;
   visit1_hotel_arranged: boolean;
+  /** Discount off visit 1's price + extras (see visitDiscount); null type = none. */
+  visit1_discount_type: DiscountType | null;
+  visit1_discount_value: number | null;
+  visit1_discount_reason: string | null;
 
   visit2_arrival_date: string | null;
   visit2_arrival_time: string | null;
@@ -204,6 +220,9 @@ export interface Patient {
   visit2_arrival_transfer_arranged: boolean;
   visit2_departure_transfer_arranged: boolean;
   visit2_hotel_arranged: boolean;
+  visit2_discount_type: DiscountType | null;
+  visit2_discount_value: number | null;
+  visit2_discount_reason: string | null;
 
   extra_visits: PatientExtraVisit[];
   /** Extras sold on any of this patient's visits — see PatientExtra. */
@@ -243,6 +262,13 @@ export type PatientInput = Omit<
   | "visit1_departure_transfer_arranged"
   | "visit2_arrival_transfer_arranged"
   | "visit2_departure_transfer_arranged"
+  // set on their own from the Money card (money.edit)
+  | "visit1_discount_type"
+  | "visit1_discount_value"
+  | "visit1_discount_reason"
+  | "visit2_discount_type"
+  | "visit2_discount_value"
+  | "visit2_discount_reason"
 >;
 
 /** A transfer provider. Exactly one per clinic is internal — the clinic itself, with its own

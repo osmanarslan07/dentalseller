@@ -11,6 +11,8 @@ import { PatientExtra, PatientExtraKind, PatientPayment, PaymentMethod, Profile 
 import { addPayment, deletePayment, updatePayment } from "../payment-actions";
 import { addPatientExtra, deletePatientExtra, updatePatientExtra } from "../extra-actions";
 import { updateVisitFields } from "../actions";
+import { setVisitDiscount } from "../discount-actions";
+import { discountAmount, type VisitDiscountSetting } from "@/lib/commission";
 import { RowMenu } from "./Menu";
 import { CheckIcon, gbp, LABEL_CAPS, PencilIcon, Pill, PillTone, Section, Segmented, Toggle } from "./bits";
 import { shortDate, VisitView } from "./visits";
@@ -28,9 +30,14 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-type Editing = { type: "price" } | { type: "extra"; id: string | null } | { type: "payment"; id: string | null } | null;
+type Editing =
+  | { type: "price" }
+  | { type: "discount" }
+  | { type: "extra"; id: string | null }
+  | { type: "payment"; id: string | null }
+  | null;
 
-/** One visit's money, top to bottom: the agreed price, extras on top, what that makes owed,
+/** One visit's money, top to bottom: the agreed price, extras on top, any discount, what that makes owed,
  * the payments against it, and what's still due. Every row edits in place; delete sits in
  * the row's ⋯ menu. */
 export function MoneyCard({
@@ -44,7 +51,10 @@ export function MoneyCard({
   costs,
   dueNow,
   sellerName,
+  discount,
 }: {
+  /** The visit's discount as set (£ or %), or null. */
+  discount: VisitDiscountSetting | null;
   patientId: string;
   visit: VisitView;
   extras: PatientExtra[];
@@ -71,7 +81,9 @@ export function MoneyCard({
   const [pending, startTransition] = useTransition();
 
   const extrasTotal = round(extras.reduce((s, e) => s + e.total, 0));
-  const owed = round((visit.expected ?? 0) + extrasTotal);
+  const base = round((visit.expected ?? 0) + extrasTotal);
+  const discountOff = discountAmount(discount, base);
+  const owed = round(base - discountOff);
   const paid = round(payments.reduce((s, p) => s + p.amount, 0));
   const due = round(owed - paid);
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name || "—";
@@ -203,6 +215,63 @@ export function MoneyCard({
               }}
             />
           </FormBox>
+        )}
+
+        {/* Discount */}
+        {editing?.type === "discount" ? (
+          <FormBox>
+            <DiscountForm
+              discount={discount}
+              onCancel={() => setEditing(null)}
+              onSave={async (fd) => {
+                await setVisitDiscount(patientId, visit.key, fd);
+                showToast(String(fd.get("discount_value") ?? "").trim() ? "Discount saved ✓" : "Discount removed");
+                setEditing(null);
+                router.refresh();
+              }}
+            />
+          </FormBox>
+        ) : discount ? (
+          <div className="flex items-center gap-2.5 border-b border-dashed border-slate-100 py-2">
+            <span className="grow">
+              <span className="font-semibold">Discount</span>
+              {discount.type === "percent" && <span className="ml-1.5 text-xs text-slate-500">{discount.value}%</span>}
+              {discount.reason && <span className="block truncate text-xs text-slate-500">{discount.reason}</span>}
+            </span>
+            <Amount>− {gbp(discountOff)}</Amount>
+            {canPrice ? (
+              <RowMenu
+                label="Discount actions"
+                items={[
+                  { label: "Edit", onSelect: () => setEditing({ type: "discount" }) },
+                  {
+                    label: "Remove discount…",
+                    danger: true,
+                    divider: true,
+                    disabled: pending,
+                    onSelect: () => {
+                      if (!confirm("Remove the discount on this visit?")) return;
+                      const fd = new FormData();
+                      run(() => setVisitDiscount(patientId, visit.key, fd), "Discount removed");
+                    },
+                  },
+                ]}
+              />
+            ) : (
+              <span className="w-7" />
+            )}
+          </div>
+        ) : (
+          canPrice &&
+          base > 0 && (
+            <button
+              type="button"
+              onClick={() => setEditing({ type: "discount" })}
+              className="self-start py-1.5 text-[13px] font-semibold text-teal-700 hover:text-teal-800"
+            >
+              + Discount
+            </button>
+          )
         )}
 
         {/* Owed */}
@@ -624,6 +693,77 @@ function ExtraForm({
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
           {pending ? "Saving…" : extra ? "Save extra" : "Add extra"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function DiscountForm({
+  discount,
+  onCancel,
+  onSave,
+}: {
+  discount: VisitDiscountSetting | null;
+  onCancel: () => void;
+  onSave: (fd: FormData) => Promise<void>;
+}) {
+  const [type, setType] = useState<"amount" | "percent">(discount?.type ?? "amount");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      try {
+        await onSave(fd);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      }
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <Segmented
+          name="discount_type"
+          value={type}
+          onChange={setType}
+          size="sm"
+          options={[
+            { value: "amount", label: "£ amount" },
+            { value: "percent", label: "% of total" },
+          ]}
+        />
+        <div className="w-32">
+          <Label>{type === "percent" ? "Percent" : "Amount (£)"}</Label>
+          <Input
+            type="number"
+            name="discount_value"
+            min="0"
+            max={type === "percent" ? 100 : undefined}
+            step="0.01"
+            defaultValue={discount?.value ?? ""}
+            required
+            autoFocus
+          />
+        </div>
+      </div>
+      <div>
+        <Label>Reason (optional)</Label>
+        <Input name="discount_reason" maxLength={200} defaultValue={discount?.reason ?? ""} placeholder="e.g. returning patient" />
+      </div>
+      <p className="text-xs text-slate-500">Comes off this visit&apos;s price + extras. Recorded in the patient&apos;s history.</p>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" disabled={pending}>
+          {pending ? "Saving…" : "Save discount"}
         </Button>
       </div>
     </form>

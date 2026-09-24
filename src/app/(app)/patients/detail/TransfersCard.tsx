@@ -4,9 +4,10 @@ import { FormEvent, ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, Label, Select } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { Transfer, TransferCompany, TransferDefaults, TransferKind, TransferStatus } from "@/types";
+import { DriverMessagesMode, Transfer, TransferCompany, TransferDefaults, TransferKind, TransferStatus } from "@/types";
 import { departurePickup, LOCAL_PICKUP_TIME } from "@/lib/transfer-times";
-import { driverMessage, isWhatsAppable, waLink } from "@/lib/transfer-message";
+import { driverMessage, isWhatsAppable } from "@/lib/transfer-message";
+import { DriverMessagesOffHint, FallbackLink, sendLabel, useDriverMessages, WhatsAppDelivery } from "@/components/driver-messages";
 import { addTransfer, deleteTransfer, markTransferSent, setTransferStatus, suggestTransfers, updateTransfer } from "../transfer-actions";
 import { RowMenu } from "./Menu";
 import { gbp, Pill, PillTone, Section, Segmented } from "./bits";
@@ -46,6 +47,8 @@ export function TransfersCard({
   companies,
   defaults,
   deductCosts,
+  driverMessages,
+  isAdmin,
 }: {
   patientId: string;
   patientName: string;
@@ -59,11 +62,15 @@ export function TransfersCard({
   defaults: TransferDefaults;
   /** Settings → System: external transfer costs come off before commission. */
   deductCosts: boolean;
+  /** Settings → Transfers → Driver messages. */
+  driverMessages: DriverMessagesMode;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [pending, startTransition] = useTransition();
+  const messages = useDriverMessages(driverMessages);
 
   const canSuggest = !!(travel.arrivalDate || travel.departureDate || travel.date);
   const noDriver = transfersWithoutDriver(transfers).length;
@@ -99,11 +106,17 @@ export function TransfersCard({
     });
   }
 
-  /** Opens WhatsApp straight from the click (anything async first and browsers block the
-   * new tab), then records the send in the background. */
-  function sendWhatsApp(t: Transfer, driverPhone: string) {
-    window.open(waLink(driverPhone, driverMessage(t, patientName, patientPhone)), "_blank", "noopener,noreferrer");
-    run(() => markTransferSent(t.id));
+  function driverSend(t: Transfer) {
+    const driver = companies.find((c) => c.id === t.company_id)?.drivers.find((d) => d.id === t.driver_id);
+    if (!driver?.phone) return null;
+    return {
+      key: t.id,
+      transferIds: [t.id],
+      driverName: driver.name,
+      driverPhone: driver.phone,
+      text: driverMessage(t, patientName, patientPhone),
+      markSent: () => markTransferSent(t.id),
+    };
   }
 
   function handleDelete(t: Transfer) {
@@ -193,7 +206,16 @@ export function TransfersCard({
                   transfer={t}
                   companies={companies}
                   busy={pending}
-                  onSend={(phone) => sendWhatsApp(t, phone)}
+                  messages={messages}
+                  onSend={() => {
+                    const s = driverSend(t);
+                    if (s) messages.send(s);
+                  }}
+                  onFallbackUsed={() => {
+                    const s = driverSend(t);
+                    if (s) messages.sentViaFallback(s);
+                  }}
+                  onCopy={() => messages.copy(driverMessage(t, patientName, patientPhone))}
                   onEdit={() => setEditing(t.id)}
                   onStatus={(s) => run(() => setTransferStatus(t.id, s), s === "done" ? "Marked as done ✓" : "Marked as not sent")}
                   onDelete={() => handleDelete(t)}
@@ -203,9 +225,16 @@ export function TransfersCard({
           </div>
         )
       )}
-      <p className="text-xs text-slate-500">
-        Arrival and departure count as arranged once a driver is picked. Driver messages go out in Turkish on WhatsApp.
-      </p>
+      {driverMessages === "off" ? (
+        isAdmin && <DriverMessagesOffHint />
+      ) : (
+        <p className="text-xs text-slate-500">
+          Arrival and departure count as arranged once a driver is picked.{" "}
+          {driverMessages === "api"
+            ? "Driver messages are sent in Turkish from the clinic’s WhatsApp Business number."
+            : "Driver messages open in WhatsApp in Turkish, ready to send."}
+        </p>
+      )}
     </Section>
   );
 }
@@ -214,7 +243,10 @@ function TransferRow({
   transfer: t,
   companies,
   busy,
+  messages,
   onSend,
+  onFallbackUsed,
+  onCopy,
   onEdit,
   onStatus,
   onDelete,
@@ -222,7 +254,10 @@ function TransferRow({
   transfer: Transfer;
   companies: TransferCompany[];
   busy: boolean;
-  onSend: (driverPhone: string) => void;
+  messages: ReturnType<typeof useDriverMessages>;
+  onSend: () => void;
+  onFallbackUsed: () => void;
+  onCopy: () => void;
   onEdit: () => void;
   onStatus: (s: TransferStatus) => void;
   onDelete: () => void;
@@ -242,16 +277,25 @@ function TransferRow({
         Assign driver
       </button>
     );
-  } else if (driver && t.status !== "done") {
-    action = (
+  } else if (driver && t.status !== "done" && messages.mode !== "off") {
+    const fallbackUrl = messages.fallbackUrl(t.id);
+    action = fallbackUrl ? (
+      <FallbackLink url={fallbackUrl} onUse={onFallbackUsed} />
+    ) : (
       <button
         type="button"
-        onClick={() => driver.phone && onSend(driver.phone)}
-        disabled={!isWhatsAppable(driver.phone)}
-        title={driver.phone ? `Open WhatsApp with the transfer details for ${driver.name}` : `${driver.name} has no phone number — add it in Settings → Transfers`}
+        onClick={onSend}
+        disabled={!isWhatsAppable(driver.phone) || messages.busyKey === t.id}
+        title={
+          !driver.phone
+            ? `${driver.name} has no phone number — add it in Settings → Transfers`
+            : messages.mode === "api"
+            ? `Send the transfer details to ${driver.name} from the clinic's WhatsApp number`
+            : `Open WhatsApp with the transfer details for ${driver.name}`
+        }
         className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[13px] font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {t.status === "planned" ? "WhatsApp" : "Resend"}
+        {messages.busyKey === t.id ? "Sending…" : sendLabel(messages.mode, t.status !== "planned")}
       </button>
     );
   }
@@ -298,6 +342,7 @@ function TransferRow({
       <div className="flex items-center gap-2 lg:flex-col lg:items-start lg:gap-0.5">
         <Pill tone={STATUS_TONES[t.status]}>{STATUS_LABELS[t.status]}</Pill>
         {t.status === "sent" && t.sent_at && <span className="text-xs text-slate-500">{sentAt(t.sent_at)}</span>}
+        <WhatsAppDelivery transfer={t} />
       </div>
       <div className="flex items-center justify-end gap-2">
         {action}
@@ -305,6 +350,7 @@ function TransferRow({
           label="Transfer actions"
           items={[
             { label: "Edit", onSelect: onEdit },
+            { label: "Copy driver message", hint: "to paste anywhere", onSelect: onCopy },
             t.status === "done"
               ? { label: "Mark as not done", onSelect: () => onStatus(driver && t.sent_at ? "sent" : "planned"), disabled: busy }
               : { label: "Mark as done", hint: "the journey has happened", onSelect: () => onStatus("done"), disabled: busy },

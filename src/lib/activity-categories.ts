@@ -39,6 +39,7 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "transfer_company_updated",
     "transfer_company_deleted",
     "transfer_defaults_updated",
+    "driver_messages_updated",
     "driver_added",
     "driver_updated",
     "driver_deleted",

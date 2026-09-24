@@ -37,6 +37,7 @@ export default async function PatientPage({
       surchargeRate={clinicConfig.cardSurchargeRate}
       deductCosts={clinicConfig.deductCostsFromCommission}
       transferDefaults={clinicConfig.transferDefaults}
+      driverMessages={clinicConfig.driverMessages.mode}
     />
   );
 }

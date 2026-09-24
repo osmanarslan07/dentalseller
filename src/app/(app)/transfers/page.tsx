@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { getTransferCompanies, getTransfersInRange } from "@/lib/data";
+import { getClinicConfig, getTransferCompanies, getTransfersInRange } from "@/lib/data";
+import { getViewer } from "@/lib/viewer";
 import { TransfersClient } from "./TransfersClient";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -28,12 +29,19 @@ export default async function TransfersPage({
   const to = addDays(from, days - 1);
 
   const supabase = await createClient();
-  const [transfers, companies] = await Promise.all([getTransfersInRange(supabase, from, to), getTransferCompanies(supabase)]);
+  const [transfers, companies, clinicConfig, viewer] = await Promise.all([
+    getTransfersInRange(supabase, from, to),
+    getTransferCompanies(supabase),
+    getClinicConfig(supabase),
+    getViewer(),
+  ]);
 
   return (
     <TransfersClient
       transfers={transfers}
       companies={companies}
+      driverMessages={clinicConfig.driverMessages.mode}
+      isAdmin={viewer?.role === "admin"}
       from={from}
       days={days}
       today={today}

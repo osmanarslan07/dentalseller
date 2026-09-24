@@ -171,6 +171,17 @@ export async function getClinicConfig(supabase: SupabaseClient): Promise<ClinicC
       localCompanyId: data.default_local_company_id ?? null,
       localDriverId: data.default_local_driver_id ?? null,
     },
+    driverMessages: {
+      mode: data.driver_messages_mode ?? "app",
+      phoneNumberId: data.whatsapp_phone_number_id ?? null,
+      businessAccountId: data.whatsapp_business_account_id ?? null,
+      templateSingle: data.whatsapp_template_single ?? DEFAULT_CLINIC_CONFIG.driverMessages.templateSingle,
+      templateDay: data.whatsapp_template_day ?? DEFAULT_CLINIC_CONFIG.driverMessages.templateDay,
+      templateLang: data.whatsapp_template_lang ?? DEFAULT_CLINIC_CONFIG.driverMessages.templateLang,
+      verifiedAt: data.whatsapp_verified_at ?? null,
+      lastError: data.whatsapp_last_error ?? null,
+      lastErrorAt: data.whatsapp_last_error_at ?? null,
+    },
   };
 }
 

@@ -268,6 +268,11 @@ export interface Transfer {
   cost: number | null;
   status: TransferStatus;
   sent_at: string | null;
+  /** WhatsApp Business API only: the last message about this transfer and how far it got. */
+  wa_message_id: string | null;
+  wa_status: WhatsAppStatus | null;
+  wa_status_at: string | null;
+  wa_error: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -377,6 +382,27 @@ export interface ClinicConfig {
   cardSurchargeRate: number;
   /** Settings → Transfers: who new airport (arrival/departure) and local transfers start with. */
   transferDefaults: TransferDefaults;
+  driverMessages: DriverMessagesConfig;
+}
+
+/** How transfer details reach drivers: WhatsApp opened on the user's device, sent by the
+ * clinic's WhatsApp Business API number, or not at all (copy the text by hand). */
+export type DriverMessagesMode = "app" | "api" | "off";
+export type WhatsAppStatus = "accepted" | "sent" | "delivered" | "read" | "failed";
+
+/** Settings → Transfers → Driver messages. Nothing secret here — the access token and app
+ * secret are only ever read on the server. */
+export interface DriverMessagesConfig {
+  mode: DriverMessagesMode;
+  phoneNumberId: string | null;
+  businessAccountId: string | null;
+  templateSingle: string;
+  templateDay: string;
+  templateLang: string;
+  /** Set when a test message went through — API mode can't be switched on before that. */
+  verifiedAt: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
 }
 
 export interface TransferDefaults {
@@ -400,4 +426,15 @@ export const DEFAULT_CLINIC_CONFIG: ClinicConfig = {
   deductCostsFromCommission: false,
   cardSurchargeRate: 0.03,
   transferDefaults: { airportCompanyId: null, airportDriverId: null, localCompanyId: null, localDriverId: null },
+  driverMessages: {
+    mode: "app",
+    phoneNumberId: null,
+    businessAccountId: null,
+    templateSingle: "transfer_bildirimi",
+    templateDay: "gunluk_transfer_listesi",
+    templateLang: "tr",
+    verifiedAt: null,
+    lastError: null,
+    lastErrorAt: null,
+  },
 };

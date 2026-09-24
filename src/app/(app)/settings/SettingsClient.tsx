@@ -16,6 +16,7 @@ import { TelegramCard } from "./TelegramCard";
 import { TelegramGroupCard } from "./TelegramGroupCard";
 import { SystemSettingsCard } from "./SystemSettingsCard";
 import { TransfersCard } from "./TransfersCard";
+import { DriverMessagesCard, WhatsAppSecretsStatus } from "./DriverMessagesCard";
 import { saveClinicBranding, saveDashboardCards, saveSettings } from "./actions";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
@@ -50,6 +51,9 @@ export function SettingsClient({
   clinicConfig,
   transferCompanies,
   isAdmin,
+  initialTab,
+  whatsappSecrets,
+  webhookUrl,
 }: {
   settings: CommissionSettings;
   patients: Patient[];
@@ -62,6 +66,11 @@ export function SettingsClient({
   clinicConfig: ClinicConfig;
   transferCompanies: TransferCompany[];
   isAdmin: boolean;
+  /** From ?tab= — e.g. the "Turn on in Settings" link opens Transfers. */
+  initialTab?: string;
+  /** Admins only: which WhatsApp secrets are saved (never the secrets). */
+  whatsappSecrets: WhatsAppSecretsStatus | null;
+  webhookUrl: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +87,9 @@ export function SettingsClient({
   const [logoPreview, setLogoPreview] = useState<string | null>(clinicConfig.clinicLogoUrl);
   const { hidden, tryRate } = usePrivacy();
   const tabs = tabsFor(isAdmin);
-  const [activeTab, setActiveTab] = useState<TabId>("account");
+  const [activeTab, setActiveTab] = useState<TabId>(() =>
+    tabs.some((t) => t.id === initialTab) ? (initialTab as TabId) : "account"
+  );
 
   function cardsForCategory(categoryIds: DashboardCardId[]) {
     const eligible = new Set<DashboardCardId>(categoryIds);
@@ -479,6 +490,7 @@ export function SettingsClient({
 
       {activeTab === "transfers" && (
         <div className="space-y-6">
+          <DriverMessagesCard config={clinicConfig.driverMessages} isAdmin={isAdmin} secrets={whatsappSecrets} webhookUrl={webhookUrl} />
           <TransfersCard companies={transferCompanies} defaults={clinicConfig.transferDefaults} isAdmin={isAdmin} />
         </div>
       )}

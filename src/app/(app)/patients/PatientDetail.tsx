@@ -9,7 +9,7 @@ import { useToast } from "@/components/Toast";
 import { ActivityLogRow } from "@/lib/activity-log";
 import { isMismatch, patientDueNow, todayIsoLocal, visitBalances } from "@/lib/balance";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
-import { DEFAULT_CLINIC_CONFIG, Patient, Profile, Transfer, TransferCompany, TransferDefaults } from "@/types";
+import { DEFAULT_CLINIC_CONFIG, DriverMessagesMode, Patient, Profile, Transfer, TransferCompany, TransferDefaults } from "@/types";
 import { addExtraVisit, deletePatient, getPatientActivity, sendPatientTelegramMessage, updatePatientFields } from "./actions";
 import { ChevronIcon, KebabIcon, Menu } from "./detail/Menu";
 import { gbp, Pill } from "./detail/bits";
@@ -36,6 +36,7 @@ export function PatientDetail({
   surchargeRate = 0.03,
   deductCosts = false,
   transferDefaults = DEFAULT_CLINIC_CONFIG.transferDefaults,
+  driverMessages = "app",
 }: {
   patient: Patient;
   /** From ?tab= — a visit key, "info" or "history". */
@@ -55,6 +56,8 @@ export function PatientDetail({
   deductCosts?: boolean;
   /** Settings → Transfers: default company/driver for new transfers. */
   transferDefaults?: TransferDefaults;
+  /** Settings → Transfers: how drivers get their messages. */
+  driverMessages?: DriverMessagesMode;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -330,6 +333,8 @@ export function PatientDetail({
           surchargeRate={surchargeRate}
           deductCosts={deductCosts}
           transferDefaults={transferDefaults}
+          driverMessages={driverMessages}
+          isAdmin={isAdmin}
           hotelOptions={hotelOptions}
           roomTypeOptions={roomTypeOptions}
           onRemoved={() => setTab(visits[0].key)}

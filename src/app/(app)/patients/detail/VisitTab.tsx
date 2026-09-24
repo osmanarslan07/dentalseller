@@ -7,7 +7,7 @@ import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { isDueNow, todayIsoLocal } from "@/lib/balance";
 import { visitCosts } from "@/lib/commission";
-import { Patient, Profile, Transfer, TransferCompany, TransferDefaults } from "@/types";
+import { DriverMessagesMode, Patient, Profile, Transfer, TransferCompany, TransferDefaults } from "@/types";
 import { deleteExtraVisit, sendPatientTelegramMessage, updatePatientFields, updateVisitFields } from "../actions";
 import { KebabIcon, Menu, MenuItem } from "./Menu";
 import { CheckIcon, EditButton, EditingChip, gbp, LABEL_CAPS, Pill, Section, Stepper, Toggle } from "./bits";
@@ -27,6 +27,8 @@ export interface VisitTabProps {
   surchargeRate: number;
   deductCosts: boolean;
   transferDefaults: TransferDefaults;
+  driverMessages: DriverMessagesMode;
+  isAdmin: boolean;
   hotelOptions: string[];
   roomTypeOptions: string[];
   /** Called after this visit is removed, so the page can move to another tab. */
@@ -42,7 +44,7 @@ export function visitStage(v: VisitView, today: string): { label: string; tone: 
 
 /** Everything about one visit: a summary strip, travel & hotel, money and transfers. */
 export function VisitTab(props: VisitTabProps) {
-  const { patient, visit, transfers, profiles, currentUserId, surchargeRate, deductCosts, companies, transferDefaults } = props;
+  const { patient, visit, transfers, profiles, currentUserId, surchargeRate, deductCosts, companies, transferDefaults, driverMessages, isAdmin } = props;
   const today = todayIsoLocal();
   const payments = forVisit(patient.payments, visit.key);
   const extras = forVisit(patient.extras, visit.key);
@@ -84,6 +86,8 @@ export function VisitTab(props: VisitTabProps) {
         companies={companies}
         defaults={transferDefaults}
         deductCosts={deductCosts}
+        driverMessages={driverMessages}
+        isAdmin={isAdmin}
       />
     </div>
   );

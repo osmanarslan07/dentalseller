@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { Badge, Card } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import type { TransferWithPatient } from "@/lib/data";
-import { driverDayMessage, driverMessage, isWhatsAppable, waDigits, waLink } from "@/lib/transfer-message";
-import { Driver, TransferCompany, TransferKind, TransferStatus } from "@/types";
+import { driverDayMessage, driverMessage, isWhatsAppable, waDigits } from "@/lib/transfer-message";
+import { DriverSend, DriverMessagesOffHint, FallbackLink, sendLabel, useDriverMessages, WhatsAppDelivery } from "@/components/driver-messages";
+import { Driver, DriverMessagesMode, TransferCompany, TransferKind, TransferStatus } from "@/types";
 import { markTransferSent, markTransfersSent, setTransferStatus } from "../patients/transfer-actions";
 
 const KIND: Record<TransferKind, { label: string; tone: "green" | "amber" | "slate" }> = {
@@ -54,6 +55,8 @@ function groupByDriver(items: TransferWithPatient[], companies: TransferCompany[
 export function TransfersClient({
   transfers,
   companies,
+  driverMessages,
+  isAdmin,
   from,
   days,
   today,
@@ -63,6 +66,8 @@ export function TransfersClient({
 }: {
   transfers: TransferWithPatient[];
   companies: TransferCompany[];
+  driverMessages: DriverMessagesMode;
+  isAdmin: boolean;
   from: string;
   days: number;
   today: string;
@@ -74,6 +79,7 @@ export function TransfersClient({
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const messages = useDriverMessages(driverMessages);
 
   const href = (date: string, d = days) => `/transfers?date=${date}&days=${d}`;
   const noDriver = transfers.filter((t) => !t.driver_id).length;
@@ -94,20 +100,31 @@ export function TransfersClient({
     });
   }
 
-  function sendOne(t: TransferWithPatient, phone: string) {
-    // open first, straight from the click — browsers block a new tab opened after an await
-    window.open(waLink(phone, driverMessage(t, t.patient.name, t.patient.phone)), "_blank", "noopener,noreferrer");
-    run(t.id, () => markTransferSent(t.id));
+  function oneSend(t: TransferWithPatient, driver: Driver): DriverSend {
+    return {
+      key: t.id,
+      transferIds: [t.id],
+      driverName: driver.name,
+      driverPhone: driver.phone ?? "",
+      text: driverMessage(t, t.patient.name, t.patient.phone),
+      markSent: () => markTransferSent(t.id),
+    };
   }
 
-  function sendDay(group: DriverGroup, date: string) {
-    if (!group.driver?.phone) return;
-    const text = driverDayMessage(
-      date,
-      group.items.map((t) => ({ transfer: t, patientName: t.patient.name, patientPhone: t.patient.phone }))
-    );
-    window.open(waLink(group.driver.phone, text), "_blank", "noopener,noreferrer");
-    run(`${group.key}-${date}`, () => markTransfersSent(group.items.filter((t) => t.status !== "done").map((t) => t.id)));
+  /** The driver's whole day in one message — the transfers still to do. */
+  function daySend(group: DriverGroup, date: string): DriverSend {
+    const open = group.items.filter((t) => t.status !== "done");
+    return {
+      key: `${group.key}-${date}`,
+      transferIds: open.map((t) => t.id),
+      driverName: group.driver?.name ?? "",
+      driverPhone: group.driver?.phone ?? "",
+      text: driverDayMessage(
+        date,
+        open.map((t) => ({ transfer: t, patientName: t.patient.name, patientPhone: t.patient.phone }))
+      ),
+      markSent: () => markTransfersSent(open.map((t) => t.id)),
+    };
   }
 
   const rangeButton = (d: number, label: string) => (
@@ -130,6 +147,11 @@ export function TransfersClient({
             {noDriver > 0 && <span className="font-medium text-amber-700">{noDriver} without a driver. </span>}
             {notSent > 0 && <span className="font-medium text-slate-700">{notSent} not sent to the driver yet.</span>}
           </p>
+          {driverMessages === "off" && isAdmin && (
+            <div className="mt-1">
+              <DriverMessagesOffHint />
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1">
@@ -188,17 +210,44 @@ export function TransfersClient({
                     ) : (
                       <p className="font-semibold text-amber-800">⚠ No driver yet — open the patient to assign one</p>
                     )}
-                    {g.driver && (
-                      <button
-                        type="button"
-                        onClick={() => sendDay(g, date)}
-                        disabled={!isWhatsAppable(g.driver.phone) || pending}
-                        title={isWhatsAppable(g.driver.phone) ? "One WhatsApp message with all of this driver's transfers for the day" : "This driver has no phone number"}
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {busyId === `${g.key}-${date}` ? "Sending…" : `WhatsApp day list (${g.items.length})`}
-                      </button>
-                    )}
+                    {g.driver && (() => {
+                      const day = daySend(g, date);
+                      const fallbackUrl = messages.fallbackUrl(day.key);
+                      return (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => messages.copy(day.text)}
+                            disabled={day.transferIds.length === 0}
+                            className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-40"
+                          >
+                            Copy day list
+                          </button>
+                          {driverMessages !== "off" &&
+                            (fallbackUrl ? (
+                              <FallbackLink url={fallbackUrl} onUse={() => messages.sentViaFallback(day)} />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => messages.send(day)}
+                                disabled={!isWhatsAppable(g.driver.phone) || pending || day.transferIds.length === 0 || messages.busyKey === day.key}
+                                title={
+                                  !isWhatsAppable(g.driver.phone)
+                                    ? "This driver has no phone number"
+                                    : driverMessages === "api"
+                                    ? "Sends all of this driver's open transfers for the day from the clinic's WhatsApp number"
+                                    : "One WhatsApp message with all of this driver's open transfers for the day"
+                                }
+                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {messages.busyKey === day.key
+                                  ? "Sending…"
+                                  : `${driverMessages === "api" ? "Send" : "WhatsApp"} day list (${day.transferIds.length})`}
+                              </button>
+                            ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <ul className="divide-y divide-slate-100">
                     {g.items.map((t) => (
@@ -211,6 +260,7 @@ export function TransfersClient({
                               {t.from_place || "?"} → {t.to_place || "?"}
                             </span>
                             <Badge tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Badge>
+                            <WhatsAppDelivery transfer={t} />
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
                             <Link href={`/patients/${t.patient.id}`} className="font-medium text-teal-700 hover:underline">
@@ -239,16 +289,32 @@ export function TransfersClient({
                           {t.notes && <p className="mt-0.5 text-xs text-slate-400">{t.notes}</p>}
                         </div>
                         <div className="flex shrink-0 items-center gap-2 text-xs font-medium">
-                          {g.driver && t.status !== "done" && (
+                          {g.driver && (
                             <button
                               type="button"
-                              onClick={() => g.driver?.phone && sendOne(t, g.driver.phone)}
-                              disabled={!isWhatsAppable(g.driver.phone) || busyId === t.id}
-                              className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                              onClick={() => messages.copy(driverMessage(t, t.patient.name, t.patient.phone))}
+                              className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700 hover:bg-slate-200"
+                              title="Copy the driver message to paste anywhere"
                             >
-                              {t.status === "planned" ? "WhatsApp" : "Resend"}
+                              Copy
                             </button>
                           )}
+                          {g.driver && t.status !== "done" && driverMessages !== "off" && (() => {
+                            const one = oneSend(t, g.driver);
+                            const fallbackUrl = messages.fallbackUrl(one.key);
+                            return fallbackUrl ? (
+                              <FallbackLink url={fallbackUrl} onUse={() => messages.sentViaFallback(one)} />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => messages.send(one)}
+                                disabled={!isWhatsAppable(g.driver.phone) || busyId === t.id || messages.busyKey === t.id}
+                                className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                              >
+                                {messages.busyKey === t.id ? "Sending…" : sendLabel(driverMessages, t.status !== "planned")}
+                              </button>
+                            );
+                          })()}
                           <button
                             type="button"
                             onClick={() => run(t.id, () => setTransferStatus(t.id, t.status === "done" ? "sent" : "done"), t.status === "done" ? "Marked not done" : "Marked done ✓")}

@@ -117,6 +117,31 @@ const BASE_LINKS: { href: string; label: string; icon: (props: { className?: str
 
 const TEAM_LINK = { href: "/team", label: "Team", icon: TeamIcon };
 
+/** The phone bar: the pages used most on the move. Everything else sits under "More". */
+const MOBILE_BAR = ["/", "/patients", "/transfers", "/tasks"];
+
+/** A page is active on its own path and on anything under it (/patients/123 → Patients). */
+function isActive(pathname: string, href: string): boolean {
+  return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+}
+
+function MoreIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SignOutIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M15 17.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 12h11m0 0-3.5-3.5M20 12l-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function Nav({
   email,
   displayName,
@@ -130,10 +155,27 @@ export function Nav({
   const navRef = useRef<HTMLElement>(null);
   const linkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const LINKS = isAdmin ? [...BASE_LINKS, TEAM_LINK] : BASE_LINKS;
+  const barLinks = MOBILE_BAR.map((href) => LINKS.find((l) => l.href === href)!);
+  const moreLinks = LINKS.filter((l) => !MOBILE_BAR.includes(l.href));
+  const moreActive = moreLinks.some((l) => isActive(pathname, l.href));
+
+  // the panel covers the page: no scrolling behind it, Escape closes it
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMoreOpen(false);
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [moreOpen]);
 
   useEffect(() => {
-    const el = linkRefs.current.get(pathname);
+    const activeHref = [...linkRefs.current.keys()].find((href) => isActive(pathname, href));
+    const el = activeHref ? linkRefs.current.get(activeHref) : undefined;
     const container = navRef.current;
     if (el && container) {
       const elRect = el.getBoundingClientRect();
@@ -163,7 +205,7 @@ export function Nav({
                 />
               )}
               {LINKS.map((link) => {
-                const active = pathname === link.href;
+                const active = isActive(pathname, link.href);
                 return (
                   <Link
                     key={link.href}
@@ -193,48 +235,87 @@ export function Nav({
             </form>
           </div>
 
-          <form action={logout} className="md:hidden">
-            <button
-              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-              aria-label="Sign out"
-              title={displayName}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path
-                  d="M15 17.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path d="M9 12h11m0 0-3.5-3.5M20 12l-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </form>
+          <span className="max-w-[45%] truncate text-sm text-slate-500 md:hidden" title={email}>
+            {displayName}
+          </span>
         </div>
       </header>
 
+      {moreOpen && (
+        <div className="animate-fade-in fixed inset-0 z-40 bg-slate-900/40 md:hidden print:hidden" onClick={() => setMoreOpen(false)} aria-hidden />
+      )}
+      {moreOpen && (
+        <div
+          id="more-menu"
+          role="dialog"
+          aria-label="More pages"
+          className="animate-fade-in-up fixed inset-x-0 z-50 rounded-t-2xl bg-white px-4 pb-3 pt-4 shadow-xl md:hidden print:hidden"
+          style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+        >
+          <div className="grid grid-cols-3 gap-2">
+            {moreLinks.map((link) => {
+              const active = isActive(pathname, link.href);
+              const Icon = link.icon;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMoreOpen(false)}
+                  className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs font-medium ${
+                    active ? "bg-teal-50 text-teal-700" : "text-slate-600 active:bg-slate-100"
+                  }`}
+                >
+                  <Icon className="h-6 w-6" />
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+            <span className="min-w-0 truncate text-sm text-slate-500" title={email}>
+              {displayName || email}
+            </span>
+            <form action={logout}>
+              <button className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
+                <SignOutIcon className="h-5 w-5" />
+                Sign out
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden print:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        className="fixed inset-x-0 bottom-0 z-50 grid h-16 grid-cols-5 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden print:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)", boxSizing: "content-box" }}
       >
-        {/* Team, Transfers and Accounting are desktop-nav only — an 8th column would cramp the mobile
-            bar. Transfers is one tap away from the dashboard instead.
-            Payments are still recorded from a patient's page on a phone. */}
-        {BASE_LINKS.filter((link) => link.href !== "/accounting" && link.href !== "/transfers").map((link) => {
-          const active = pathname === link.href;
+        {barLinks.map((link) => {
+          const active = isActive(pathname, link.href) && !moreOpen;
           const Icon = link.icon;
           return (
             <Link
               key={link.href}
               href={link.href}
-              className={`flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
-                active ? "text-teal-600" : "text-slate-500"
-              }`}
+              onClick={() => setMoreOpen(false)}
+              className={`flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${active ? "text-teal-600" : "text-slate-500"}`}
             >
               <Icon className="h-6 w-6" />
               {link.label}
             </Link>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setMoreOpen((o) => !o)}
+          aria-expanded={moreOpen}
+          aria-controls="more-menu"
+          className={`flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${
+            moreOpen || moreActive ? "text-teal-600" : "text-slate-500"
+          }`}
+        >
+          <MoreIcon className="h-6 w-6" />
+          More
+        </button>
       </nav>
     </>
   );

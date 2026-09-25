@@ -1,16 +1,17 @@
+import { msg } from "@/i18n";
 /** Groups the activity_log action names into the filters shown on history pages. */
 
 export type ActivityCategory = "patients" | "money" | "transfers" | "quotes" | "tasks" | "team" | "roles" | "settings";
 
 export const ACTIVITY_CATEGORY_LABELS: Record<ActivityCategory, string> = {
-  patients: "Patients & visits",
-  money: "Payments, discounts & extras",
-  transfers: "Transfers & drivers",
-  quotes: "Quotes",
-  tasks: "Tasks",
-  team: "Team",
-  roles: "Roles & permissions",
-  settings: "Settings & account",
+  patients: msg("Patients & visits"),
+  money: msg("Payments, discounts & extras"),
+  transfers: msg("Transfers & drivers"),
+  quotes: msg("Quotes"),
+  tasks: msg("Tasks"),
+  team: msg("Team"),
+  roles: msg("Roles & permissions"),
+  settings: msg("Settings & account"),
 };
 
 export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {

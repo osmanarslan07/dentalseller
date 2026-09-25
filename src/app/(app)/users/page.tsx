@@ -12,6 +12,7 @@ import { STATUS_LABELS, StatusBadge, lastActiveText, parseStatus } from "./statu
 import { WORKLOAD_DAYS, coordinatorWorkload, getCoordinatorOptions } from "@/lib/coordinators";
 import { patientsHrefForCoordinator } from "@/lib/people-filter";
 import { clinicTodayIso } from "@/lib/balance";
+import { getLang, getT } from "@/i18n/server";
 
 type Search = { tab?: string; q?: string; role?: string; status?: string };
 
@@ -27,12 +28,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const canSellers = can(viewer, "sellers.manage");
   const tab = params.tab === "sellers" && canSellers ? "sellers" : canAccounts ? "accounts" : "sellers";
   const supabase = await createClient();
+  const t = await getT();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Users</h1>
-        <p className="mt-1 text-sm text-slate-500">Everyone who signs in to your clinic, and sellers who don&apos;t.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t("Users")}</h1>
+        <p className="mt-1 text-sm text-slate-500">{t("Everyone who signs in to your clinic, and sellers who don't.")}</p>
       </div>
 
       {canAccounts && canSellers && (
@@ -52,7 +54,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                 tab === id ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >
-              {label}
+              {t(label)}
             </Link>
           ))}
         </div>
@@ -96,12 +98,14 @@ async function AccountsTab({
   status: AccountStatus | null;
 }) {
   const profiles = await getProfiles(supabase);
+  const t = await getT();
+  const lang = await getLang();
   const [accounts, roles, avatars] = await Promise.all([
     getClinicAccounts(profiles),
     getClinicRoles(supabase, clinicId),
     signedAvatarUrls(supabase, profiles),
   ]);
-  const roleName = (key: string) => roles.find((r) => r.key === key)?.name ?? "Custom role";
+  const roleName = (key: string) => t(roles.find((r) => r.key === key)?.name ?? "Custom role");
 
   const needle = q.toLowerCase();
   const digits = q.replace(/\D/g, "");
@@ -124,32 +128,32 @@ async function AccountsTab({
             type="search"
             name="q"
             defaultValue={q}
-            placeholder="Search name, email or phone…"
-            aria-label="Search users"
+            placeholder={t("Search name, email or phone…")}
+            aria-label={t("Search users")}
             className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm sm:max-w-xs"
           />
-          <select name="role" defaultValue={role} aria-label="Role" className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-            <option value="">All roles</option>
+          <select name="role" defaultValue={role} aria-label={t("Role")} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <option value="">{t("All roles")}</option>
             {roles.map((r) => (
               <option key={r.key} value={r.key}>
-                {r.name}
+                {t(r.name)}
               </option>
             ))}
           </select>
-          <select name="status" defaultValue={status ?? ""} aria-label="Status" className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-            <option value="">Any status</option>
+          <select name="status" defaultValue={status ?? ""} aria-label={t("Status")} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <option value="">{t("Any status")}</option>
             {(Object.keys(STATUS_LABELS) as AccountStatus[]).map((s) => (
               <option key={s} value={s}>
-                {STATUS_LABELS[s]}
+                {t(STATUS_LABELS[s])}
               </option>
             ))}
           </select>
           <button type="submit" className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
-            Filter
+            {t("Filter")}
           </button>
           {filtered && (
             <Link href="/users" className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">
-              Reset
+              {t("Reset")}
             </Link>
           )}
         </form>
@@ -159,31 +163,31 @@ async function AccountsTab({
       <Card className="overflow-hidden">
         {shown.length === 0 ? (
           <p className="px-5 py-12 text-center text-sm text-slate-400">
-            {filtered ? "Nobody matches these filters." : "No users yet."}
+            {filtered ? t("Nobody matches these filters.") : t("No users yet.")}
           </p>
         ) : (
           <table className="w-full text-sm">
             <thead className="hidden bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500 md:table-header-group">
               <tr>
-                <th className="px-5 py-3">Name</th>
-                <th className="px-3 py-3">Phone</th>
-                <th className="px-3 py-3">Roles</th>
-                <th className="px-3 py-3">Status</th>
-                <th className="px-5 py-3 text-right">Last active</th>
+                <th className="px-5 py-3">{t("Name")}</th>
+                <th className="px-3 py-3">{t("Phone")}</th>
+                <th className="px-3 py-3">{t("Roles")}</th>
+                <th className="px-3 py-3">{t("Status")}</th>
+                <th className="px-5 py-3 text-right">{t("Last active")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shown.map((a) => {
-                const name = a.displayName || a.email || "Invited user";
+                const name = a.displayName || a.email || t("Invited user");
                 return (
                   <tr key={a.id} className="relative flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 hover:bg-slate-50 md:table-row md:p-0">
                     <td className="flex min-w-0 flex-1 items-center gap-3 md:px-5 md:py-3">
                       <Avatar name={name} url={avatars.get(a.id)} />
                       <div className="min-w-0">
                         <Link href={`/users/${a.id}`} className="font-medium text-slate-900 after:absolute after:inset-0 hover:underline">
-                          {a.displayName || <span className="text-slate-500">Not signed in yet</span>}
+                          {a.displayName || <span className="text-slate-500">{t("Not signed in yet")}</span>}
                         </Link>
-                        {a.id === currentUserId && <span className="ml-1.5 text-xs text-slate-400">(you)</span>}
+                        {a.id === currentUserId && <span className="ml-1.5 text-xs text-slate-400">{t("(you)")}</span>}
                         <p className="truncate text-xs text-slate-400">{a.email}</p>
                       </div>
                     </td>
@@ -198,10 +202,10 @@ async function AccountsTab({
                       </div>
                     </td>
                     <td className="md:px-3 md:py-3">
-                      <StatusBadge status={a.status} />
+                      <StatusBadge status={a.status} t={t} />
                     </td>
                     <td className="hidden whitespace-nowrap px-5 py-3 text-right text-xs text-slate-500 md:table-cell">
-                      {lastActiveText(a.lastActiveAt)}
+                      {lastActiveText(a.lastActiveAt, lang)}
                     </td>
                   </tr>
                 );
@@ -231,27 +235,27 @@ async function WorkloadCard({
   const coordinators = await getCoordinatorOptions(supabase, clinicId, profiles, patients);
   const workload = coordinatorWorkload(patients, clinicTodayIso());
   const unassigned = patients.filter((p) => !p.coordinator_id).length;
-
+  const t = await getT();
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-slate-100 px-5 py-4">
-        <h2 className="text-base font-semibold text-slate-900">Coordinators</h2>
+        <h2 className="text-base font-semibold text-slate-900">{t("Coordinators")}</h2>
         <p className="mt-0.5 text-xs text-slate-500">
-          Patients with a visit still to come, and arrivals in the next {WORKLOAD_DAYS} days.{" "}
+          {t("Patients with a visit still to come, and arrivals in the next {n} days.", { n: WORKLOAD_DAYS })}{" "}
           <Link href="/patients?coordinator=none" className="font-medium text-teal-700 hover:underline">
-            {unassigned} patient{unassigned === 1 ? "" : "s"} without a coordinator
+            {unassigned === 1 ? t("1 patient without a coordinator") : t("{n} patients without a coordinator", { n: unassigned })}
           </Link>
         </p>
       </div>
       {coordinators.length === 0 ? (
-        <p className="px-5 py-8 text-center text-sm text-slate-400">Nobody can coordinate patients yet.</p>
+        <p className="px-5 py-8 text-center text-sm text-slate-400">{t("Nobody can coordinate patients yet.")}</p>
       ) : (
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-5 py-2.5">Coordinator</th>
-              <th className="px-3 py-2.5 text-right">Active patients</th>
-              <th className="px-5 py-2.5 text-right">Arriving</th>
+              <th className="px-5 py-2.5">{t("Coordinator")}</th>
+              <th className="px-3 py-2.5 text-right">{t("Active patients")}</th>
+              <th className="px-5 py-2.5 text-right">{t("Arriving")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -263,7 +267,7 @@ async function WorkloadCard({
                     <Link href={`/users/${c.id}`} className="font-medium text-slate-800 hover:underline">
                       {c.name}
                     </Link>
-                    {!c.pickable && <span className="ml-1.5 text-xs text-slate-400">(can no longer coordinate)</span>}
+                    {!c.pickable && <span className="ml-1.5 text-xs text-slate-400">{t("(can no longer coordinate)")}</span>}
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     <Link href={patientsHrefForCoordinator(c.id)} className="text-teal-700 hover:underline">

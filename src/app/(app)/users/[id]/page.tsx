@@ -19,6 +19,7 @@ import { HandoverForm } from "./HandoverForm";
 import { WORKLOAD_DAYS, coordinatorWorkload, getCoordinatorOptions } from "@/lib/coordinators";
 import { clinicTodayIso } from "@/lib/balance";
 import { ReactNode } from "react";
+import { getLang, getT } from "@/i18n/server";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RECENT_ACTIVITY = 20;
@@ -32,6 +33,8 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   if (!UUID_RE.test(id)) notFound();
 
   const supabase = await createClient();
+  const t = await getT();
+  const lang = await getLang();
   const profiles = await getProfiles(supabase);
   const profile = profiles.find((p) => p.id === id);
   if (!profile) notFound();
@@ -50,7 +53,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   ]);
   if (activity.error) throw activity.error;
 
-  const name = account.displayName || account.email || "Invited user";
+  const name = account.displayName || account.email || t("Invited user");
   const permissions: Permission[] = [
     ...new Set(account.roles.flatMap((key) => roles.find((r) => r.key === key)?.permissions ?? [])),
   ];
@@ -69,7 +72,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   return (
     <div className="space-y-6">
       <Link href="/users" className="text-sm font-medium text-teal-700 hover:underline">
-        ← Users
+        ← {t("Users")}
       </Link>
 
       <Card className="p-6">
@@ -78,16 +81,16 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold text-slate-900">
-                {account.displayName || <span className="text-slate-500">Not signed in yet</span>}
+                {account.displayName || <span className="text-slate-500">{t("Not signed in yet")}</span>}
               </h1>
-              {isSelf && <span className="text-sm text-slate-400">(you)</span>}
-              <StatusBadge status={account.status} />
+              {isSelf && <span className="text-sm text-slate-400">{t("(you)")}</span>}
+              <StatusBadge status={account.status} t={t} />
             </div>
             <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-              <Detail label="Email" value={account.email} />
-              <Detail label="Phone" value={account.phone} />
-              <Detail label="Last active" value={lastActiveText(account.lastActiveAt)} />
-              <Detail label="Added" value={formatDate(account.createdAt)} />
+              <Detail label={t("Email")} value={account.email} />
+              <Detail label={t("Phone")} value={account.phone} />
+              <Detail label={t("Last active")} value={lastActiveText(account.lastActiveAt, lang)} />
+              <Detail label={t("Added")} value={formatDate(account.createdAt)} />
             </dl>
           </div>
         </div>
@@ -110,18 +113,18 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
       {canActivity && (
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-            <h2 className="text-base font-semibold text-slate-900">Recent activity</h2>
+            <h2 className="text-base font-semibold text-slate-900">{t("Recent activity")}</h2>
             <Link href={`/activity?actor=${id}`} className="text-sm font-medium text-teal-700 hover:underline">
-              All activity →
+              {t("All activity")} →
             </Link>
           </div>
           {entries.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-slate-400">Nothing recorded yet.</p>
+            <p className="px-5 py-8 text-center text-sm text-slate-400">{t("Nothing recorded yet.")}</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {entries.map((e) => (
                 <li key={e.id} className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-                  <p className="text-sm text-slate-800">{describeActivity(e, nameById, patientNameById)}</p>
+                  <p className="text-sm text-slate-800">{describeActivity(e, nameById, patientNameById, t)}</p>
                   <span className="shrink-0 text-xs tabular-nums text-slate-400">{formatActivityTime(e.created_at)}</span>
                 </li>
               ))}
@@ -132,14 +135,18 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
 
       {canPatients && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <PatientList title="Patients as seller" patients={asSeller} empty="No patients credited to them." />
+          <PatientList title={t("Patients as seller")} patients={asSeller} empty={t("No patients credited to them.")} />
           <PatientList
-            title="Patients as coordinator"
+            title={t("Patients as coordinator")}
             patients={asCoordinator}
-            empty="They coordinate no patients."
+            empty={t("They coordinate no patients.")}
             summary={
               asCoordinator.length > 0
-                ? `${workload.active} with a visit to come · ${workload.arriving} arriving in the next ${WORKLOAD_DAYS} days`
+                ? t("{active} with a visit to come · {arriving} arriving in the next {n} days", {
+                    active: workload.active,
+                    arriving: workload.arriving,
+                    n: WORKLOAD_DAYS,
+                  })
                 : undefined
             }
             footer={
@@ -163,7 +170,7 @@ function Detail({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-function PatientList({
+async function PatientList({
   title,
   patients,
   empty,
@@ -177,6 +184,7 @@ function PatientList({
   footer?: ReactNode;
 }) {
   const sorted = [...patients].sort((a, b) => (b.visit1_date ?? "").localeCompare(a.visit1_date ?? ""));
+  const t = await getT();
   return (
     <Card className="overflow-hidden">
       <h2 className="border-b border-slate-100 px-5 py-4 text-base font-semibold text-slate-900">
@@ -191,12 +199,12 @@ function PatientList({
             <li key={p.id}>
               <Link href={`/patients/${p.id}`} className="flex items-center justify-between gap-4 px-5 py-2.5 text-sm hover:bg-slate-50">
                 <span className="truncate font-medium text-slate-800">{p.name}</span>
-                <span className="shrink-0 text-xs text-slate-400">{p.visit1_date ? formatDate(p.visit1_date) : "No date"}</span>
+                <span className="shrink-0 text-xs text-slate-400">{p.visit1_date ? formatDate(p.visit1_date) : t("No date")}</span>
               </Link>
             </li>
           ))}
           {sorted.length > PATIENT_LIST_MAX && (
-            <li className="px-5 py-2.5 text-xs text-slate-400">…and {sorted.length - PATIENT_LIST_MAX} more</li>
+            <li className="px-5 py-2.5 text-xs text-slate-400">{t("…and {n} more", { n: sorted.length - PATIENT_LIST_MAX })}</li>
           )}
         </ul>
       )}

@@ -9,6 +9,7 @@ import { MemberRole } from "@/types";
 import type { ClinicRole } from "@/lib/roles";
 import { RoleChips } from "./RoleChips";
 import { AddSellerResult, addSeller } from "./actions";
+import { useT } from "@/i18n/client";
 
 /** "Add user": opens a small form under the page header; the temporary password is shown
  * once, here, for the admin to pass on. */
@@ -21,6 +22,7 @@ export function AddUserPanel({ roles }: { roles: ClinicRole[] }) {
   const [pending, startTransition] = useTransition();
   const { showToast } = useToast();
   const router = useRouter();
+  const t = useT();
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,10 +33,10 @@ export function AddUserPanel({ roles }: { roles: ClinicRole[] }) {
         setCreated(await addSeller(email, newRoles));
         setEmail("");
         setNewRoles(["sales"]);
-        showToast("User added ✓");
+        showToast(t("User added ✓"));
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to add the user");
+        setError(err instanceof Error ? err.message : t("Failed to add the user"));
       }
     });
   }
@@ -42,7 +44,7 @@ export function AddUserPanel({ roles }: { roles: ClinicRole[] }) {
   if (!open) {
     return (
       <Button type="button" onClick={() => setOpen(true)}>
-        + Add user
+        + {t("Add user")}
       </Button>
     );
   }
@@ -52,20 +54,20 @@ export function AddUserPanel({ roles }: { roles: ClinicRole[] }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <Label>Email of the new user</Label>
+            <Label>{t("Email of the new user")}</Label>
             <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
           </div>
           <div className="flex gap-2">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Close
+              {t("Close")}
             </Button>
             <Button type="submit" disabled={pending || newRoles.length === 0}>
-              {pending ? "Adding…" : "Add"}
+              {pending ? t("Adding…") : t("Add")}
             </Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-500">Roles:</span>
+          <span className="text-xs text-slate-500">{t("Roles:")}</span>
           <RoleChips
             roles={newRoles}
             options={roles}
@@ -74,13 +76,13 @@ export function AddUserPanel({ roles }: { roles: ClinicRole[] }) {
           />
         </div>
         <p className="text-xs text-slate-500">
-          They get a temporary password to sign in with and choose their name on first sign-in.
+          {t("They get a temporary password to sign in with and choose their name on first sign-in.")}
         </p>
       </form>
       {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
       {created && (
         <div className="mt-4">
-          <CredentialNotice title="Account created for" email={created.email} tempPassword={created.tempPassword} />
+          <CredentialNotice title={t("Account created for")} email={created.email} tempPassword={created.tempPassword} />
         </div>
       )}
     </Card>

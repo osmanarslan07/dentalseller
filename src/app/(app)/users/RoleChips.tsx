@@ -2,6 +2,7 @@
 
 import { MemberRole } from "@/types";
 import type { ClinicRole } from "@/lib/roles";
+import { useT } from "@/i18n/client";
 
 /** One tick-button per role (built-in and the clinic's own); the member holds every role that's on. */
 export function RoleChips({
@@ -15,8 +16,9 @@ export function RoleChips({
   disabled?: boolean;
   onToggle: (role: MemberRole) => void;
 }) {
+  const t = useT();
   return (
-    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Roles">
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("Roles")}>
       {options.map(({ key, name }) => {
         const role = key as MemberRole;
         const on = roles.includes(role);
@@ -32,7 +34,7 @@ export function RoleChips({
             }`}
           >
             {on ? "✓ " : ""}
-            {name}
+            {t(name)}
           </button>
         );
       })}

@@ -8,6 +8,8 @@ import { Permission } from "@/types";
 import { PIN_COOKIE } from "@/lib/nav-pin";
 import { CLINIC_SECTIONS } from "@/app/(app)/settings/clinic/sections";
 import { Avatar, initials } from "@/components/Avatar";
+import { useT } from "@/i18n/client";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 function HomeIcon({ className = "" }: { className?: string }) {
   return (
@@ -300,6 +302,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const t = useT();
 
   const [pinned, setPinned] = useState(initialPinned);
   const [open, setOpen] = useState(false);
@@ -319,8 +322,10 @@ export function AppShell({
 
   const groups = GROUPS.map((g) => ({
     ...g,
+    label: t(g.label),
     items: g.items
       .filter((i) => !i.needs || i.needs.some((p) => permissions.includes(p)))
+      .map((i) => ({ ...i, label: t(i.label) })),
   })).filter((g) => g.items.length > 0);
   const allItems = groups.flatMap((g) => g.items);
 
@@ -335,7 +340,7 @@ export function AppShell({
   const moreActive = moreGroups.some((g) => g.items.some((i) => isActive(pathname, i.href)));
 
   const activeItem = allItems.find((i) => isActive(pathname, i.href));
-  const pageTitle = activeItem?.label ?? (pathname === "/settings" ? "My settings" : pathname === "/profile" ? "My profile" : pathname.startsWith("/settings") ? "Settings" : "");
+  const pageTitle = activeItem?.label ?? (pathname === "/settings" ? t("My settings") : pathname === "/profile" ? t("My profile") : pathname.startsWith("/settings") ? t("Settings") : "");
 
   const badgeOf = (item: Item): { n: number; tone: "warn" | "info" } | null => {
     if (item.badge === "tasks" && badges.tasks > 0) return { n: badges.tasks, tone: "warn" };
@@ -444,7 +449,7 @@ export function AppShell({
     <>
       {/* desktop / tablet: icon rail, opens over the page */}
       <nav
-        aria-label="Main menu"
+        aria-label={t("Main menu")}
         onMouseEnter={() => {
           hovering.current = true;
           if (!pinned) openSoon();
@@ -522,7 +527,7 @@ export function AppShell({
                           className={`ml-auto mr-2 transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"}`}
                         />
                         {!expanded && <BadgeDot tone={badge.tone} className="left-[29px] top-1.5" />}
-                        <span className="sr-only">{`${badge.n} ${item.badge === "tasks" ? "overdue" : "to confirm"}`}</span>
+                        <span className="sr-only">{`${badge.n} ${item.badge === "tasks" ? t("overdue") : t("to confirm")}`}</span>
                       </>
                     )}
                   </Link>
@@ -537,14 +542,14 @@ export function AppShell({
             type="button"
             onClick={togglePin}
             aria-pressed={pinned}
-            title={expanded ? undefined : "Keep menu open"}
+            title={expanded ? undefined : t("Keep menu open")}
             className={`flex h-10 w-full items-center gap-3.5 whitespace-nowrap rounded-[9px] pl-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
               pinned ? "text-teal-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
             <PinIcon className={`h-[22px] w-[22px] flex-none ${pinned ? "fill-teal-100" : ""}`} />
             <span className={`transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"}`}>
-              {pinned ? "Menu kept open" : "Keep menu open"}
+              {pinned ? t("Menu kept open") : t("Keep menu open")}
             </span>
           </button>
         </div>
@@ -573,8 +578,8 @@ export function AppShell({
                   ref={desktopSearchRef}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search patients…"
-                  aria-label="Search patients"
+                  placeholder={t("Search patients…")}
+                  aria-label={t("Search patients")}
                   className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                 />
                 <kbd className="rounded border border-slate-300 px-1.5 font-mono text-[11px] text-slate-400">Ctrl K</kbd>
@@ -586,7 +591,7 @@ export function AppShell({
                 <button
                   type="button"
                   onClick={() => setSearchOpen((o) => !o)}
-                  aria-label="Search patients"
+                  aria-label={t("Search patients")}
                   aria-expanded={searchOpen}
                   className="grid h-9 w-9 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
                 >
@@ -600,7 +605,7 @@ export function AppShell({
                   onClick={() => setMenuOpen((o) => !o)}
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
-                  aria-label="Account menu"
+                  aria-label={t("Account menu")}
                   className="flex items-center gap-1.5 rounded-full p-1 pr-1.5 hover:bg-slate-100"
                 >
                   {avatar}
@@ -621,7 +626,7 @@ export function AppShell({
                       className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     >
                       <ProfileIcon className="h-[18px] w-[18px]" />
-                      My profile
+                      {t("My profile")}
                     </Link>
                     <Link
                       role="menuitem"
@@ -630,7 +635,7 @@ export function AppShell({
                       className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     >
                       <SlidersIcon className="h-[18px] w-[18px]" />
-                      My settings
+                      {t("My settings")}
                     </Link>
                     <form action={logout}>
                       <button
@@ -638,9 +643,13 @@ export function AppShell({
                         className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       >
                         <SignOutIcon className="h-[18px] w-[18px]" />
-                        Sign out
+                        {t("Sign out")}
                       </button>
                     </form>
+                    <div className="mt-1 flex items-center justify-between border-t border-slate-100 px-2.5 pb-1 pt-2.5">
+                      <span className="text-xs text-slate-500">{t("Language")}</span>
+                      <LanguageSwitch />
+                    </div>
                   </div>
                 )}
               </div>
@@ -655,8 +664,8 @@ export function AppShell({
                   ref={phoneSearchRef}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search patients…"
-                  aria-label="Search patients"
+                  placeholder={t("Search patients…")}
+                  aria-label={t("Search patients")}
                   enterKeyHint="search"
                   className="min-w-0 flex-1 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400"
                 />
@@ -676,7 +685,7 @@ export function AppShell({
         <div
           id="more-menu"
           role="dialog"
-          aria-label="More pages"
+          aria-label={t("More pages")}
           className="animate-fade-in-up fixed inset-x-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-white px-4 pb-3 pt-4 shadow-xl md:hidden print:hidden"
           style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
         >
@@ -716,16 +725,17 @@ export function AppShell({
             <div className="mt-2 flex flex-wrap items-center gap-1">
               <Link href={MY_PROFILE_HREF} onClick={() => setMoreOpen(false)} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
                 <ProfileIcon className="h-5 w-5" />
-                My profile
+                {t("My profile")}
               </Link>
               <Link href="/settings" onClick={() => setMoreOpen(false)} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
                 <SlidersIcon className="h-5 w-5" />
-                My settings
+                {t("My settings")}
               </Link>
-              <form action={logout} className="ml-auto">
+              <LanguageSwitch className="ml-auto" />
+              <form action={logout}>
                 <button className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
                   <SignOutIcon className="h-5 w-5" />
-                  Sign out
+                  {t("Sign out")}
                 </button>
               </form>
             </div>
@@ -764,7 +774,7 @@ export function AppShell({
           }`}
         >
           <MoreIcon className="h-6 w-6" />
-          More
+          {t("More")}
         </button>
       </nav>
     </>

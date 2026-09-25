@@ -2,6 +2,9 @@
 
 import { RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useT } from "@/i18n/client";
+import { useLang } from "@/i18n/client";
+import { localeOf } from "@/i18n";
 
 /** "2026-09-25" → "25/09/2026"; anything else → "". */
 function isoToDmy(iso: string): string {
@@ -66,6 +69,7 @@ export function DateInput({
   const [shownIso, setShownIso] = useState(iso);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   // The value changed from outside (or via the calendar) — show it.
   if (iso !== shownIso) {
@@ -83,7 +87,7 @@ export function DateInput({
     const next = autoSlash(input.value, text);
     setText(next);
     const parsed = next.trim() === "" ? "" : dmyToIso(next);
-    input.setCustomValidity(parsed === null ? "Use dd/mm/yyyy" : "");
+    input.setCustomValidity(parsed === null ? t("Use dd/mm/yyyy") : "");
     if (parsed !== null) commit(parsed);
   }
 
@@ -93,7 +97,7 @@ export function DateInput({
       <input
         type="text"
         inputMode="numeric"
-        placeholder="dd/mm/yyyy"
+        placeholder={t("dd/mm/yyyy")}
         autoComplete="off"
         value={text}
         onChange={(e) => handleType(e.target)}
@@ -109,7 +113,7 @@ export function DateInput({
       <button
         type="button"
         tabIndex={-1}
-        aria-label="Open calendar"
+        aria-label={t("Open calendar")}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-slate-400 hover:text-teal-600"
@@ -136,6 +140,7 @@ export function DateInput({
 }
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const WEEKDAYS_TR = ["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz"];
 
 /** Month grid, Monday first. Rendered on <body> so a scrolling modal can't clip it. */
 function CalendarPopover({
@@ -149,6 +154,8 @@ function CalendarPopover({
   onPick: (iso: string) => void;
   onClose: () => void;
 }) {
+  const t = useT();
+  const lang = useLang();
   const todayIso = toIso(new Date());
   const [cursor, setCursor] = useState(() => {
     const [y, m] = (iso || todayIso).split("-").map(Number);
@@ -216,21 +223,21 @@ function CalendarPopover({
     <div
       ref={popRef}
       role="dialog"
-      aria-label="Choose date"
+      aria-label={t("Choose date")}
       style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}
       className="fixed z-[60] w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg"
     >
       <div className="mb-2 flex items-center justify-between">
-        <button type="button" onClick={() => shift(-1)} aria-label="Previous month" className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">
+        <button type="button" onClick={() => shift(-1)} aria-label={t("Previous month")} className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">
           ‹
         </button>
-        <span className="text-sm font-semibold text-slate-800">{first.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</span>
-        <button type="button" onClick={() => shift(1)} aria-label="Next month" className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">
+        <span className="text-sm font-semibold text-slate-800">{first.toLocaleDateString(localeOf(lang), { month: "long", year: "numeric" })}</span>
+        <button type="button" onClick={() => shift(1)} aria-label={t("Next month")} className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">
           ›
         </button>
       </div>
       <div className="grid grid-cols-7 gap-0.5 text-center">
-        {WEEKDAYS.map((w) => (
+        {(lang === "tr" ? WEEKDAYS_TR : WEEKDAYS).map((w) => (
           <span key={w} className="py-1 text-[11px] font-medium text-slate-400">
             {w}
           </span>
@@ -259,11 +266,11 @@ function CalendarPopover({
       </div>
       <div className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-xs">
         <button type="button" onClick={() => onPick(todayIso)} className="font-medium text-teal-700 hover:underline">
-          Today
+          {t("Today")}
         </button>
         {iso && (
           <button type="button" onClick={() => onPick("")} className="text-slate-500 hover:underline">
-            Clear
+            {t("Clear")}
           </button>
         )}
       </div>

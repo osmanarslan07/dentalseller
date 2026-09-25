@@ -4335,3 +4335,7 @@ end;
 $$;
 revoke execute on function public.set_seller_currency(uuid, text) from public, anon;
 grant execute on function public.set_seller_currency(uuid, text) to authenticated;
+
+-- ---------- per-user interface language (Turkish translation) ----------
+alter table public.profiles add column if not exists language text not null default 'en'
+  check (language in ('en', 'tr'));

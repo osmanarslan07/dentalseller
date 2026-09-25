@@ -2,6 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { setLangCookie } from "@/i18n/actions";
+import { getT } from "@/i18n/server";
+import { isLang } from "@/i18n";
 
 export interface AuthState {
   error: string | null;
@@ -16,11 +19,14 @@ export async function login(_prevState: AuthState, formData: FormData): Promise<
 
   // a deactivated member's login is banned (see setSellerActive)
   if (error?.code === "user_banned" || /banned/i.test(error?.message ?? "")) {
-    return { error: "This account has been deactivated. Ask your clinic admin." };
+    const t = await getT();
+    return { error: t("This account has been deactivated. Ask your clinic admin.") };
   }
   if (error) return { error: error.message };
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  const { data: profile } = await supabase.from("profiles").select("role, language").eq("id", data.user.id).maybeSingle();
+  // this device follows the language saved on the account
+  if (isLang(profile?.language)) await setLangCookie(profile.language);
   redirect(profile?.role === "superadmin" ? "/platform" : "/");
 }
 

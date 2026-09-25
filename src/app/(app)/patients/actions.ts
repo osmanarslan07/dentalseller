@@ -618,47 +618,73 @@ export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   await logActivity(supabase, user.actorId, "patient_telegram_sent", "patient", id, visitKey);
 }
 
-/** Hands the patient to another seller — they earn commission on any visit not yet paid.
- * A DB trigger locks in credit for visits already paid before the handoff, so this never
- * moves commission the previous seller already earned (see visit*_earned_by_seller_id).
- * A separate DB trigger enforces that only the current responsible seller or someone with
- * sellers.assign may reassign at all. */
-export async function reassignPatient(id: string, choice: SellerChoice) {
-  const supabase = await createClient();
-  const user = await requirePermission("patients.edit");
-
-  if (!can(user.viewer, "sellers.assign")) {
-    const { data: current } = await supabase.from("patients").select("responsible_seller_id").eq("id", id).maybeSingle();
-    if (current?.responsible_seller_id !== user.id) throw new Error("Only the patient's seller or a coordinator can reassign it");
+/** The Sale card on the patient page, saved as one: confirmation date, Komo reference,
+ * seller and coordinator. One update, so the card never ends up half-saved.
+ * - Seller: only the patient's own seller or someone with sellers.assign may change it (a new
+ *   typed name needs sellers.assign too — resolveSellerChoice / RLS).
+ * - Coordinator: anyone who can edit the patient; the database checks the new coordinator is
+ *   an active member of this clinic with patients.edit. */
+export async function updatePatientSale(
+  id: string,
+  input: {
+    confirmation_date: string;
+    komo_reference: string;
+    /** Left out when the seller isn't being changed. */
+    seller?: SellerChoice;
+    /** "" = no coordinator; left out when not being changed. */
+    coordinatorId?: string;
   }
-  const seller = await resolveSellerChoice(supabase, choice, "");
-  const { error } = await supabase
-    .from("patients")
-    .update({ responsible_seller_id: seller.id })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-
-  await logActivity(supabase, user.actorId, "patient_reassigned", "patient", id, seller.id);
-
-  revalidatePath("/patients");
-  revalidatePath("/");
-  revalidatePath("/earnings");
-  revalidatePath("/sales-performance");
-}
-
-/** The team member who follows this patient up; null clears it. Anyone who can edit the
- * patient can set it — the database checks they belong to this clinic. */
-export async function setPatientCoordinator(id: string, coordinatorId: string | null) {
+) {
   const supabase = await createClient();
   const user = await requirePermission("patients.edit");
 
-  const { error } = await supabase.from("patients").update({ coordinator_id: coordinatorId || null }).eq("id", id);
+  const before = await getPatient(supabase, id);
+  if (!before) throw new Error("Patient not found");
+  const update: Record<string, unknown> = cleanPatch(
+    { confirmation_date: input.confirmation_date, komo_reference: input.komo_reference },
+    PATIENT_FIELD_KINDS
+  );
+
+  let reassignedTo: string | null = null;
+  const choice = input.seller;
+  if (choice && (choice.newSellerName || (choice.sellerId && choice.sellerId !== before.responsible_seller_id))) {
+    if (!can(user.viewer, "sellers.assign") && before.responsible_seller_id !== user.id) {
+      throw new Error("Only the patient's seller or a coordinator can reassign it");
+    }
+    const seller = await resolveSellerChoice(supabase, choice, "");
+    if (seller.id !== before.responsible_seller_id) {
+      update.responsible_seller_id = seller.id;
+      reassignedTo = seller.id;
+    }
+  }
+
+  let coordinatorChanged = false;
+  if (input.coordinatorId !== undefined) {
+    const next = input.coordinatorId && UUID_RE.test(input.coordinatorId) ? input.coordinatorId : null;
+    if (input.coordinatorId && !next) throw new Error("Team member not found");
+    if (next !== before.coordinator_id) {
+      update.coordinator_id = next;
+      coordinatorChanged = true;
+    }
+  }
+
+  const { error } = await supabase.from("patients").update(update).eq("id", id);
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.actorId, "patient_updated", "patient", id, coordinatorId ? "coordinator changed" : "coordinator removed");
+  const changes = diffFields(before, { ...before, ...update }, PATIENT_AUDIT_FIELDS);
+  if (changes) await logActivity(supabase, user.actorId, "patient_updated", "patient", id, changes);
+  if (reassignedTo) await logActivity(supabase, user.actorId, "patient_reassigned", "patient", id, reassignedTo);
+  if (coordinatorChanged) {
+    await logActivity(supabase, user.actorId, "patient_updated", "patient", id, update.coordinator_id ? "coordinator changed" : "coordinator removed");
+  }
 
   revalidatePath("/patients");
   revalidatePath("/");
+  revalidatePath("/tasks");
+  if (reassignedTo) {
+    revalidatePath("/earnings");
+    revalidatePath("/sales-performance");
+  }
 }
 
 export async function deletePatient(id: string) {

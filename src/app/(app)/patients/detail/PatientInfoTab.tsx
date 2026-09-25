@@ -1,7 +1,7 @@
 "use client";
 
 import type { CoordinatorOption } from "@/lib/coordinators";
-import { FormEvent, ReactNode, useState, useTransition } from "react";
+import { FormEvent, ReactNode, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
@@ -11,7 +11,7 @@ import { visitExpectedTotal } from "@/lib/commission";
 import { Patient, PatientFile, Profile, Seller } from "@/types";
 import { SellerPick, SellerPicker } from "@/components/SellerPicker";
 import { sellerLabel } from "@/lib/sellers";
-import { reassignPatient, setPatientCoordinator, updatePatientFields } from "../actions";
+import { updatePatientFields, updatePatientSale } from "../actions";
 import { EditButton, EditingChip, Field, gbp, Pill, Section, Toggle } from "./bits";
 import { forVisit, shortDate, VisitView } from "./visits";
 import { useCan } from "@/components/permissions";
@@ -52,6 +52,9 @@ function EditCard({
   saved,
   onSave,
   extraActions,
+  onEdit,
+  confirmSave,
+  openEvent,
 }: {
   title: string;
   view: ReactNode;
@@ -60,6 +63,12 @@ function EditCard({
   saved: string;
   onSave: (patch: Record<string, unknown>) => Promise<void>;
   extraActions?: ReactNode;
+  /** Called when editing starts — to reset any state the form keeps outside the form. */
+  onEdit?: () => void;
+  /** Asked before saving; false keeps the form open without saving. */
+  confirmSave?: (patch: Record<string, unknown>) => boolean;
+  /** A window event name that opens this card for editing (e.g. from a menu elsewhere). */
+  openEvent?: string;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -67,10 +76,24 @@ function EditCard({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  function startEditing() {
+    onEdit?.();
+    setError(null);
+    setEditing(true);
+  }
+
+  useEffect(() => {
+    if (!openEvent) return;
+    const open = () => startEditing();
+    window.addEventListener(openEvent, open);
+    return () => window.removeEventListener(openEvent, open);
+  });
+
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const patch = toPatch(new FormData(e.currentTarget));
+    if (confirmSave && !confirmSave(patch)) return;
     startTransition(async () => {
       try {
         await onSave(patch);
@@ -91,7 +114,7 @@ function EditCard({
         !editing && (
           <>
             {extraActions}
-            <EditButton onClick={() => setEditing(true)} />
+            <EditButton onClick={startEditing} />
           </>
         )
       }
@@ -180,7 +203,7 @@ export function PatientInfoTab({
 
         <TreatmentCard patient={patient} letterItems={letterItems} onSave={save} />
 
-        <SaleCard patient={patient} coordinators={coordinators} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} komoIsLink={komoIsLink} onSave={save} />
+        <SaleCard patient={patient} coordinators={coordinators} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} komoIsLink={komoIsLink} />
 
         <EditCard
           title="Notes"
@@ -311,6 +334,12 @@ function SecondVisitFields({ initial, recallMonths }: { initial: boolean; recall
   );
 }
 
+/** Opens the Sale card for editing (the patient menu's "Reassign seller…" uses it). */
+export const EDIT_SALE_EVENT = "patient:edit-sale";
+
+/** Seller, coordinator, confirmation date and Komo reference: one Edit, one Save. Changing
+ * the seller asks first, since the commission moves with it. The coordinator list offers
+ * only people who can edit patients; the current one stays listed even if they no longer can. */
 function SaleCard({
   patient,
   coordinators,
@@ -318,7 +347,6 @@ function SaleCard({
   currentUserId,
   canAssignSellers,
   komoIsLink,
-  onSave,
 }: {
   patient: Patient;
   coordinators: CoordinatorOption[];
@@ -326,197 +354,123 @@ function SaleCard({
   currentUserId: string;
   canAssignSellers: boolean;
   komoIsLink: boolean;
-  onSave: (patch: Record<string, unknown>) => Promise<void>;
 }) {
-  const router = useRouter();
-  const { showToast } = useToast();
-  const [reassigning, setReassigning] = useState(false);
   const [pick, setPick] = useState<SellerPick>({ sellerId: patient.responsible_seller_id, newName: null });
-  const [pending, startTransition] = useTransition();
   const canEdit = useCan("patients.edit");
   const canReassign = canEdit && (patient.responsible_seller_id === currentUserId || canAssignSellers);
   const seller = sellers.find((s) => s.id === patient.responsible_seller_id);
   const sellerName = sellerLabel(seller);
+  const coordinator = coordinators.find((c) => c.id === patient.coordinator_id);
+  const coordinatorChoices = coordinators.filter((c) => c.pickable || c.id === patient.coordinator_id);
 
-  function reassign() {
-    if (pick.newName == null && pick.sellerId === patient.responsible_seller_id) return setReassigning(false);
-    if (pick.newName != null && !pick.newName.trim()) return showToast("Type the seller's name", "error");
-    if (!confirm("Reassign this patient to another seller? They will earn the commission from now on.")) return;
-    startTransition(async () => {
-      try {
-        await reassignPatient(patient.id, pick.newName != null ? { newSellerName: pick.newName } : { sellerId: pick.sellerId });
-        showToast("Patient reassigned ✓");
-        setReassigning(false);
-        router.refresh();
-      } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to reassign patient", "error");
-      }
-    });
-  }
+  const sellerChanged = (patch: Record<string, unknown>) =>
+    !!patch.new_seller_name || (!!patch.seller_id && patch.seller_id !== patient.responsible_seller_id);
 
   return (
-    <EditCard
-      title="Sale"
-      saved="Sale details saved ✓"
-      onSave={onSave}
-      toPatch={(fd) => ({ confirmation_date: str(fd, "confirmation_date"), komo_reference: str(fd, "komo_reference") })}
-      view={
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div id="reassign" className="flex flex-col gap-0.5 text-sm">
-            <span className="text-xs text-slate-500">Seller</span>
-            {reassigning ? (
-              <div className="flex flex-col gap-2">
+    <div id="reassign">
+      <EditCard
+        title="Sale"
+        saved="Sale details saved ✓"
+        openEvent={canEdit ? EDIT_SALE_EVENT : undefined}
+        onEdit={() => setPick({ sellerId: patient.responsible_seller_id, newName: null })}
+        toPatch={(fd) => ({
+          confirmation_date: str(fd, "confirmation_date"),
+          komo_reference: str(fd, "komo_reference"),
+          seller_id: str(fd, "seller_id"),
+          new_seller_name: str(fd, "new_seller_name").trim(),
+          coordinator_id: str(fd, "coordinator_id"),
+        })}
+        confirmSave={(patch) =>
+          !sellerChanged(patch) || confirm("Reassign this patient to another seller? They will earn the commission from now on.")
+        }
+        onSave={(patch) =>
+          updatePatientSale(patient.id, {
+            confirmation_date: String(patch.confirmation_date),
+            komo_reference: String(patch.komo_reference),
+            seller:
+              canReassign && sellerChanged(patch)
+                ? patch.new_seller_name
+                  ? { newSellerName: String(patch.new_seller_name) }
+                  : { sellerId: String(patch.seller_id) }
+                : undefined,
+            coordinatorId: String(patch.coordinator_id),
+          })
+        }
+        view={
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Seller">
+              {sellerName}
+              {seller && !seller.profile_id && <span className="ml-1.5 text-xs font-normal text-slate-400">no account</span>}
+            </Field>
+            <Field label="Coordinator">
+              {coordinator ? (
+                coordinator.name
+              ) : patient.coordinator_id ? (
+                "Former member"
+              ) : (
+                <span className="font-normal text-slate-400">None — the seller follows up</span>
+              )}
+            </Field>
+            <Field label="Confirmed">{patient.confirmation_date ? shortDate(patient.confirmation_date, true) : <span className="font-normal text-slate-400">Not set</span>}</Field>
+            <Field label="Komo reference">
+              {patient.komo_reference ? (
+                komoIsLink ? (
+                  <a href={patient.komo_reference} target="_blank" rel="noopener noreferrer" className="break-all text-teal-700 hover:text-teal-800">
+                    {patient.komo_reference.replace(/^https?:\/\/(www\.)?/i, "")} ↗
+                  </a>
+                ) : (
+                  patient.komo_reference
+                )
+              ) : (
+                <span className="font-normal text-slate-400">Not set</span>
+              )}
+            </Field>
+          </div>
+        }
+        form={
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <Label>Seller</Label>
+              {canReassign ? (
                 <SellerPicker
                   sellers={sellers}
                   value={pick}
                   onChange={setPick}
                   currentUserId={currentUserId}
                   allowNew={canAssignSellers}
-                  disabled={pending}
-                  autoFocus
+                  formFields
                 />
-                <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => setReassigning(false)}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" onClick={reassign} disabled={pending}>
-                    {pending ? "Saving…" : "Reassign"}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <span className="font-semibold">
-                  {sellerName}
-                  {seller && !seller.profile_id && <span className="ml-1.5 text-xs font-normal text-slate-400">no account</span>}
-                </span>
-                {canReassign && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPick({ sellerId: patient.responsible_seller_id, newName: null });
-                      setReassigning(true);
-                    }}
-                    className="self-start text-xs font-semibold text-teal-700 hover:text-teal-800"
-                  >
-                    Reassign…
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-          <CoordinatorField patient={patient} coordinators={coordinators} currentUserId={currentUserId} />
-          <Field label="Confirmed">{patient.confirmation_date ? shortDate(patient.confirmation_date, true) : <span className="font-normal text-slate-400">Not set</span>}</Field>
-          <Field label="Komo reference">
-            {patient.komo_reference ? (
-              komoIsLink ? (
-                <a href={patient.komo_reference} target="_blank" rel="noopener noreferrer" className="break-all text-teal-700 hover:text-teal-800">
-                  {patient.komo_reference.replace(/^https?:\/\/(www\.)?/i, "")} ↗
-                </a>
               ) : (
-                patient.komo_reference
-              )
-            ) : (
-              <span className="font-normal text-slate-400">Not set</span>
-            )}
-          </Field>
-        </div>
-      }
-      form={
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <Label>Confirmation date</Label>
-            <Input type="date" name="confirmation_date" defaultValue={patient.confirmation_date ?? ""} autoFocus />
+                <p className="py-2 text-sm font-semibold text-slate-700">
+                  {sellerName}
+                  <span className="ml-1.5 text-xs font-normal text-slate-400">only their seller or a coordinator can change it</span>
+                </p>
+              )}
+            </div>
+            <div>
+              <Label>Coordinator</Label>
+              <Select name="coordinator_id" defaultValue={patient.coordinator_id ?? ""} aria-label="Coordinator">
+                <option value="">None — the seller follows up</option>
+                {coordinatorChoices.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.id === currentUserId ? " (you)" : ""}
+                    {c.pickable ? "" : " (can no longer coordinate)"}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label>Confirmation date</Label>
+              <Input type="date" name="confirmation_date" defaultValue={patient.confirmation_date ?? ""} />
+            </div>
+            <div>
+              <Label>Komo reference</Label>
+              <Input name="komo_reference" defaultValue={patient.komo_reference ?? ""} placeholder="Lead link or ID" />
+            </div>
           </div>
-          <div>
-            <Label>Komo reference</Label>
-            <Input name="komo_reference" defaultValue={patient.komo_reference ?? ""} placeholder="Lead link or ID" />
-          </div>
-          <p className="text-xs text-slate-400 sm:col-span-2">Seller and coordinator are changed on the card itself, not here.</p>
-        </div>
-      }
-    />
-  );
-}
-
-/** The team member who follows this patient up. Anyone who can edit the patient can change it. */
-/** Only members who can edit patients are offered (the database checks the same); the
- * current coordinator stays shown even if they've since been deactivated. */
-function CoordinatorField({
-  patient,
-  coordinators,
-  currentUserId,
-}: {
-  patient: Patient;
-  coordinators: CoordinatorOption[];
-  currentUserId: string;
-}) {
-  const router = useRouter();
-  const { showToast } = useToast();
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(patient.coordinator_id ?? "");
-  const [pending, startTransition] = useTransition();
-  const canEdit = useCan("patients.edit");
-  const current = coordinators.find((c) => c.id === patient.coordinator_id);
-  const team = coordinators.filter((c) => c.pickable || c.id === patient.coordinator_id);
-
-  function save() {
-    if (value === (patient.coordinator_id ?? "")) return setEditing(false);
-    startTransition(async () => {
-      try {
-        await setPatientCoordinator(patient.id, value || null);
-        showToast("Coordinator saved ✓");
-        setEditing(false);
-        router.refresh();
-      } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to save coordinator", "error");
-      }
-    });
-  }
-
-  return (
-    <div className="flex flex-col gap-0.5 text-sm">
-      <span className="text-xs text-slate-500">Coordinator</span>
-      {editing ? (
-        <div className="flex flex-col gap-2">
-          <Select value={value} onChange={(e) => setValue(e.target.value)} disabled={pending} autoFocus aria-label="Coordinator">
-            <option value="">No coordinator — the seller follows up</option>
-            {team.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.id === currentUserId ? " (you)" : ""}
-                {c.pickable ? "" : " (can no longer coordinate)"}
-              </option>
-            ))}
-          </Select>
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={save} disabled={pending}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <span className="font-semibold">
-            {current ? current.name : patient.coordinator_id ? "Former member" : <span className="font-normal text-slate-400">None — the seller follows up</span>}
-          </span>
-          {canEdit && (
-          <button
-            type="button"
-            onClick={() => {
-              setValue(patient.coordinator_id ?? "");
-              setEditing(true);
-            }}
-            className="self-start text-xs font-semibold text-teal-700 hover:text-teal-800"
-          >
-            Change…
-          </button>
-          )}
-        </>
-      )}
+        }
+      />
     </div>
   );
 }

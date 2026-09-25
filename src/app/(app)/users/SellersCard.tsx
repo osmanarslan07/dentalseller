@@ -143,7 +143,7 @@ export function SellersCard({ rows, allSellers, currentUserId }: { rows: SellerR
                 {open === "merge" && (
                   <MergeForm
                     seller={seller}
-                    targets={pickableSellers(allSellers).filter((s) => s.id !== seller.id)}
+                    targets={pickableSellers(allSellers, null, true).filter((s) => s.id !== seller.id)}
                     currentUserId={currentUserId}
                     pending={pending}
                     onSubmit={(intoId, intoName) =>

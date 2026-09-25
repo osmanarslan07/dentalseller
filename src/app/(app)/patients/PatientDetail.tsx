@@ -16,7 +16,7 @@ import { ChevronIcon, KebabIcon, Menu } from "./detail/Menu";
 import { gbp, Pill } from "./detail/bits";
 import { currentVisitKey, forVisit, patientVisits, shortDate, transfersWithoutDriver, whatsappNumber } from "./detail/visits";
 import { VisitTab, visitStage } from "./detail/VisitTab";
-import { documentLinks, PatientInfoTab } from "./detail/PatientInfoTab";
+import { documentLinks, EDIT_SALE_EVENT, PatientInfoTab } from "./detail/PatientInfoTab";
 import { HistoryTab } from "./detail/HistoryTab";
 import { sellerLabel } from "@/lib/sellers";
 import { useCan } from "@/components/permissions";
@@ -284,7 +284,11 @@ export function PatientDetail({
                   hint: `${sellerName} now`,
                   onSelect: () => {
                     setTab("info");
-                    setTimeout(() => document.getElementById("reassign")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+                    // after the tab switch has rendered the Sale card: open it for editing, then show it
+                    setTimeout(() => {
+                      window.dispatchEvent(new Event(EDIT_SALE_EVENT));
+                      document.getElementById("reassign")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }, 50);
                   },
                 }] : []),
                 ...(canExport ? [{

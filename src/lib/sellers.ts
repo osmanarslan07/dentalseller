@@ -24,9 +24,11 @@ export function findSellerByName<T extends Pick<Seller, "name">>(sellers: T[], n
   return sellers.find((s) => (s.name ?? "").trim().replace(/\s+/g, " ").toLowerCase() === key);
 }
 
-/** Who shows up in a seller picker: active sellers, plus the current one even if inactive. */
-export function pickableSellers(sellers: Seller[], currentId?: string | null): Seller[] {
+/** Who shows up in a seller picker: active sellers, plus the current one even if inactive.
+ * Accounts that have never signed in (no name yet) are left out unless asked for — the
+ * "Link to account" merge wants them, since that's often how a new account gets its history. */
+export function pickableSellers(sellers: Seller[], currentId?: string | null, includeNotSignedIn = false): Seller[] {
   return sellers
-    .filter((s) => s.is_active || s.id === currentId)
+    .filter((s) => s.id === currentId || (s.is_active && (includeNotSignedIn || !!s.name?.trim())))
     .sort((a, b) => sellerLabel(a).localeCompare(sellerLabel(b)));
 }

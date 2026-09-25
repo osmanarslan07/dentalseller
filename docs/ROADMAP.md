@@ -697,7 +697,7 @@ To do:
 5. ☐ "Save as my default" on each page separately; reload → it comes back; open on the phone → same default; another user's view is unchanged; "Reset to All" works (and saving All clears the default).
 6. ☐ A seller **without** `earnings.all`: any filter combination never shows another seller's commission (Commission column shows only their own; dashboard has no money cards).
 7. ☐ New patient: Coordinator picker lists only people who can edit patients (not an accountant-only member); default is you when you enter the patient for someone else, "Nobody" when you are the seller; the choice is saved.
-8. ☐ Patient page → Coordinator → Change…: same list; a deactivated coordinator still shows on their existing patients.
+8. ☐ Patient page → Patient info → **Sale** card: one **Edit** opens seller, coordinator, confirmation date and Komo reference together; one **Save** saves them all (changing the seller asks first). No separate "Reassign…" / "Change…" buttons. The ⋯ menu's "Reassign seller…" opens this card in edit mode. The coordinator list is the same as on the new-patient form; a deactivated coordinator still shows on their existing patients. Someone who isn't the patient's seller and lacks `sellers.assign` sees the seller read-only.
 9. ☐ User page (someone who coordinates patients): "Move their patients to…" with and without "only patients with a visit still to come" → patients move; each patient's History shows the change; Activity shows the handover.
 10. ☐ Users page → Coordinators card: numbers match; clicking a number opens the patients list filtered to that coordinator; "without a coordinator" link works.
 11. ☐ Delete a coordinator with the handover option → only people who can coordinate are offered.

@@ -289,40 +289,61 @@ export async function getSellers(supabase: SupabaseClient): Promise<Seller[]> {
   return data as Seller[];
 }
 
-export interface TeamMember {
+export type AccountStatus = "active" | "invited" | "inactive";
+
+/** One login of the clinic, as the Users page shows it. */
+export interface ClinicAccount {
   id: string;
   displayName: string | null;
+  email: string | null;
+  phone: string | null;
   role: ProfileRole;
   roles: MemberRole[];
   isActive: boolean;
-  /** Only ever populated for an admin caller — sellers must never see a colleague's email,
-   * registered or still-invited. */
-  email: string | null;
+  /** Inactive: switched off. Invited: never signed in yet. */
+  status: AccountStatus;
+  /** The latest of the in-app heartbeat and the last sign-in; null = never. */
+  lastActiveAt: string | null;
+  createdAt: string;
+  clinicId: string | null;
+  avatarUpdatedAt: string | null;
 }
 
-/** Admin sees everyone (registered or still-invited, with email — the only way to tell who an
- * invited row even is, since `display_name` stays null until first login). A seller sees only
- * registered colleagues, names only, no invited/pending rows and never an email. */
-export async function getTeamMembers(profiles: Profile[], isAdmin: boolean): Promise<TeamMember[]> {
-  if (!isAdmin) {
-    return profiles
-      .filter((p) => p.display_name)
-      .map((p) => ({ id: p.id, displayName: p.display_name, role: p.role, roles: p.roles ?? [], isActive: p.is_active, email: null }));
-  }
-
+/** Every account of the viewer's clinic with its email, status and last activity. Only for
+ * callers who passed team.view: emails and sign-in times come from the auth service through
+ * the service role, looked up one by one for exactly the ids RLS already returned in
+ * `profiles` — never a platform-wide list. */
+export async function getClinicAccounts(profiles: Profile[]): Promise<ClinicAccount[]> {
+  if (profiles.length === 0) return [];
   const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.listUsers({ perPage: 200 });
-  if (error) throw error;
-  const emailById = new Map(data.users.map((u) => [u.id, u.email ?? null]));
+  const ids = profiles.map((p) => p.id);
+  const [users, { data: presence }] = await Promise.all([
+    Promise.all(ids.map((id) => admin.auth.admin.getUserById(id).then(({ data }) => data.user))),
+    admin.from("user_presence").select("user_id, last_seen_at").in("user_id", ids),
+  ]);
+  const seenById = new Map((presence ?? []).map((r) => [r.user_id as string, r.last_seen_at as string]));
 
-  return profiles.map((p) => ({
-    id: p.id,
-    displayName: p.display_name,
-    role: p.role,
-    roles: p.roles ?? [],
-    isActive: p.is_active,
-    email: emailById.get(p.id) ?? null,
-  }));
+  return profiles.map((p, i) => {
+    const user = users[i];
+    const lastSignIn = user?.last_sign_in_at ?? null;
+    const seen = seenById.get(p.id) ?? null;
+    const lastActiveAt =
+      [seen, lastSignIn].filter((d): d is string => !!d).sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1) ?? null;
+    return {
+      id: p.id,
+      displayName: p.display_name,
+      email: user?.email ?? null,
+      phone: p.phone ?? null,
+      role: p.role,
+      roles: p.roles ?? [],
+      isActive: p.is_active,
+      status: !p.is_active ? "inactive" : lastSignIn ? "active" : "invited",
+      lastActiveAt,
+      createdAt: p.created_at,
+      clinicId: p.clinic_id,
+      avatarUpdatedAt: p.avatar_updated_at ?? null,
+    };
+  });
 }
 
 /** Quotes and tasks are private per seller. RLS already returns only the caller's own —

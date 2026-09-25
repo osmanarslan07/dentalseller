@@ -45,11 +45,12 @@ function nextDay(date: string): string {
 export function activityQuery(supabase: SupabaseClient, clinicId: string, f: ActivityFilters) {
   let query = supabase
     .from("activity_log")
-    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support")
+    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support, former_actor_id")
     .eq("clinic_id", clinicId)
     .order("created_at", { ascending: false });
   if (f.actor === SUPPORT_ACTOR) query = query.eq("via_support", true);
-  else if (f.actor) query = query.eq("actor_id", f.actor).eq("via_support", false);
+  // a deleted account's entries carry its id in former_actor_id (f.actor is a checked uuid)
+  else if (f.actor) query = query.or(`actor_id.eq.${f.actor},former_actor_id.eq.${f.actor}`).eq("via_support", false);
   if (f.category) query = query.in("action", ACTIVITY_CATEGORY_ACTIONS[f.category]);
   if (f.patient) query = query.eq("target_type", "patient").eq("target_id", f.patient);
   if (f.from) query = query.gte("created_at", `${f.from}T00:00:00`);

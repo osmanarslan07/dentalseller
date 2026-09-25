@@ -3957,3 +3957,71 @@ grant execute on function public.delete_clinic_role(text) to authenticated;
 --   alter table public.profiles enable trigger profiles_guard_privilege;
 --
 -- =====================================================================
+
+-- =====================================================================
+-- PROFILES & USERS (roadmap step J). Idempotent/safe to re-run.
+-- =====================================================================
+
+-- ---------- phone: international format, used for WhatsApp in step M ----------
+-- Same format as normalizePhone() in src/lib/phone.ts. Unique within a clinic so an
+-- incoming WhatsApp number maps to exactly one person.
+alter table public.profiles add column if not exists phone text;
+alter table public.profiles drop constraint if exists profiles_phone_format;
+alter table public.profiles add constraint profiles_phone_format
+  check (phone is null or phone ~ '^\+[1-9][0-9]{6,14}$');
+create unique index if not exists profiles_clinic_phone_key
+  on public.profiles (clinic_id, phone) where phone is not null;
+
+-- ---------- photo ----------
+-- Null = no photo. The file always lives at avatars/{clinic_id}/{user_id}, so a profile can't
+-- point at anyone else's file; the timestamp only busts browser caches after a change.
+alter table public.profiles add column if not exists avatar_updated_at timestamptz;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('avatars', 'avatars', false, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+-- read: active members, inside their own clinic's folder
+drop policy if exists "avatars_objects_select" on storage.objects;
+create policy "avatars_objects_select" on storage.objects
+  for select using (
+    bucket_id = 'avatars'
+    and public.is_active_profile(auth.uid())
+    and (storage.foldername(name))[1] = public.my_clinic_id()::text
+  );
+
+-- write: only your own file
+drop policy if exists "avatars_objects_insert" on storage.objects;
+create policy "avatars_objects_insert" on storage.objects
+  for insert with check (
+    bucket_id = 'avatars'
+    and public.is_active_profile(auth.uid())
+    and name = public.my_clinic_id()::text || '/' || auth.uid()::text
+  );
+
+drop policy if exists "avatars_objects_update" on storage.objects;
+create policy "avatars_objects_update" on storage.objects
+  for update using (
+    bucket_id = 'avatars'
+    and public.is_active_profile(auth.uid())
+    and name = public.my_clinic_id()::text || '/' || auth.uid()::text
+  )
+  with check (
+    bucket_id = 'avatars'
+    and name = public.my_clinic_id()::text || '/' || auth.uid()::text
+  );
+
+drop policy if exists "avatars_objects_delete" on storage.objects;
+create policy "avatars_objects_delete" on storage.objects
+  for delete using (
+    bucket_id = 'avatars'
+    and public.is_active_profile(auth.uid())
+    and name = public.my_clinic_id()::text || '/' || auth.uid()::text
+  );
+
+-- ---------- a deleted account stays recognisable in the activity history ----------
+-- actor_id is cleared when the login is deleted (on delete set null); the app copies it here
+-- first. No foreign key on purpose: it outlives the account, and the same id is the deleted
+-- account's surviving seller record, which still carries their name.
+alter table public.activity_log add column if not exists former_actor_id uuid;

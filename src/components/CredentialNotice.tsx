@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
-/** One-time temp-password handoff, same wording as the clinic-level TeamCard. */
+/** One-time temp-password handoff, shared by the Users page and the platform area. */
 export function CredentialNotice({ title, email, tempPassword }: { title: string; email: string; tempPassword: string }) {
   const { showToast } = useToast();
 

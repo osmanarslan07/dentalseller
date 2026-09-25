@@ -1,9 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { CommissionSettings, Permission } from "@/types";
-import type { ClinicRole } from "@/lib/roles";
-import { PermissionSummary } from "@/components/PermissionSummary";
 import { usePermissions } from "@/components/permissions";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { PrivacyToggleButton, usePrivacy } from "@/components/privacy";
@@ -12,8 +11,6 @@ import { DashboardCardId, EARNINGS_CARD_IDS, OPERATIONAL_CARD_IDS } from "@/lib/
 import { DashboardCardsPicker } from "@/components/DashboardCardsPicker";
 import { ExchangeRatePoint } from "@/lib/data";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
-import { ClinicModule } from "@/types";
-import { AccountCard } from "./AccountCard";
 import { TelegramCard } from "./TelegramCard";
 import { saveDashboardCards, saveSettings } from "./actions";
 
@@ -24,7 +21,7 @@ type TabId = "account" | "commission" | "cards";
 /** My settings: what is personal to whoever is signed in. Clinic-wide settings live under
  * Clinic settings (/settings/clinic). Each tab with what it takes to see it (null: everyone). */
 const TABS: { id: TabId; label: string; needs: Permission[] | null }[] = [
-  { id: "account", label: "Account", needs: null },
+  { id: "account", label: "General", needs: null },
   { id: "commission", label: "Commission & currency", needs: ["earnings.own"] },
   { id: "cards", label: "Cards", needs: ["earnings.own"] },
 ];
@@ -32,26 +29,14 @@ const TABS: { id: TabId; label: string; needs: Permission[] | null }[] = [
 export function MySettingsClient({
   settings,
   rateHistory,
-  currentUserEmail,
-  currentDisplayName,
   telegramConnected,
   initialTab,
-  roles,
-  myRoles,
-  modules,
 }: {
   settings: CommissionSettings;
   rateHistory: ExchangeRatePoint[];
-  currentUserEmail: string;
-  currentDisplayName: string;
   telegramConnected: boolean;
   /** From ?tab= — which of My settings' tabs opens first. */
   initialTab?: string;
-  /** The clinic's roles, to name the viewer's own ("What I can do"). */
-  roles: ClinicRole[];
-  /** The viewer's own roles. */
-  myRoles: string[];
-  modules: ClinicModule[];
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +111,7 @@ export function MySettingsClient({
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">My settings</h1>
-        <p className="mt-1 text-sm text-slate-500">Your account, commission and what you see on your screen.</p>
+        <p className="mt-1 text-sm text-slate-500">Your commission and what you see on your screen. Name, email, phone and password are on <Link href="/profile" className="font-medium text-teal-700 hover:underline">My profile</Link>.</p>
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
@@ -148,19 +133,6 @@ export function MySettingsClient({
 
       {activeTab === "account" && (
         <div className="space-y-6">
-          <AccountCard email={currentUserEmail} displayName={currentDisplayName} />
-
-          <Card className="p-6">
-            <h2 className="mb-1 text-base font-semibold text-slate-900">What I can do</h2>
-            <p className="mb-4 text-sm text-slate-500">
-              {myRoles.length > 0
-                ? `Your roles: ${myRoles.map((key) => roles.find((r) => r.key === key)?.name ?? "Custom role").join(", ")}.`
-                : "You have no roles in this clinic."}{" "}
-              Ask an admin if you need something that isn&apos;t here.
-            </p>
-            <PermissionSummary permissions={permissions} modules={modules} />
-          </Card>
-
           <TelegramCard connected={telegramConnected} />
 
           {(has("earnings.own") || has("earnings.all")) && (

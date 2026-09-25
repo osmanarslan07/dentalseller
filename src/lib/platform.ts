@@ -790,7 +790,7 @@ export async function getMaskedClinicActivity(
   const admin = createAdminClient();
   let query = admin
     .from("activity_log")
-    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support")
+    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support, former_actor_id")
     .eq("clinic_id", clinicId)
     .order("created_at", { ascending: false })
     .range((f.page - 1) * ACTIVITY_PAGE_SIZE, f.page * ACTIVITY_PAGE_SIZE);

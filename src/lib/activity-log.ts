@@ -52,6 +52,21 @@ export interface ActivityLogRow {
   created_at: string;
   /** Done by DentalSeller support (a superadmin in support mode) — set by the database. */
   via_support?: boolean;
+  /** The account that did it, kept when that account was deleted (actor_id is then null). */
+  former_actor_id?: string | null;
+}
+
+/** Who did it, as the history shows it. A deleted account keeps its id (former_actor_id) and,
+ * through its surviving seller record, usually its name. */
+export function activityActorName(entry: ActivityLogRow, nameById: Map<string, string>): string {
+  if (entry.via_support) return "DentalSeller support";
+  if (entry.actor_id) return nameById.get(entry.actor_id) || "Someone";
+  if (entry.former_actor_id) {
+    const ref = `deleted user #${entry.former_actor_id.slice(0, 6)}`;
+    const name = nameById.get(entry.former_actor_id);
+    return name ? `${name} (${ref})` : ref.charAt(0).toUpperCase() + ref.slice(1);
+  }
+  return "Someone";
 }
 
 /** Shared between the team page's full activity feed and a single patient's History tab —
@@ -62,7 +77,7 @@ export function describeActivity(
   nameById: Map<string, string>,
   patientNameById: Map<string, string>
 ): string {
-  const actor = entry.via_support ? "DentalSeller support" : (entry.actor_id && nameById.get(entry.actor_id)) || "Someone";
+  const actor = activityActorName(entry, nameById);
   const target = (entry.target_id && nameById.get(entry.target_id)) || "a seller";
 
   switch (entry.action) {
@@ -253,6 +268,16 @@ export function describeActivity(
       return `${actor} changed their display name${entry.detail ? ` (${entry.detail})` : ""}`;
     case "password_changed":
       return `${actor} changed their password`;
+    case "phone_updated":
+      return `${actor} changed their phone${entry.detail ? ` (${entry.detail})` : ""}`;
+    case "email_changed":
+      return `${actor} changed their sign-in email${entry.detail ? ` (${entry.detail})` : ""}`;
+    case "avatar_updated":
+      return `${actor} changed their photo`;
+    case "avatar_removed":
+      return `${actor} removed their photo`;
+    case "member_profile_updated":
+      return `${actor} changed ${target}'s details${entry.detail ? ` (${entry.detail})` : ""}`;
     case "telegram_link_generated":
       return `${actor} generated a Telegram link code`;
     case "telegram_group_chat_updated":

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button, Card, Input, Label } from "@/components/ui";
 import { createClinic, CreateClinicResult } from "../../actions";
-import { CredentialNotice } from "../../CredentialNotice";
+import { CredentialNotice } from "@/components/CredentialNotice";
 
 function slugify(name: string): string {
   return name

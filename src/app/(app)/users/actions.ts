@@ -10,6 +10,16 @@ import { assertSeatAvailable } from "@/lib/seats";
 import { assertViewerCanWrite } from "@/lib/viewer";
 import { MEMBER_ROLES, MemberRole, roleLabel } from "@/types";
 import { requirePermission } from "@/lib/permissions";
+import { normalizePhone } from "@/lib/phone";
+
+/** Long enough to mean "until someone reactivates them". */
+const BAN_FOREVER = "876000h";
+
+function revalidateTeamPages() {
+  revalidatePath("/users", "layout");
+  revalidatePath("/settings", "layout");
+  revalidatePath("/sales-performance");
+}
 
 function generateTempPassword(): string {
   return randomBytes(12).toString("base64url");
@@ -87,16 +97,22 @@ export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sal
 
   await logActivity(supabase, user.actorId, "seller_added", "profile", null, `${email} (${rolesText(roles, custom)})`);
 
-  revalidatePath("/settings", "layout");
-  revalidatePath("/sales-performance");
+  revalidateTeamPages();
   return { email, tempPassword };
 }
 
-/** Admin-only — enforced both here and by the profiles_guard_privilege DB trigger. */
+/** team.manage — enforced both here and by the profiles_guard_privilege DB trigger (which also
+ * keeps a clinic's last active admin). A deactivated account is also blocked at the login:
+ * it can't sign in or refresh an open session, and the little that is left of an open one
+ * (at most an hour) finds every record closed by RLS and the app showing "deactivated". Their
+ * patients, seller record and commission history stay as they are. */
 export async function setSellerActive(sellerId: string, active: boolean): Promise<void> {
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
   if (sellerId === user.id) throw new Error("You can't deactivate your own account");
+  // the login block below uses the service role
+  await assertAdminOfSameClinic(supabase, user.id, sellerId);
+  assertViewerCanWrite(user.viewer);
 
   // Reactivating takes a seat back; RLS already confines this to the caller's own clinic.
   if (active) {
@@ -107,10 +123,16 @@ export async function setSellerActive(sellerId: string, active: boolean): Promis
   const { error } = await supabase.from("profiles").update({ is_active: active }).eq("id", sellerId);
   if (error) throw new Error(error.message);
 
+  const { error: banError } = await createAdminClient().auth.admin.updateUserById(sellerId, {
+    ban_duration: active ? "none" : BAN_FOREVER,
+  });
+  if (banError) {
+    throw new Error(`Saved, but ${active ? "unblocking" : "blocking"} their sign-in failed: ${banError.message}. Try again.`);
+  }
+
   await logActivity(supabase, user.actorId, active ? "seller_activated" : "seller_deactivated", "profile", sellerId);
 
-  revalidatePath("/settings", "layout");
-  revalidatePath("/sales-performance");
+  revalidateTeamPages();
 }
 
 /** team.manage — enforced both here and by the profiles_guard_privilege DB trigger, which also
@@ -137,22 +159,55 @@ export async function setMemberRoles(memberId: string, rawRoles: MemberRole[]): 
     `${rolesText(before.roles ?? [], custom) || "none"} → ${rolesText(roles, custom)}`
   );
 
-  revalidatePath("/settings", "layout");
-  revalidatePath("/sales-performance");
+  revalidateTeamPages();
 }
 
-/** For the two actions below that use the service-role client, which bypasses RLS (the caller's
- * team.manage / team.delete is checked by requirePermission first): this JS
- * check is the only thing keeping a clinic admin to their own clinic's accounts. The target
- * must share the caller's clinic; any mismatch (another clinic, a superadmin, no such id)
- * reads as "not found", so ids from other clinics can't even be probed for existence. */
-async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: string, targetId: string): Promise<void> {
+/** team.manage: a member's name and phone, e.g. entered by the admin for someone who rarely
+ * signs in. RLS (profiles_update_self_or_admin) confines it to the caller's clinic. Your own
+ * details are changed on My profile. */
+export async function updateMemberProfile(memberId: string, rawName: string, rawPhone: string): Promise<void> {
+  const supabase = await createClient();
+  const user = await requirePermission("team.manage");
+  if (memberId === user.id) throw new Error("Change your own details on My profile");
+  const name = rawName.trim();
+  if (name.length > 60) throw new Error("Name must be 60 characters or fewer");
+  const phone = normalizePhone(rawPhone);
+
+  const { data: before } = await supabase.from("profiles").select("display_name, phone").eq("id", memberId).maybeSingle();
+  if (!before) throw new Error("Team member not found");
+  // an invited member keeps an empty name until they choose one at first sign-in
+  const displayName = name || before.display_name;
+  if (before.display_name && !name) throw new Error("Please enter a name");
+
+  const { error } = await supabase.from("profiles").update({ display_name: displayName, phone }).eq("id", memberId);
+  if (error) {
+    if (error.code === "23505") throw new Error("Someone else in this clinic already has that phone number");
+    throw new Error(error.message);
+  }
+
+  const changes: string[] = [];
+  if ((before.display_name ?? "") !== (displayName ?? "")) changes.push(`name: ${before.display_name || "—"} → ${displayName}`);
+  if ((before.phone ?? null) !== phone) changes.push(`phone: ${before.phone || "—"} → ${phone || "—"}`);
+  if (changes.length > 0) {
+    await logActivity(supabase, user.actorId, "member_profile_updated", "profile", memberId, changes.join("; "));
+  }
+
+  revalidateTeamPages();
+}
+
+/** For the actions here that use the service-role client, which bypasses RLS (the caller's
+ * team.manage / team.delete is checked by requirePermission first): this JS check is the only
+ * thing keeping a clinic admin to their own clinic's accounts. The target must share the
+ * caller's clinic; any mismatch (another clinic, a superadmin, no such id) reads as "not
+ * found", so ids from other clinics can't even be probed for existence. Returns the clinic. */
+async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: string, targetId: string): Promise<string> {
   const { data: me } = await supabase.from("profiles").select("clinic_id").eq("id", callerId).maybeSingle();
   if (!me?.clinic_id) throw new Error("Admin only");
 
   const admin = createAdminClient();
   const { data: target } = await admin.from("profiles").select("clinic_id").eq("id", targetId).maybeSingle();
   if (!target || target.clinic_id !== me.clinic_id) throw new Error("Seller not found");
+  return me.clinic_id as string;
 }
 
 /** Admin-only. Uses the service-role client (auth.admin.* isn't exposed to RLS-scoped
@@ -161,7 +216,7 @@ async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: strin
 export async function adminResetPassword(sellerId: string): Promise<AddSellerResult> {
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
-  if (sellerId === user.id) throw new Error("Use 'Change password' in Your account instead");
+  if (sellerId === user.id) throw new Error("Change your own password on My profile");
 
   await assertAdminOfSameClinic(supabase, user.id, sellerId);
   assertViewerCanWrite(user.viewer);
@@ -183,20 +238,45 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
 }
 
 /** team.delete. Permanently deletes the auth user (and, via FK cascade, their profile row).
- * Their patients stay theirs: patients point at the seller record, which just loses its login
- * and carries on as a seller without an account (commission history intact). Quotes, tasks and
- * the extra visits they created FK-cascade straight off `auth.users`, so those are handed to
- * the admin doing the deletion first, via the service-role client (quotes/tasks RLS is
- * strictly own-row-only, with no admin carve-out, so the RLS-scoped client can't do this). */
-export async function deleteSeller(sellerId: string): Promise<void> {
+ * - Patients they sell stay theirs: patients point at the seller record, which just loses its
+ *   login and carries on as a seller without an account (commission history intact).
+ * - Patients they coordinate would lose their coordinator (FK set null) unless handed to
+ *   another active member of the clinic here.
+ * - Quotes, tasks and the extra visits they created FK-cascade straight off `auth.users`, so
+ *   those are handed to the admin doing the deletion first, via the service-role client
+ *   (quotes/tasks RLS is strictly own-row-only, with no admin carve-out).
+ * - Their activity history keeps their id in former_actor_id (actor_id is cleared by the FK),
+ *   which still names them through the surviving seller record.
+ * - Sessions: the login is gone, so an open session can't be refreshed, and RLS finds no
+ *   active profile behind what is left of it. */
+export async function deleteSeller(sellerId: string, coordinatorHandoverTo: string | null = null): Promise<void> {
   const supabase = await createClient();
   const user = await requirePermission("team.delete");
   if (sellerId === user.id) throw new Error("You can't delete your own account");
 
-  await assertAdminOfSameClinic(supabase, user.id, sellerId);
+  const clinicId = await assertAdminOfSameClinic(supabase, user.id, sellerId);
   assertViewerCanWrite(user.viewer);
 
   const admin = createAdminClient();
+  const [{ data: target }, { data: otherAdmins }] = await Promise.all([
+    admin.from("profiles").select("role, is_active").eq("id", sellerId).maybeSingle(),
+    admin.from("profiles").select("id").eq("clinic_id", clinicId).eq("role", "admin").eq("is_active", true).neq("id", sellerId).limit(1),
+  ]);
+  // the database guards this for updates only; a delete has to check it here
+  if (target?.role === "admin" && target.is_active && (otherAdmins ?? []).length === 0) {
+    throw new Error("A clinic needs at least one active admin");
+  }
+
+  if (coordinatorHandoverTo) {
+    if (coordinatorHandoverTo === sellerId) throw new Error("Pick someone else to take over their patients");
+    const { data: heir } = await admin
+      .from("profiles")
+      .select("clinic_id, is_active")
+      .eq("id", coordinatorHandoverTo)
+      .maybeSingle();
+    if (!heir || heir.clinic_id !== clinicId || !heir.is_active) throw new Error("That team member can't take over their patients");
+  }
+
   const {
     data: { user: targetUser },
   } = await admin.auth.admin.getUserById(sellerId);
@@ -207,27 +287,44 @@ export async function deleteSeller(sellerId: string): Promise<void> {
     await admin.from("sellers").update({ name: targetUser.email.split("@")[0] }).eq("id", sellerId);
   }
 
-  const [{ count: patientCount }, { count: quoteCount }, { count: taskCount }] = await Promise.all([
+  const [{ count: patientCount }, { count: quoteCount }, { count: taskCount }, { count: coordinatedCount }] = await Promise.all([
     admin.from("patients").select("id", { count: "exact", head: true }).eq("responsible_seller_id", sellerId),
     admin.from("quotes").update({ user_id: user.id }, { count: "exact" }).eq("user_id", sellerId),
     admin.from("tasks").update({ user_id: user.id }, { count: "exact" }).eq("user_id", sellerId),
+    coordinatorHandoverTo
+      ? admin
+          .from("patients")
+          .update({ coordinator_id: coordinatorHandoverTo }, { count: "exact" })
+          .eq("clinic_id", clinicId)
+          .eq("coordinator_id", sellerId)
+      : admin.from("patients").select("id", { count: "exact", head: true }).eq("coordinator_id", sellerId),
   ]);
   await admin.from("patient_visits").update({ created_by_seller_id: user.id }).eq("created_by_seller_id", sellerId);
+  const { error: historyError } = await admin
+    .from("activity_log")
+    .update({ former_actor_id: sellerId })
+    .eq("clinic_id", clinicId)
+    .eq("actor_id", sellerId);
+  if (historyError) throw new Error(historyError.message);
 
   const { error } = await admin.auth.admin.deleteUser(sellerId);
   if (error) throw new Error(error.message);
 
+  const coordinated = coordinatedCount
+    ? coordinatorHandoverTo
+      ? `; moved ${coordinatedCount} coordinated patient(s) to another member`
+      : `; ${coordinatedCount} coordinated patient(s) left without a coordinator`
+    : "";
   await logActivity(
     supabase,
     user.actorId,
     "seller_deleted",
     "profile",
-    null,
-    `${targetUser?.email ?? sellerId} — kept ${patientCount ?? 0} patient(s) as a seller without an account; reassigned ${quoteCount ?? 0} quote(s), ${taskCount ?? 0} task(s) to self`
+    sellerId,
+    `${targetUser?.email ?? sellerId} — kept ${patientCount ?? 0} patient(s) as a seller without an account; reassigned ${quoteCount ?? 0} quote(s), ${taskCount ?? 0} task(s) to self${coordinated}`
   );
 
-  revalidatePath("/settings", "layout");
-  revalidatePath("/sales-performance");
+  revalidateTeamPages();
   revalidatePath("/patients");
   revalidatePath("/quotes");
   revalidatePath("/tasks");

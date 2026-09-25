@@ -61,7 +61,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: [
       { key: "quotes.use", label: "Make and send quotes", module: "sales" },
       { key: "earnings.own", label: "See their own commission", module: "sales" },
-      { key: "earnings.all", label: "See every seller's earnings (Team page)", module: "sales" },
+      { key: "earnings.all", label: "See every seller's earnings (Sales performance)", module: "sales" },
     ],
   },
   {

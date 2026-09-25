@@ -14,6 +14,10 @@ export async function login(_prevState: AuthState, formData: FormData): Promise<
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
+  // a deactivated member's login is banned (see setSellerActive)
+  if (error?.code === "user_banned" || /banned/i.test(error?.message ?? "")) {
+    return { error: "This account has been deactivated. Ask your clinic admin." };
+  }
   if (error) return { error: error.message };
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).maybeSingle();

@@ -535,7 +535,7 @@ To do:
 - ✅ Settings search (static index of section + setting names)
 - ☐ Test checklist
 
-### Step J — Users, profiles, sales performance, activity ◐ (Sales performance + Activity built; My profile + Users pending)
+### Step J — Users, profiles, sales performance, activity ✅ (built on branch `step-j-users`, awaiting your check)
 
 **My profile** (every user, from the profile menu)
 - Name, email (change with confirmation), **phone number** (international format — used for
@@ -559,12 +559,64 @@ To do:
 - Filters live in the URL (shareable), paging instead of a fixed limit, export to CSV.
 - A user's page and a patient's History tab reuse the same feed, pre-filtered.
 
+**Decided while building My profile + Users (2026-09-25)**
+- **Email change** is confirmed with the current password and applies at once (the app sends
+  no email yet). Switch to Supabase's two-link email confirmation once custom SMTP is set up.
+- **Sellers without an account** live on Users → "Sellers without an account" (`sellers.manage`);
+  the Clinic settings section "Sales & commission" is gone (`/settings/clinic/sales` →
+  `/users?tab=sellers`, `/settings/clinic/users` → `/users`).
+- **Deleted users stay recognisable** in the history: their entries keep the id in
+  `activity_log.former_actor_id` and show as "Leo (deleted user #1a2b3c)"; the Activity person
+  filter still finds them.
+- **Status** needs no column: inactive = switched off, invited = never signed in, otherwise
+  active. **Last active** = latest of the app heartbeat (`user_presence`) and the last sign-in.
+- **Deactivate** also blocks the login (Supabase ban): no new sign-in, no session refresh; an
+  open session shows "Your account has been deactivated". Patients, seller record and
+  commission stay. Reactivate lifts the ban. (Accounts deactivated before this change aren't
+  banned yet — they get the same screen, and deactivating/reactivating once applies it.)
+- **Delete**: patients they sold stay with their seller record (now without an account);
+  patients they coordinate can be handed to another active member in the delete dialog
+  (otherwise they get no coordinator); quotes/tasks go to whoever deletes; the last active admin
+  can't be deleted; typing DELETE confirms.
+- **Photo**: private bucket `avatars`, one fixed file per person (`{clinic}/{user}`), shrunk to
+  256 px in the browser; only clinic members can see it, only the owner can change it.
+- Team managers can edit a member's name and phone on their page (e.g. for someone who rarely
+  signs in). Nobody changes their own roles, deactivates or deletes themselves.
+
+SQL (applied 2026-09-25): `profiles.phone` (+ format check, unique per clinic),
+`profiles.avatar_updated_at`, bucket `avatars` + 4 storage policies,
+`activity_log.former_actor_id`. No change to existing policies or triggers.
+
 To do:
-- ☐ Profile page (+ phone, stored in international format)
-- ☐ Users list + user detail page; move add/deactivate/delete/reset here
+- ✅ Profile page (`/profile`): name, photo, sign-in email, phone (international format), password, my roles, "What I can do"
+- ✅ Users list (`/users`: search, role and status filters, sellers-without-account tab) + user page (`/users/<id>`: details, roles, reset / deactivate / delete, recent activity, patients as seller and coordinator); Users section removed from Clinic settings; menu points at the new pages
 - ✅ Sales performance page (`/sales-performance`, from Team); `/team` redirects
 - ✅ Activity page: filters (person, category, patient, dates, support, text), URL state, paging, CSV export (`/activity/export`, max 5000 rows). `queryActivity`-style helper: `src/lib/activity-filters.ts` — reuse it for a user's page and a patient's History
-- ☐ Test checklist
+- ✅ Type-check + lint
+- ☐ Test checklist (below)
+
+**Test checklist — step J (My profile + Users)**
+1. ☐ Avatar menu → My profile opens `/profile` (desktop and the phone "More" sheet); the page title says "My profile".
+2. ☐ My profile: change your name → it shows in the top bar and on Users.
+3. ☐ Photo: add one from the phone camera and one from a desktop file → shows in the top bar, on Users and on your user page; Remove takes it away.
+4. ☐ Phone: "07700 900123" is refused (no country code); "+44 7700 900123" saves as +447700900123; the same number on a second person is refused.
+5. ☐ Email: a wrong current password is refused; with the right one the email changes, you can sign out and sign in with the new address (not the old).
+6. ☐ Password change still works (wrong current password refused).
+7. ☐ My roles and "What I can do" show on My profile; My settings no longer has the account card.
+8. ☐ Users (admin): table shows everyone with email, phone, roles, status and last active; search by name / email / phone; filter by role and by status (Invited = never signed in).
+9. ☐ Add user → temporary password shown once; the new row shows as Invited.
+10. ☐ User page: role tick-buttons change roles (admin asks first); you can't change your own roles; "What can they do?" lists their permissions.
+11. ☐ Edit a member's name and phone on their page; the change is in Activity.
+12. ☐ Reset password → temporary password shown; they can sign in with it.
+13. ☐ Deactivate a test user who is signed in on another browser → on their next page load they see "Your account has been deactivated"; signing in again says the account is deactivated. Their patients still show them as seller. Reactivate → they can sign in again.
+14. ☐ Delete a test user who coordinates a patient, handing their patients to someone → the patient shows the new coordinator; patients they sold keep them as seller (without account); their quotes/tasks are yours; Activity shows their old entries as "Name (deleted user #……)".
+15. ☐ Deleting the only active admin is refused; you can't delete or deactivate yourself.
+16. ☐ Recent activity on a user page = Activity filtered by that person ("All activity →" opens it pre-filtered).
+17. ☐ Patients as seller / as coordinator lists match the Patients page.
+18. ☐ Permissions: a role with `team.view` only sees Users read-only (no Add, no buttons); without `team.view` but with `sellers.manage` only the sellers tab; with neither, no Users menu entry and `/users` goes home; without `activity.view` no activity on user pages; without `patients.view` no patient lists.
+19. ☐ Old links: `/settings/clinic/users` → Users; `/settings/clinic/sales` → sellers tab; `/settings?tab=clinic` → Clinic settings; Clinic settings no longer lists Users or Sales & commission.
+20. ☐ Another clinic's user id in `/users/<id>` → not found.
+21. ☐ Support mode: Users and My profile are read-only (My profile shows the viewed-as member).
 
 ### Step K — Coordinators you can see, and seller / coordinator filters with saved defaults ☐ (noted 2026-09-25)
 

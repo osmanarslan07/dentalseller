@@ -6,7 +6,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { logout } from "@/lib/auth-actions";
 import { Permission } from "@/types";
 import { PIN_COOKIE } from "@/lib/nav-pin";
-import { CLINIC_SECTIONS, clinicSectionHref } from "@/app/(app)/settings/clinic/sections";
+import { CLINIC_SECTIONS } from "@/app/(app)/settings/clinic/sections";
+import { Avatar, initials } from "@/components/Avatar";
 
 function HomeIcon({ className = "" }: { className?: string }) {
   return (
@@ -196,11 +197,8 @@ type Item = {
 };
 
 const CLINIC_SETTINGS_HREF = "/settings/clinic";
-const USERS_HREF = clinicSectionHref("users");
 
-/** The menu, by group. A group with nothing the viewer may see is left out. Sales
- * performance and Users point at the pages that hold that content until step J gives them
- * their own. */
+/** The menu, by group. A group with nothing the viewer may see is left out. */
 const GROUPS: { label: string; items: Item[] }[] = [
   {
     label: "Work",
@@ -227,14 +225,14 @@ const GROUPS: { label: string; items: Item[] }[] = [
   {
     label: "Admin",
     items: [
-      { href: USERS_HREF, label: "Users", icon: TeamIcon, needs: ["team.view", "team.manage"] },
+      // the Users page also holds the sellers without an account
+      { href: "/users", label: "Users", icon: TeamIcon, needs: ["team.view", "team.manage", "sellers.manage"] },
       { href: "/activity", label: "Activity", icon: ActivityIcon, needs: ["activity.view"] },
       {
         href: CLINIC_SETTINGS_HREF,
         label: "Clinic settings",
         icon: SettingsIcon,
-        // every section but the temporary Users one, which has its own entry above
-        needs: CLINIC_SECTIONS.filter((sec) => sec.id !== "users").flatMap((sec) => sec.needs),
+        needs: CLINIC_SECTIONS.flatMap((sec) => sec.needs),
       },
     ],
   },
@@ -244,23 +242,13 @@ const GROUPS: { label: string; items: Item[] }[] = [
 const MOBILE_BAR = ["/", "/patients", "/transfers", "/tasks"];
 const MOBILE_BAR_SIZE = MOBILE_BAR.length;
 
-const MY_PROFILE_HREF = "/settings";
+const MY_PROFILE_HREF = "/profile";
 const FOLD_DELAY_MS = 1000;
 const OPEN_DELAY_MS = 120;
 
-/** A page is active on its own path and on anything under it (/patients/123 → Patients).
- * Clinic settings covers every settings section except Users, which has its own entry. */
+/** A page is active on its own path and on anything under it (/patients/123 → Patients). */
 function isActive(pathname: string, href: string): boolean {
-  if (href === CLINIC_SETTINGS_HREF) {
-    return pathname.startsWith(CLINIC_SETTINGS_HREF) && !pathname.startsWith(USERS_HREF);
-  }
   return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
-}
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  return (words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[1][0]).toUpperCase();
 }
 
 function CountPill({ n, tone, className = "" }: { n: number; tone: "warn" | "info"; className?: string }) {
@@ -287,6 +275,7 @@ function BadgeDot({ tone, className = "" }: { tone: "warn" | "info"; className?:
 export function AppShell({
   email,
   displayName,
+  avatarUrl,
   permissions,
   userId,
   clinicName,
@@ -298,6 +287,7 @@ export function AppShell({
 }: {
   email: string;
   displayName: string;
+  avatarUrl: string | null;
   permissions: Permission[];
   userId: string;
   clinicName: string;
@@ -345,7 +335,7 @@ export function AppShell({
   const moreActive = moreGroups.some((g) => g.items.some((i) => isActive(pathname, i.href)));
 
   const activeItem = allItems.find((i) => isActive(pathname, i.href));
-  const pageTitle = activeItem?.label ?? (pathname === "/settings" ? "My settings" : pathname.startsWith("/settings") ? "Settings" : "");
+  const pageTitle = activeItem?.label ?? (pathname === "/settings" ? "My settings" : pathname === "/profile" ? "My profile" : pathname.startsWith("/settings") ? "Settings" : "");
 
   const badgeOf = (item: Item): { n: number; tone: "warn" | "info" } | null => {
     if (item.badge === "tasks" && badges.tasks > 0) return { n: badges.tasks, tone: "warn" };
@@ -448,11 +438,7 @@ export function AppShell({
     </span>
   );
 
-  const avatar = (
-    <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-amber-500 text-xs font-bold text-white">
-      {initials(displayName || email)}
-    </span>
-  );
+  const avatar = <Avatar name={displayName || email} url={avatarUrl} />;
 
   return (
     <>

@@ -20,6 +20,8 @@ import { hasAcceptedCurrentTerms } from "@/lib/terms-status";
 import { getViewer } from "@/lib/viewer";
 import { SupportBar } from "@/components/SupportBar";
 import { PermissionsProvider } from "@/components/permissions";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { signedAvatarUrls } from "@/lib/avatars";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -35,6 +37,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // A superadmin only enters a clinic through an open support session (with two-factor
     // done); otherwise this shell is meaningless for them.
     if (profile?.role === "superadmin") redirect("/platform");
+    // RLS hides a deactivated member's own row too, so ask the service role why there's none
+    if (!profile) {
+      const { data: own } = await createAdminClient().from("profiles").select("is_active, clinic_id").eq("id", user.id).maybeSingle();
+      if (own?.clinic_id && !own.is_active) return <AccountDeactivated />;
+    }
     if (!profile?.display_name) redirect("/welcome");
     return <AccountNotReady />;
   }
@@ -56,7 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }
   }
 
-  const [settings, announcements, clinicConfig, badges, cookieStore] = await Promise.all([
+  const [settings, announcements, clinicConfig, badges, cookieStore, avatarUrl] = await Promise.all([
     getSettings(supabase, viewer.userId),
     getLiveAnnouncements(supabase),
     getClinicConfig(supabase),
@@ -66,6 +73,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       todayIsoLocal()
     ),
     cookies(),
+    getMyAvatarUrl(supabase, viewer.userId),
   ]);
   const menuPinned = cookieStore.get(`${PIN_COOKIE}_${viewer.authUserId}`)?.value === "1";
   const tryRate =
@@ -81,6 +89,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <AppShell
               email={viewer.email}
               displayName={viewer.displayName ?? ""}
+              avatarUrl={avatarUrl}
               permissions={viewer.permissions}
               userId={viewer.authUserId}
               clinicName={clinicConfig.clinicName}
@@ -118,6 +127,30 @@ async function getLiveAnnouncements(supabase: Awaited<ReturnType<typeof createCl
     return [];
   }
   return (data ?? []) as LiveAnnouncement[];
+}
+
+async function getMyAvatarUrl(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string | null> {
+  const { data } = await supabase.from("profiles").select("id, clinic_id, avatar_updated_at").eq("id", userId).maybeSingle();
+  if (!data) return null;
+  return (await signedAvatarUrls(supabase, [data])).get(userId) ?? null;
+}
+
+/** A member switched off by their admin. Their sign-in is blocked too; this is what an
+ * already-open session shows until it runs out. */
+function AccountDeactivated() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-teal-50 via-slate-50 to-blue-50 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-900/5">
+        <h1 className="text-lg font-semibold text-slate-900">Your account has been deactivated</h1>
+        <p className="mt-2 text-sm text-slate-500">Ask your clinic admin if you think this is a mistake.</p>
+        <form action={logout} className="mt-5">
+          <Button type="submit" variant="secondary">
+            Sign out
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function AccountNotReady() {

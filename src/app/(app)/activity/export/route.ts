@@ -4,7 +4,7 @@ import { getPatients, getProfiles, getSellers } from "@/lib/data";
 import { getViewer } from "@/lib/viewer";
 import { can } from "@/lib/permissions";
 import { peopleNameMap } from "@/lib/sellers";
-import { ActivityLogRow, describeActivity } from "@/lib/activity-log";
+import { ActivityLogRow, activityActorName, describeActivity } from "@/lib/activity-log";
 import { ACTIVITY_CATEGORY_ACTIONS, ACTIVITY_CATEGORY_LABELS, ActivityCategory } from "@/lib/activity-categories";
 import { activityQuery, parseActivityFilters } from "@/lib/activity-filters";
 import { escapeCsv } from "@/lib/csv";
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
   const lines = [["Time (UTC)", "Person", "What happened", "Category"].join(",")];
   for (const e of rows) {
-    const person = e.via_support ? "DentalSeller support" : (e.actor_id && nameById.get(e.actor_id)) || "Someone";
+    const person = activityActorName(e, nameById);
     lines.push(
       [e.created_at.replace("T", " ").slice(0, 19), person, describeActivity(e, nameById, patientNameById), categoryOf(e.action)]
         .map((c) => escapeCsv(safe(c)))

@@ -8,7 +8,7 @@ import { formatDate } from "@/lib/format";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { LastSeen } from "@/components/LastSeen";
 import { CredentialResult, resetClinicUserPassword } from "../actions";
-import { CredentialNotice } from "../CredentialNotice";
+import { CredentialNotice } from "@/components/CredentialNotice";
 
 type RoleFilter = "all" | "admin" | "seller" | "superadmin";
 type StatusFilter = "all" | "active" | "deactivated" | "never";

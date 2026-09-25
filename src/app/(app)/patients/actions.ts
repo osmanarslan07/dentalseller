@@ -868,7 +868,7 @@ export async function getPatientActivity(patientId: string): Promise<ActivityLog
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("activity_log")
-    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support")
+    .select("id, actor_id, action, target_type, target_id, detail, created_at, via_support, former_actor_id")
     .eq("clinic_id", patient.clinic_id)
     .eq("target_type", "patient")
     .eq("target_id", patientId)

@@ -103,6 +103,10 @@ export interface Profile {
   clinic_id: string | null;
   telegram_chat_id: string | null;
   is_active: boolean;
+  /** International format ("+447700900123"); used for WhatsApp. */
+  phone: string | null;
+  /** When the photo last changed; null = no photo. */
+  avatar_updated_at: string | null;
   created_at: string;
   updated_at: string;
 }

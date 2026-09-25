@@ -67,7 +67,7 @@ export function SellersCard({ rows, allSellers, currentUserId }: { rows: SellerR
       <h2 className="mb-1 text-base font-semibold text-slate-900">Sellers without an account</h2>
       <p className="mb-5 text-sm text-slate-500">
         People who sell but never log in — a coordinator enters their patients and picks them as the seller.
-        {sales && " Their commission shows on the Team page."} Once someone gets an account, use <em>Link to account</em> to move their
+        {sales && " Their commission shows on Sales performance."} Once someone gets an account, use <em>Link to account</em> to move their
         patients and commission over.
       </p>
 

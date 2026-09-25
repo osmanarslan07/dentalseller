@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Input, Label } from "@/components/ui";
 import { addSuperadmin, CredentialResult } from "../actions";
-import { CredentialNotice } from "../CredentialNotice";
+import { CredentialNotice } from "@/components/CredentialNotice";
 
 export function AddSuperadminForm() {
   const [name, setName] = useState("");

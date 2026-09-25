@@ -19,7 +19,7 @@ export default async function PlatformRolesPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Role templates</h1>
         <p className="mt-1 max-w-3xl text-sm text-slate-500">
           What Sales, Coordinator and Accountant can do by default, in every clinic. Admin always has everything. A
-          clinic that has changed a role in its own Settings → Roles keeps its version; the rest follow these at once.
+          clinic that has changed a role in its own Clinic settings → Team & roles keeps its version; the rest follow these at once.
         </p>
       </div>
       <RoleTemplatesClient templates={templates} customisedCount={customisedCount} />

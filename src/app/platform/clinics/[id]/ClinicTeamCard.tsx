@@ -5,7 +5,7 @@ import type { ClinicMember } from "@/lib/platform";
 import { formatDate } from "@/lib/format";
 import { Badge, Button, Card } from "@/components/ui";
 import { CredentialResult, resetClinicUserPassword } from "../../actions";
-import { CredentialNotice } from "../../CredentialNotice";
+import { CredentialNotice } from "@/components/CredentialNotice";
 import { LastSeen } from "@/components/LastSeen";
 
 /** Read-only directory: the clinic's own admin manages its team. The one thing done from

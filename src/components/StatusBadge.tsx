@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui";
+import { useT } from "@/i18n/client";
 
 /** Pulses briefly when `status` changes from its previous value — silent on first mount. */
 export function StatusBadge({ status }: { status: "upcoming" | "completed" }) {
   const prevRef = useRef(status);
   const [pulse, setPulse] = useState(false);
+  const tr = useT();
 
   useEffect(() => {
     if (prevRef.current !== status) {
@@ -19,7 +21,7 @@ export function StatusBadge({ status }: { status: "upcoming" | "completed" }) {
 
   return (
     <span className={`inline-block ${pulse ? "animate-status-pulse" : ""}`}>
-      {status === "completed" ? <Badge tone="green">Completed</Badge> : <Badge tone="amber">Upcoming</Badge>}
+      {status === "completed" ? <Badge tone="green">{tr("Completed")}</Badge> : <Badge tone="amber">{tr("Upcoming")}</Badge>}
     </span>
   );
 }

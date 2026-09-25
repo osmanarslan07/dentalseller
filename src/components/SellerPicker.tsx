@@ -3,6 +3,7 @@
 import { Input, Select } from "@/components/ui";
 import { findSellerByName, pickableSellers, sellerLabel } from "@/lib/sellers";
 import { Seller } from "@/types";
+import { useT } from "@/i18n/client";
 
 const NEW = "__new";
 
@@ -35,6 +36,7 @@ export function SellerPicker({
   autoFocus?: boolean;
   formFields?: boolean;
 }) {
+  const t = useT();
   const options = pickableSellers(sellers, value.sellerId);
   const typing = value.newName != null;
   const match = typing ? findSellerByName(sellers, value.newName ?? "") : undefined;
@@ -48,32 +50,32 @@ export function SellerPicker({
         }
         disabled={disabled}
         autoFocus={autoFocus && !typing}
-        aria-label="Seller"
+        aria-label={t("Seller")}
       >
         {options.map((s) => (
           <option key={s.id} value={s.id}>
             {sellerLabel(s)}
-            {s.id === currentUserId ? " (you)" : s.profile_id ? "" : " · no account"}
+            {s.id === currentUserId ? ` ${t("(you)")}` : s.profile_id ? "" : ` · ${t("no account")}`}
           </option>
         ))}
-        {allowNew && <option value={NEW}>+ New seller (no account)…</option>}
+        {allowNew && <option value={NEW}>+ {t("New seller (no account)…")}</option>}
       </Select>
       {typing && (
         <>
           <Input
             value={value.newName ?? ""}
             onChange={(e) => onChange({ sellerId: value.sellerId, newName: e.target.value })}
-            placeholder="Seller's name, e.g. Ahmet"
+            placeholder={t("Seller's name, e.g. Ahmet")}
             maxLength={80}
             disabled={disabled}
             autoFocus
             required
-            aria-label="New seller's name"
+            aria-label={t("New seller's name")}
           />
           <p className="text-xs text-slate-500">
             {match
-              ? `Already on the list as “${sellerLabel(match)}” — that seller will be used.`
-              : "Added to your seller list. They don't need an account; you can link one later in Settings → Team."}
+              ? t("Already on the list as “{name}” — that seller will be used.", { name: sellerLabel(match) })
+              : t("Added to your seller list. They don't need an account; you can link one later in Settings → Team.")}
           </p>
         </>
       )}

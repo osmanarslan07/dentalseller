@@ -95,10 +95,11 @@ export function visitExpectedTotal(p: Patient, visitKey: string, expected: numbe
   return Math.round((base - visitDiscount(p, visitKey, base)) * 100) / 100;
 }
 
-export function monthLabel(key: string): string {
+/** "Sep 2026" / "Eyl 2026" — pass the viewer's locale (useLocale / localeOf). */
+export function monthLabel(key: string, locale = "en-GB"): string {
   const [year, month] = key.split("-").map(Number);
   const d = new Date(year, month - 1, 1);
-  return d.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+  return d.toLocaleDateString(locale, { month: "short", year: "numeric" });
 }
 
 export function currentMonthKey(): string {

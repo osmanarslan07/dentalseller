@@ -22,46 +22,56 @@ import { patientDueNow, todayIsoLocal } from "@/lib/balance";
 import { PeopleFilter, hasVisitToCome, matchesPeopleFilter, sellerFilterOptions } from "@/lib/people-filter";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 import { useCurrencies } from "@/components/currency";
+import { useLocale, useT } from "@/i18n/client";
+import { msg, T } from "@/i18n";
 
 /** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. In the
  * patient's own currency. */
-function visitMoney(p: Patient, key: "visit1" | "visit2"): string {
+function visitMoney(p: Patient, key: "visit1" | "visit2", t: T): string {
   const actual = key === "visit1" ? p.visit1_actual : p.visit2_actual;
   if (actual != null) return formatCurrency(actual, p.currency);
   const expected = visitExpectedTotal(p, key, key === "visit1" ? p.visit1_expected : p.visit2_expected);
-  return expected != null ? `${formatCurrency(expected, p.currency)} (exp.)` : "—";
+  return expected != null ? t("{amount} (exp.)", { amount: formatCurrency(expected, p.currency) }) : "—";
 }
 
 /** What's short right now (price + extras vs payments on visits already under way), else
  * whether the rest is simply not due yet. Hover lists which visit. */
 function BalanceBadge({ patient }: { patient: Patient }) {
+  const t = useT();
   const { short, dueNow, overpaid, upcoming, anyOwed } = patientDueNow(patient, todayIsoLocal());
   const detail = short
-    .map((b) => `${b.label}: ${b.due > 0 ? `${formatCurrency(b.due, patient.currency)} due` : `overpaid ${formatCurrency(-b.due, patient.currency)}`}`)
+    .map(
+      (b) =>
+        `${t(b.label)}: ${
+          b.due > 0
+            ? t("{amount} due", { amount: formatCurrency(b.due, patient.currency) })
+            : t("Overpaid {amount}", { amount: formatCurrency(-b.due, patient.currency) })
+        }`
+    )
     .join(" · ");
   if (!anyOwed) return <span className="text-slate-300">—</span>;
   if (dueNow > 0) {
     return (
       <span title={detail}>
-        <Badge tone="amber">{formatCurrency(dueNow, patient.currency)} due</Badge>
+        <Badge tone="amber">{t("{amount} due", { amount: formatCurrency(dueNow, patient.currency) })}</Badge>
       </span>
     );
   }
   if (overpaid > 0) {
     return (
       <span title={detail}>
-        <Badge tone="blue">Overpaid {formatCurrency(overpaid, patient.currency)}</Badge>
+        <Badge tone="blue">{t("Overpaid {amount}", { amount: formatCurrency(overpaid, patient.currency) })}</Badge>
       </span>
     );
   }
   if (upcoming > 0) {
     return (
-      <span title={`${formatCurrency(upcoming, patient.currency)} for visits not started yet`}>
-        <Badge tone="slate">Upcoming</Badge>
+      <span title={t("{amount} for visits not started yet", { amount: formatCurrency(upcoming, patient.currency) })}>
+        <Badge tone="slate">{t("Upcoming")}</Badge>
       </span>
     );
   }
-  return <Badge tone="green">Paid</Badge>;
+  return <Badge tone="green">{t("Paid")}</Badge>;
 }
 
 type SortKey = "name" | "confirmation_date" | "visit1_date" | "visit2_date" | "commission";
@@ -69,11 +79,11 @@ type ViewMode = "list" | "kanban";
 type Stage = "confirmed" | "visit1_scheduled" | "visit1_completed" | "visit2_scheduled" | "done";
 
 const STAGES: { id: Stage; label: string }[] = [
-  { id: "confirmed", label: "Confirmed" },
-  { id: "visit1_scheduled", label: "Visit 1 scheduled" },
-  { id: "visit1_completed", label: "Visit 1 completed" },
-  { id: "visit2_scheduled", label: "Visit 2 scheduled" },
-  { id: "done", label: "Done" },
+  { id: "confirmed", label: msg("Confirmed") },
+  { id: "visit1_scheduled", label: msg("Visit 1 scheduled") },
+  { id: "visit1_completed", label: msg("Visit 1 completed") },
+  { id: "visit2_scheduled", label: msg("Visit 2 scheduled") },
+  { id: "done", label: msg("Done") },
 ];
 
 const STAGE_TONES: Record<Stage, "slate" | "green" | "amber" | "blue"> = {
@@ -178,24 +188,27 @@ function DocumentsMenu({
   open: boolean;
   onToggle: () => void;
 }) {
+  const t = useT();
+  const sheet = t("Operations sheet");
+  const letter = t("Confirmation letter");
   const items = [
     p.confirmation_date && p.visit1_date
-      ? { label: "Operations sheet · Visit 1", href: `/patients/${p.id}/document?visit=1` }
+      ? { label: `${sheet} · ${t("Visit 1")}`, href: `/patients/${p.id}/document?visit=1` }
       : null,
     p.confirmation_date && p.visit2_date
-      ? { label: "Operations sheet · Visit 2", href: `/patients/${p.id}/document?visit=2` }
+      ? { label: `${sheet} · ${t("Visit 2")}`, href: `/patients/${p.id}/document?visit=2` }
       : null,
     ...p.extra_visits
       .filter((v) => v.visit_date)
       .map((v) => ({
-        label: `Operations sheet · ${v.label}`,
+        label: `${sheet} · ${t(v.label)}`,
         href: `/patients/${p.id}/document?visit=${v.id}`,
       })),
     p.visit1_arrival_flight_no
-      ? { label: "Confirmation letter · Visit 1", href: `/patients/${p.id}/confirmation-letter?visit=1` }
+      ? { label: `${letter} · ${t("Visit 1")}`, href: `/patients/${p.id}/confirmation-letter?visit=1` }
       : null,
     p.visit2_arrival_flight_no
-      ? { label: "Confirmation letter · Visit 2", href: `/patients/${p.id}/confirmation-letter?visit=2` }
+      ? { label: `${letter} · ${t("Visit 2")}`, href: `/patients/${p.id}/confirmation-letter?visit=2` }
       : null,
   ].filter((item): item is { label: string; href: string } => item != null);
 
@@ -213,7 +226,7 @@ function DocumentsMenu({
           if (!open) capture(buttonRef.current, items.length);
           onToggle();
         }}
-        title="Documents"
+        title={t("Documents")}
         className={`rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 ${
           open ? "bg-slate-100 text-slate-700" : ""
         }`}
@@ -259,23 +272,24 @@ function TelegramMenu({
   onClose: () => void;
 }) {
   const { showToast } = useToast();
+  const t = useT();
   const [sendingKey, setSendingKey] = useState<string | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const { style, capture } = useDropdownStyle();
 
   const visitOptions = [
-    { value: "visit1", label: "Visit 1" },
-    ...(p.needs_visit2 ? [{ value: "visit2", label: "Visit 2" }] : []),
-    ...p.extra_visits.map((v) => ({ value: v.id, label: v.label })),
+    { value: "visit1", label: t("Visit 1") },
+    ...(p.needs_visit2 ? [{ value: "visit2", label: t("Visit 2") }] : []),
+    ...p.extra_visits.map((v) => ({ value: v.id, label: t(v.label) })),
   ];
 
   async function send(visitKey: string) {
     setSendingKey(visitKey);
     try {
       await sendPatientTelegramMessage(p.id, visitKey);
-      showToast("Sent to Telegram ✓");
+      showToast(t("Sent to Telegram ✓"));
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Failed to send to Telegram", "error");
+      showToast(e instanceof Error ? e.message : t("Failed to send to Telegram"), "error");
     } finally {
       setSendingKey(null);
       onClose();
@@ -291,7 +305,7 @@ function TelegramMenu({
           if (!open) capture(buttonRef.current, visitOptions.length);
           onToggle();
         }}
-        title="Send to Telegram"
+        title={t("Send to Telegram")}
         className={`rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 ${
           open ? "bg-slate-100 text-slate-700" : ""
         }`}
@@ -313,7 +327,7 @@ function TelegramMenu({
                 onClick={() => send(o.value)}
                 className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-teal-600 disabled:opacity-50"
               >
-                {sendingKey === o.value ? "Sending…" : `Send ${o.label}`}
+                {sendingKey === o.value ? t("Sending…") : t("Send {what}", { what: o.label })}
               </button>
             ))}
           </div>,
@@ -349,14 +363,16 @@ export function PatientsClient({
 }) {
   // commission is in the clinic's main currency; a patient's prices in their own
   const { main: mainCurrency } = useCurrencies();
+  const t = useT();
+  const locale = useLocale();
   const coordinatorName = useMemo(() => {
     const map = new Map(coordinators.map((c) => [c.id, c.name]));
-    return (id: string | null) => (id ? (map.get(id) ?? "Former member") : null);
-  }, [coordinators]);
+    return (id: string | null) => (id ? (map.get(id) ?? t("Former member")) : null);
+  }, [coordinators, t]);
   const sellerName = useMemo(() => {
     const map = new Map(sellers.map((s) => [s.id, sellerLabel(s)]));
-    return (id: string) => map.get(id) ?? "Unknown";
-  }, [sellers]);
+    return (id: string) => map.get(id) ?? t("Unknown");
+  }, [sellers, t]);
   const router = useRouter();
   const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState(initialQuery);
@@ -472,15 +488,15 @@ export function PatientsClient({
   }
 
   function handleDelete(id: string) {
-    if (!confirm("Delete this patient? This cannot be undone.")) return;
+    if (!confirm(t("Delete this patient? This cannot be undone."))) return;
     setDeletingId(id);
     startTransition(async () => {
       try {
         await deletePatient(id);
-        showToast("Patient deleted");
+        showToast(t("Patient deleted"));
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to delete patient", "error");
+        showToast(e instanceof Error ? e.message : t("Failed to delete patient"), "error");
       } finally {
         setDeletingId(null);
       }
@@ -491,8 +507,8 @@ export function PatientsClient({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Patients</h1>
-          <p className="mt-1 text-sm text-slate-500">{patients.length} total</p>
+          <h1 className="text-2xl font-semibold text-slate-900">{t("Patients")}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t("{n} total", { n: patients.length })}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex rounded-lg bg-slate-100 p-1">
@@ -502,7 +518,7 @@ export function PatientsClient({
                 view === "list" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              List
+              {t("List")}
             </button>
             <button
               onClick={() => setView("kanban")}
@@ -510,17 +526,17 @@ export function PatientsClient({
                 view === "kanban" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              Kanban
+              {t("Kanban")}
             </button>
           </div>
-          <Button onClick={() => router.push("/patients/new")}>+ Add patient</Button>
+          <Button onClick={() => router.push("/patients/new")}>+ {t("Add patient")}</Button>
         </div>
       </div>
 
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
-            placeholder="Search name, treatment, Komo ref, hotel…"
+            placeholder={t("Search name, treatment, Komo ref, hotel…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="sm:max-w-xs"
@@ -530,10 +546,10 @@ export function PatientsClient({
             onChange={(e) => setStageFilter(e.target.value as Stage | "all")}
             className="sm:max-w-[180px]"
           >
-            <option value="all">All stages</option>
+            <option value="all">{t("All stages")}</option>
             {STAGES.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.label}
+                {t(s.label)}
               </option>
             ))}
           </Select>
@@ -542,10 +558,10 @@ export function PatientsClient({
             onChange={(e) => setMonthFilter(e.target.value)}
             className="sm:max-w-[180px]"
           >
-            <option value="all">All months</option>
+            <option value="all">{t("All months")}</option>
             {months.map((m) => (
               <option key={m} value={m}>
-                {monthLabel(m)}
+                {monthLabel(m, locale)}
               </option>
             ))}
           </Select>
@@ -554,10 +570,10 @@ export function PatientsClient({
             onChange={(e) => setTreatmentFilter(e.target.value)}
             className="sm:max-w-[180px]"
           >
-            <option value="all">All treatments</option>
-            {treatments.map((t) => (
-              <option key={t} value={t}>
-                {t}
+            <option value="all">{t("All treatments")}</option>
+            {treatments.map((tr) => (
+              <option key={tr} value={tr}>
+                {tr}
               </option>
             ))}
           </Select>
@@ -578,8 +594,8 @@ export function PatientsClient({
             onClick={() => setOnlyToCome(false)}
             className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-3 py-1 text-xs font-medium text-teal-800 hover:bg-teal-100"
           >
-            Only patients with a visit still to come <span aria-hidden>✕</span>
-            <span className="sr-only">(remove)</span>
+            {t("Only patients with a visit still to come")} <span aria-hidden>✕</span>
+            <span className="sr-only">({t("remove")})</span>
           </button>
         )}
       </Card>
@@ -606,39 +622,39 @@ export function PatientsClient({
                   {p.name}
                   {p.extra_visits.length > 0 && (
                     <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
-                      +{p.extra_visits.length} extra
+                      +{p.extra_visits.length} {t("extra")}
                     </span>
                   )}
                 </div>
                 <div className="text-sm text-slate-500">{p.treatment || "—"}</div>
                 {!isMine && (
                   <div className="mt-0.5 text-xs text-slate-400">
-                    Responsible: {sellerName(p.responsible_seller_id)}
+                    {t("Responsible: {name}", { name: sellerName(p.responsible_seller_id) })}
                   </div>
                 )}
                 {p.coordinator_id && (
-                  <div className="text-xs text-slate-400">Coordinator: {coordinatorName(p.coordinator_id)}</div>
+                  <div className="text-xs text-slate-400">{t("Coordinator: {name}", { name: coordinatorName(p.coordinator_id) ?? "" })}</div>
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
+                <Badge tone={STAGE_TONES[stage]}>{t(STAGES.find((s) => s.id === stage)?.label ?? "")}</Badge>
                 <BalanceBadge patient={p} />
               </div>
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">Confirmed</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">{t("Confirmed")}</div>
                 <div className="text-slate-600">{formatDate(p.confirmation_date)}</div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">Commission</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">{t("Commission")}</div>
                 {commission.actual > 0 || commission.expected > 0 ? (
                   <div className="font-medium text-slate-700">
                     <Money value={commission.actual} currency={mainCurrency} showConversion={false} />
                     {commission.expected > 0 && (
                       <div className="text-xs font-normal text-slate-400">
-                        +<Money value={commission.expected} currency={mainCurrency} showConversion={false} /> expected
+                        +<Money value={commission.expected} currency={mainCurrency} showConversion={false} /> {t("expected")}
                       </div>
                     )}
                   </div>
@@ -647,17 +663,17 @@ export function PatientsClient({
                 )}
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">Visit 1</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">{t("Visit 1")}</div>
                 <div className="text-slate-600">{formatDate(p.visit1_date)}</div>
                 <div className="text-xs text-slate-400">
-                  {visitMoney(p, "visit1")}
+                  {visitMoney(p, "visit1", t)}
                 </div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">Visit 2</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">{t("Visit 2")}</div>
                 <div className="text-slate-600">{formatDate(p.visit2_date)}</div>
                 <div className="text-xs text-slate-400">
-                  {visitMoney(p, "visit2")}
+                  {visitMoney(p, "visit2", t)}
                 </div>
               </div>
             </div>
@@ -688,7 +704,7 @@ export function PatientsClient({
                 onClose={() => setOpenTelegramId(null)}
               />
               <button
-                title="Duplicate — prefill a new patient from this one"
+                title={t("Duplicate — prefill a new patient from this one")}
                 className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 onClick={() => router.push(`/patients/new?from=${p.id}`)}
               >
@@ -702,13 +718,13 @@ export function PatientsClient({
                 className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
                 onClick={() => handleDelete(p.id)}
               >
-                Delete
+                {t("Delete")}
               </button>
             </div>
           </Card>
         ))}
         {rows.length === 0 && (
-          <div className="py-10 text-center text-slate-400">No patients match your filters.</div>
+          <div className="py-10 text-center text-slate-400">{t("No patients match your filters.")}</div>
         )}
       </div>
       )}
@@ -719,17 +735,17 @@ export function PatientsClient({
           <table className="w-full min-w-[1180px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
-                <SortHeader label="Name" sortKeyValue="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="pl-4" />
-                <th className="py-3 pr-4 font-medium">Treatment</th>
-                <th className="py-3 pr-4 font-medium">Seller</th>
-                <th className="py-3 pr-4 font-medium">Coordinator</th>
-                <SortHeader label="Confirmed" sortKeyValue="confirmation_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Visit 1" sortKeyValue="visit1_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Visit 2" sortKeyValue="visit2_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <th className="py-3 pr-4 font-medium">Stage</th>
-                <th className="py-3 pr-4 font-medium">Balance</th>
-                <SortHeader label="Commission" sortKeyValue="commission" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <th className="py-3 pr-4 font-medium text-right">Actions</th>
+                <SortHeader label={t("Name")} sortKeyValue="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="pl-4" />
+                <th className="py-3 pr-4 font-medium">{t("Treatment")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Seller")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Coordinator")}</th>
+                <SortHeader label={t("Confirmed")} sortKeyValue="confirmation_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label={t("Visit 1")} sortKeyValue="visit1_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label={t("Visit 2")} sortKeyValue="visit2_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <th className="py-3 pr-4 font-medium">{t("Stage")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Balance")}</th>
+                <SortHeader label={t("Commission")} sortKeyValue="commission" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <th className="py-3 pr-4 font-medium text-right">{t("Actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -744,30 +760,30 @@ export function PatientsClient({
                     {p.name}
                     {p.extra_visits.length > 0 && (
                       <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
-                        +{p.extra_visits.length} extra
+                        +{p.extra_visits.length} {t("extra")}
                       </span>
                     )}
                   </td>
                   <td className="py-3 pr-4 text-slate-500">{p.treatment || "—"}</td>
-                  <td className="py-3 pr-4 text-slate-500">{isMine ? "Me" : sellerName(p.responsible_seller_id)}</td>
+                  <td className="py-3 pr-4 text-slate-500">{isMine ? t("Me") : sellerName(p.responsible_seller_id)}</td>
                   <td className="py-3 pr-4 text-slate-500">
-                    {p.coordinator_id === currentUserId ? "Me" : (coordinatorName(p.coordinator_id) ?? <span className="text-slate-300">—</span>)}
+                    {p.coordinator_id === currentUserId ? t("Me") : (coordinatorName(p.coordinator_id) ?? <span className="text-slate-300">—</span>)}
                   </td>
                   <td className="py-3 pr-4 text-slate-500">{formatDate(p.confirmation_date)}</td>
                   <td className="py-3 pr-4 text-slate-500">
                     <div>{formatDate(p.visit1_date)}</div>
                     <div className="text-xs">
-                      {visitMoney(p, "visit1")}
+                      {visitMoney(p, "visit1", t)}
                     </div>
                   </td>
                   <td className="py-3 pr-4 text-slate-500">
                     <div>{formatDate(p.visit2_date)}</div>
                     <div className="text-xs">
-                      {visitMoney(p, "visit2")}
+                      {visitMoney(p, "visit2", t)}
                     </div>
                   </td>
                   <td className="py-3 pr-4">
-                    <Badge tone={STAGE_TONES[stage]}>{STAGES.find((s) => s.id === stage)?.label}</Badge>
+                    <Badge tone={STAGE_TONES[stage]}>{t(STAGES.find((s) => s.id === stage)?.label ?? "")}</Badge>
                   </td>
                   <td className="py-3 pr-4">
                     <BalanceBadge patient={p} />
@@ -778,7 +794,7 @@ export function PatientsClient({
                         <Money value={commission.actual} currency={mainCurrency} showConversion={false} />
                         {commission.expected > 0 && (
                           <div className="text-xs font-normal text-slate-400">
-                            +<Money value={commission.expected} currency={mainCurrency} showConversion={false} /> expected
+                            +<Money value={commission.expected} currency={mainCurrency} showConversion={false} /> {t("expected")}
                           </div>
                         )}
                       </>
@@ -810,7 +826,7 @@ export function PatientsClient({
                         onClose={() => setOpenTelegramId(null)}
                       />
                       <button
-                        title="Duplicate — prefill a new patient from this one"
+                        title={t("Duplicate — prefill a new patient from this one")}
                         className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                         onClick={() => router.push(`/patients/new?from=${p.id}`)}
                       >
@@ -824,7 +840,7 @@ export function PatientsClient({
                         className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
                         onClick={() => handleDelete(p.id)}
                       >
-                        Delete
+                        {t("Delete")}
                       </button>
                     </div>
                   </td>
@@ -833,7 +849,7 @@ export function PatientsClient({
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={11} className="py-10 text-center text-slate-400">
-                    No patients match your filters.
+                    {t("No patients match your filters.")}
                   </td>
                 </tr>
               )}
@@ -857,8 +873,10 @@ function KanbanBoard({
   onCardClick: (p: Patient) => void;
 }) {
   const { main: mainCurrency } = useCurrencies();
+  const t = useT();
   const columns = STAGES.map((stage) => ({
     ...stage,
+    label: t(stage.label),
     items: rows.filter((r) => r.stage === stage.id),
   }));
 
@@ -880,24 +898,24 @@ function KanbanBoard({
                 <p className="text-sm font-medium text-slate-800">{p.name}</p>
                 <p className="mt-0.5 text-xs text-slate-500">{p.treatment || "—"}</p>
                 <p className="mt-1 text-xs text-slate-400">
-                  {col.id === "confirmed" && `Confirmed ${formatDate(p.confirmation_date)}`}
-                  {col.id === "visit1_scheduled" && `Visit 1 · ${formatDate(p.visit1_date)}`}
-                  {col.id === "visit1_completed" && `Visit 1 done · ${formatDate(p.visit1_date)}`}
-                  {col.id === "visit2_scheduled" && `Visit 2 · ${formatDate(p.visit2_date)}`}
-                  {col.id === "done" && `Last visit · ${formatDate(p.visit2_date ?? p.visit1_date)}`}
+                  {col.id === "confirmed" && t("Confirmed {date}", { date: formatDate(p.confirmation_date) })}
+                  {col.id === "visit1_scheduled" && `${t("Visit 1")} · ${formatDate(p.visit1_date)}`}
+                  {col.id === "visit1_completed" && `${t("Visit 1 done")} · ${formatDate(p.visit1_date)}`}
+                  {col.id === "visit2_scheduled" && `${t("Visit 2")} · ${formatDate(p.visit2_date)}`}
+                  {col.id === "done" && `${t("Last visit")} · ${formatDate(p.visit2_date ?? p.visit1_date)}`}
                 </p>
                 {commission.actual > 0 || commission.expected > 0 ? (
                   <p className="mt-2 text-sm font-medium text-slate-700">
                     <Money value={commission.actual + commission.expected} currency={mainCurrency} showConversion={false} />
                   </p>
                 ) : (
-                  <p className="mt-2 text-xs text-slate-400">Responsible: {sellerName(p.responsible_seller_id)}</p>
+                  <p className="mt-2 text-xs text-slate-400">{t("Responsible: {name}", { name: sellerName(p.responsible_seller_id) })}</p>
                 )}
               </Card>
             ))}
             {col.items.length === 0 && (
               <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-xs text-slate-300">
-                Empty
+                {t("Empty")}
               </p>
             )}
           </div>

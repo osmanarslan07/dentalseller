@@ -189,7 +189,9 @@ export function TransfersCard({
         </p>
       ) : (
         transfers.length > 0 && (
-          <div className="flex flex-col gap-2 lg:gap-0 lg:overflow-hidden lg:rounded-xl lg:border lg:border-slate-100">
+          // No overflow-hidden here: it would clip the ⋯ menu of the last rows. The first and last
+          // rows round their own corners instead.
+          <div className="flex flex-col gap-2 lg:gap-0 lg:rounded-xl lg:border lg:border-slate-100 lg:[&>*:first-child]:rounded-t-xl lg:[&>*:last-child]:rounded-b-xl">
             <div className={`hidden bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500 ${GRID}`}>
               <span>Pickup</span>
               <span>Type</span>

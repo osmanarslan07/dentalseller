@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect } from "react";
+import { useT } from "@/i18n/client";
 
 export function Modal({
   open,
@@ -24,6 +25,7 @@ export function Modal({
     };
   }, [open, onClose]);
 
+  const t = useT();
   if (!open) return null;
 
   return (
@@ -37,7 +39,7 @@ export function Modal({
           <button
             onClick={onClose}
             className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            aria-label="Close"
+            aria-label={t("Close")}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />

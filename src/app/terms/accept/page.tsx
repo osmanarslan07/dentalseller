@@ -1,3 +1,4 @@
+import { getLang } from "@/i18n/server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/data";
@@ -22,7 +23,7 @@ export default async function AcceptTermsPage({ searchParams }: { searchParams: 
 
   const { data: clinic } = await supabase.from("clinics").select("name").eq("id", profile.clinic_id).maybeSingle();
   const { lang } = await searchParams;
-  const language = parseTermsLanguage(lang);
+  const language = parseTermsLanguage(lang ?? (await getLang()));
   const doc = TERMS[language];
 
   return (

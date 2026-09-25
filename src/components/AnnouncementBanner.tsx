@@ -2,6 +2,7 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 import { AnnouncementLevel, isDismissible, LiveAnnouncement } from "@/lib/announcements";
+import { useT } from "@/i18n/client";
 
 const STORAGE_KEY = "ds-dismissed-announcements";
 // localStorage fires "storage" only in *other* tabs; this event notifies the current one.
@@ -63,6 +64,7 @@ function LevelIcon({ className }: { className: string }) {
  * (null), so dismissible banners only appear once the client has checked storage — a
  * dismissed banner never flashes back on load. */
 export function AnnouncementBanner({ announcements }: { announcements: LiveAnnouncement[] }) {
+  const t = useT();
   const raw = useSyncExternalStore(subscribe, readRaw, () => null);
   const dismissed = useMemo(() => (raw === null ? null : parseIds(raw)), [raw]);
 
@@ -78,7 +80,7 @@ export function AnnouncementBanner({ announcements }: { announcements: LiveAnnou
   if (visible.length === 0) return null;
 
   return (
-    <div role="region" aria-label="Announcements">
+    <div role="region" aria-label={t("Announcements")}>
       {visible.map((a) => (
         <AnnouncementBar key={a.id} level={a.level} message={a.message} onDismiss={() => dismiss(a.id)} />
       ))}
@@ -97,12 +99,13 @@ export function AnnouncementBar({
   onDismiss?: () => void;
 }) {
   const style = STYLES[level];
+  const t = useT();
   return (
     <div className={`border-b ${style.bar}`}>
       <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-2.5 text-sm sm:px-6 lg:px-8">
         <LevelIcon className={`mt-0.5 ${style.icon}`} />
         <p className="min-w-0 flex-1">
-          <span className="font-semibold">{style.label}: </span>
+          <span className="font-semibold">{t(style.label)}: </span>
           <span className="whitespace-pre-line break-words">{message}</span>
         </p>
         {isDismissible(level) && (
@@ -110,7 +113,7 @@ export function AnnouncementBar({
             type="button"
             onClick={onDismiss}
             className="-my-1 shrink-0 rounded-md px-2 py-1 text-xs font-medium opacity-70 transition hover:bg-black/5 hover:opacity-100"
-            aria-label="Dismiss announcement"
+            aria-label={t("Dismiss announcement")}
           >
             Dismiss
           </button>

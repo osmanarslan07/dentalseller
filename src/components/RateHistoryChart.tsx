@@ -2,10 +2,12 @@
 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ExchangeRatePoint } from "@/lib/data";
+import { useT } from "@/i18n/client";
 
 export function RateHistoryChart({ data, base, quote }: { data: ExchangeRatePoint[]; base: string; quote: string }) {
+  const t = useT();
   if (data.length < 2) {
-    return <p className="text-sm text-slate-400">Not enough history yet — check back after a few days.</p>;
+    return <p className="text-sm text-slate-400">{t("Not enough history yet — check back after a few days.")}</p>;
   }
 
   return (

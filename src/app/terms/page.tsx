@@ -1,3 +1,4 @@
+import { getLang } from "@/i18n/server";
 import Link from "next/link";
 import { parseTermsLanguage } from "@/lib/terms";
 import { TermsView } from "@/components/TermsView";
@@ -7,7 +8,7 @@ export const metadata = { title: "Terms · DentalSeller" };
 /** Public — readable without signing in (see the middleware's public routes). */
 export default async function TermsPage({ searchParams }: { searchParams: Promise<{ lang?: string }> }) {
   const { lang } = await searchParams;
-  const language = parseTermsLanguage(lang);
+  const language = parseTermsLanguage(lang ?? (await getLang()));
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10">

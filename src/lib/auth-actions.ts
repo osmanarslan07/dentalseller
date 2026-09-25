@@ -22,7 +22,7 @@ export async function login(_prevState: AuthState, formData: FormData): Promise<
     const t = await getT();
     return { error: t("This account has been deactivated. Ask your clinic admin.") };
   }
-  if (error) return { error: error.message };
+  if (error) return { error: (await getT())(error.message) };
 
   const { data: profile } = await supabase.from("profiles").select("role, language").eq("id", data.user.id).maybeSingle();
   // this device follows the language saved on the account

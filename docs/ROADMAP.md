@@ -603,10 +603,9 @@ of this complexity. Thera stays on GBP.
 | GBP main, some EUR deals | Main GBP + EUR | EUR patients priced in €, reports in £ with the rates used |
 | Paid in a different currency | + EUR, payment in £ on a € deal | "still due" in €, payment converted, rate shown |
 
-**Still to decide with you before building**
-- Which rate to use by default: automatic market rate, or the clinic's own rate?
-- Can a patient's deal currency change after payments exist (e.g. re-quoted in GBP)? Suggested:
-  only before the first payment.
+**Decided (2026-09-25)**
+- Default rate: the **automatic market rate**; a clinic can switch a currency to its own fixed rate.
+- A patient's deal currency can change **only before the first payment**; after that it's locked.
 
 To do:
 - ☐ Clinic settings → Money → Currencies: main currency, other currencies, rate source / own rates

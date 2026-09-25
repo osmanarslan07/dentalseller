@@ -12,6 +12,7 @@ import { Patient, PatientPayment, PaymentMethod, Profile, Seller } from "@/types
 import { sellerNameMap } from "@/lib/sellers";
 import { useCurrencies } from "@/components/currency";
 import { dealToMain, paymentFx, surchargeMain } from "@/lib/money";
+import { useLocale, useT } from "@/i18n/client";
 
 const METHOD_LABELS: Record<PaymentMethod, string> = { cash: "Cash", card: "Card", bank: "Bank transfer" };
 
@@ -24,6 +25,8 @@ type LedgerRow = { payment: PatientPayment; patient: Patient; visit: string };
  * agreed at is the exchange-rate gain / loss. */
 export function AccountingClient({ patients, profiles, sellers }: { patients: Patient[]; profiles: Profile[]; sellers: Seller[] }) {
   const today = todayIso();
+  const t = useT();
+  const locale = useLocale();
   const { main } = useCurrencies();
   const gbp = (n: number) => formatCurrency(n, main);
   const [month, setMonth] = useState(today.slice(0, 7));
@@ -58,15 +61,15 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
   );
 
   const totals = useMemo(() => {
-    const t = { all: 0, cash: 0, card: 0, bank: 0, surcharge: 0, fx: 0 };
+    const sum = { all: 0, cash: 0, card: 0, bank: 0, surcharge: 0, fx: 0 };
     for (const { payment, patient } of ledger) {
-      t.all += payment.main_amount;
-      t[payment.method] += payment.main_amount;
-      t.surcharge += surchargeMain(payment);
-      t.fx += paymentFx(patient, payment);
+      sum.all += payment.main_amount;
+      sum[payment.method] += payment.main_amount;
+      sum.surcharge += surchargeMain(payment);
+      sum.fx += paymentFx(patient, payment);
     }
-    t.fx = Math.round(t.fx * 100) / 100;
-    return t;
+    sum.fx = Math.round(sum.fx * 100) / 100;
+    return sum;
   }, [ledger]);
   // only a clinic with payments in (or prices agreed in) other currencies has any of this
   const anyForeign = allPayments.some((r) => r.payment.currency !== main || r.patient.currency !== main);
@@ -114,13 +117,13 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
   }
 
   const tiles = [
-    { label: "Collected", value: totals.all, strong: true },
-    { label: "Cash", value: totals.cash },
-    { label: "Card", value: totals.card },
-    { label: "Bank transfer", value: totals.bank },
-    { label: "Card surcharges", value: totals.surcharge, hint: "on top, not commissionable" },
+    { label: t("Collected"), value: totals.all, strong: true },
+    { label: t("Cash"), value: totals.cash },
+    { label: t("Card"), value: totals.card },
+    { label: t("Bank transfer"), value: totals.bank },
+    { label: t("Card surcharges"), value: totals.surcharge, hint: t("on top, not commissionable") },
     ...(anyForeign
-      ? [{ label: "Exchange-rate gain / loss", value: totals.fx, hint: "vs the rates prices were agreed at" }]
+      ? [{ label: t("Exchange-rate gain / loss"), value: totals.fx, hint: t("vs the rates prices were agreed at") }]
       : []),
   ];
 
@@ -128,22 +131,22 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Accounting</h1>
-          <p className="mt-1 text-sm text-slate-500">Payments collected, by month, and every visit that doesn&apos;t add up yet.</p>
+          <h1 className="text-2xl font-semibold text-slate-900">{t("Accounting")}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t("Payments collected, by month, and every visit that doesn't add up yet.")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select value={month} onChange={(e) => setMonth(e.target.value)} className="w-auto" aria-label="Month">
+          <Select value={month} onChange={(e) => setMonth(e.target.value)} className="w-auto" aria-label={t("Month")}>
             {months.map((m) => (
               <option key={m} value={m}>
-                {monthLabel(m)}
+                {monthLabel(m, locale)}
               </option>
             ))}
           </Select>
-          <Select value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} className="w-auto" aria-label="Received by">
-            <option value="all">Received by anyone</option>
+          <Select value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} className="w-auto" aria-label={t("Received by")}>
+            <option value="all">{t("Received by anyone")}</option>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.display_name || "Unnamed"}
+                {p.display_name || t("Unnamed")}
               </option>
             ))}
           </Select>
@@ -151,13 +154,13 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
       </div>
 
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${anyForeign ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
-        {tiles.map((t) => (
-          <Card key={t.label} className="p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">{t.label}</p>
-            <p className={`mt-1 ${t.strong ? "text-2xl font-semibold text-slate-900" : "text-lg font-medium text-slate-800"}`}>
-              {gbp(t.value)}
+        {tiles.map((tile) => (
+          <Card key={tile.label} className="p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-400">{tile.label}</p>
+            <p className={`mt-1 ${tile.strong ? "text-2xl font-semibold text-slate-900" : "text-lg font-medium text-slate-800"}`}>
+              {gbp(tile.value)}
             </p>
-            {t.hint && <p className="text-xs text-slate-400">{t.hint}</p>}
+            {tile.hint && <p className="text-xs text-slate-400">{tile.hint}</p>}
           </Card>
         ))}
       </div>
@@ -165,26 +168,26 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Payments · {monthLabel(month)}</h2>
-            <p className="text-xs text-slate-500">{ledger.length} payment{ledger.length === 1 ? "" : "s"}</p>
+            <h2 className="text-base font-semibold text-slate-900">{t("Payments")} · {monthLabel(month, locale)}</h2>
+            <p className="text-xs text-slate-500">{ledger.length === 1 ? t("1 payment") : t("{n} payments", { n: ledger.length })}</p>
           </div>
           <Button type="button" size="sm" variant="secondary" onClick={exportCsv} disabled={ledger.length === 0}>
-            Export CSV
+            {t("Export CSV")}
           </Button>
         </div>
         {ledger.length === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-400">No payments recorded this month.</p>
+          <p className="py-10 text-center text-sm text-slate-400">{t("No payments recorded this month.")}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
-                  <th className="py-3 pl-5 pr-4 font-medium">Date</th>
-                  <th className="py-3 pr-4 font-medium">Patient</th>
-                  <th className="py-3 pr-4 font-medium">Method</th>
-                  <th className="py-3 pr-4 text-right font-medium">Amount</th>
-                  <th className="py-3 pr-4 text-right font-medium">Surcharge</th>
-                  <th className="py-3 pr-5 font-medium">Received by</th>
+                  <th className="py-3 pl-5 pr-4 font-medium">{t("Date")}</th>
+                  <th className="py-3 pr-4 font-medium">{t("Patient")}</th>
+                  <th className="py-3 pr-4 font-medium">{t("Method")}</th>
+                  <th className="py-3 pr-4 text-right font-medium">{t("Amount")}</th>
+                  <th className="py-3 pr-4 text-right font-medium">{t("Surcharge")}</th>
+                  <th className="py-3 pr-5 font-medium">{t("Received by")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -196,13 +199,13 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
                         {patient.name}
                       </Link>
                       <div className="text-xs text-slate-400">
-                        {visit}
+                        {t(visit)}
                         {x.note ? ` · ${x.note}` : ""}
                       </div>
                     </td>
                     <td className="py-2.5 pr-4">
                       <Badge tone={x.method === "cash" ? "green" : x.method === "card" ? "blue" : "slate"}>
-                        {METHOD_LABELS[x.method]}
+                        {t(METHOD_LABELS[x.method])}
                       </Badge>
                     </td>
                     <td className="py-2.5 pr-4 text-right font-medium text-slate-900">
@@ -219,7 +222,7 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
               <tfoot>
                 <tr className="bg-slate-50/60 font-semibold text-slate-900">
                   <td className="py-3 pl-5 pr-4" colSpan={3}>
-                    Total
+                    {t("Total")}
                   </td>
                   <td className="py-3 pr-4 text-right">{gbp(totals.all)}</td>
                   <td className="py-3 pr-4 text-right">{totals.surcharge > 0 ? gbp(totals.surcharge) : "—"}</td>
@@ -234,27 +237,26 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Open balances</h2>
+            <h2 className="text-base font-semibold text-slate-900">{t("Open balances")}</h2>
             <p className="text-xs text-slate-500">
-              Visits already paid into, completed or past their date that are still short (price + extras vs payments), or
-              overpaid — all months.
+              {t("Visits already paid into, completed or past their date that are still short (price + extras vs payments), or overpaid — all months.")}
             </p>
           </div>
-          {outstanding > 0 && <Badge tone="amber">{gbp(outstanding)} outstanding</Badge>}
+          {outstanding > 0 && <Badge tone="amber">{t("{amount} outstanding", { amount: gbp(outstanding) })}</Badge>}
         </div>
         {openBalances.length === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-400">Every visit is paid in full ✓</p>
+          <p className="py-10 text-center text-sm text-slate-400">{t("Every visit is paid in full ✓")}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
-                  <th className="py-3 pl-5 pr-4 font-medium">Patient</th>
-                  <th className="py-3 pr-4 font-medium">Visit date</th>
-                  <th className="py-3 pr-4 text-right font-medium">Owed</th>
-                  <th className="py-3 pr-4 text-right font-medium">Paid</th>
-                  <th className="py-3 pr-4 text-right font-medium">Difference</th>
-                  <th className="py-3 pr-5 font-medium">Seller</th>
+                  <th className="py-3 pl-5 pr-4 font-medium">{t("Patient")}</th>
+                  <th className="py-3 pr-4 font-medium">{t("Visit date")}</th>
+                  <th className="py-3 pr-4 text-right font-medium">{t("Owed")}</th>
+                  <th className="py-3 pr-4 text-right font-medium">{t("Paid")}</th>
+                  <th className="py-3 pr-4 text-right font-medium">{t("Difference")}</th>
+                  <th className="py-3 pr-5 font-medium">{t("Seller")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -264,16 +266,16 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
                       <Link href={`/patients/${patient.id}`} className="font-medium text-slate-800 hover:text-teal-700">
                         {patient.name}
                       </Link>
-                      <div className="text-xs text-slate-400">{b.label}</div>
+                      <div className="text-xs text-slate-400">{t(b.label)}</div>
                     </td>
                     <td className="py-2.5 pr-4 text-slate-600">{b.date ? formatDate(b.date) : "—"}</td>
                     <td className="py-2.5 pr-4 text-right text-slate-700">{formatCurrency(b.owed, patient.currency)}</td>
                     <td className="py-2.5 pr-4 text-right text-slate-700">{formatCurrency(b.paid, patient.currency)}</td>
                     <td className="py-2.5 pr-4 text-right">
                       {b.due > 0 ? (
-                        <Badge tone="amber">{formatCurrency(b.due, patient.currency)} due</Badge>
+                        <Badge tone="amber">{t("{amount} due", { amount: formatCurrency(b.due, patient.currency) })}</Badge>
                       ) : (
-                        <Badge tone="blue">Overpaid {formatCurrency(-b.due, patient.currency)}</Badge>
+                        <Badge tone="blue">{t("Overpaid {amount}", { amount: formatCurrency(-b.due, patient.currency) })}</Badge>
                       )}
                     </td>
                     <td className="py-2.5 pr-5 text-slate-600">{sellerNames.get(patient.responsible_seller_id) ?? "—"}</td>

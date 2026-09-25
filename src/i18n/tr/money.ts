@@ -100,7 +100,7 @@ export const money: Record<string, string> = {
   "Counts as {amount} toward this visit ({rate})": "Bu ziyaret için {amount} olarak sayılır ({rate})",
   "≈ {amount} in reports": "raporlarda ≈ {amount}",
   "for reports": "raporlar için",
-  "Patient pays the {pct} card surcharge on top": "Hasta %{pct} kart ek ücretini ayrıca öder",
+  "Patient pays the {pct} card surcharge on top": "Hasta {pct} kart ek ücretini ayrıca öder",
   "Patient pays {total} · {surcharge} surcharge not commissioned": "Hasta {total} öder · {surcharge} ek ücret komisyona dahil değil",
   "Receipt no., balance on departure…": "Makbuz no., kalan dönüşte…",
   "After this payment: {amount} still due on {visit}.": "Bu ödemeden sonra: {visit} için hâlâ {amount} ödenecek.",

@@ -6,10 +6,11 @@ import { Badge, Button, Card } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { TaskFormModal } from "./TaskFormModal";
 import { deleteTask, setTaskStatus } from "./actions";
+import { useLocale, useT } from "@/i18n/client";
 
-function formatDue(date: string, time: string | null) {
+function formatDue(date: string, time: string | null, locale: string) {
   const d = new Date(`${date}T00:00:00`);
-  const label = d.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
+  const label = d.toLocaleDateString(locale, { weekday: "short", day: "2-digit", month: "short" });
   return time ? `${label}, ${time}` : label;
 }
 
@@ -31,6 +32,8 @@ export function TasksClient({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const { showToast } = useToast();
+  const tr = useT();
+  const locale = useLocale();
 
   const { pendingTasks, doneTasks } = useMemo(
     () => ({
@@ -47,7 +50,7 @@ export function TasksClient({
         const { celebration } = await setTaskStatus(task.id, task.status === "pending" ? "done" : "pending");
         if (celebration) showToast(celebration.message);
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to update task", "error");
+        showToast(e instanceof Error ? e.message : tr("Failed to update task"), "error");
       } finally {
         setBusyId(null);
       }
@@ -55,14 +58,14 @@ export function TasksClient({
   }
 
   function handleDelete(id: string) {
-    if (!confirm("Delete this task?")) return;
+    if (!confirm(tr("Delete this task?"))) return;
     setBusyId(id);
     startTransition(async () => {
       try {
         await deleteTask(id);
-        showToast("Task deleted");
+        showToast(tr("Task deleted"));
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to delete task", "error");
+        showToast(e instanceof Error ? e.message : tr("Failed to delete task"), "error");
       } finally {
         setBusyId(null);
       }
@@ -87,9 +90,9 @@ export function TasksClient({
               {task.title}
             </span>
             {patientLabel && <Badge tone="blue">{patientLabel}</Badge>}
-            {overdue && <Badge tone="amber">Overdue</Badge>}
+            {overdue && <Badge tone="amber">{tr("Overdue")}</Badge>}
           </div>
-          <div className="mt-1 text-xs text-slate-500">{formatDue(task.due_date, task.due_time)}</div>
+          <div className="mt-1 text-xs text-slate-500">{formatDue(task.due_date, task.due_time, locale)}</div>
           {task.notes && <p className="mt-1 text-sm text-slate-500">{task.notes}</p>}
         </div>
         <button
@@ -97,7 +100,7 @@ export function TasksClient({
           onClick={() => handleDelete(task.id)}
           className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
         >
-          Delete
+          {tr("Delete")}
         </button>
       </Card>
     );
@@ -107,8 +110,8 @@ export function TasksClient({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Tasks</h1>
-          <p className="mt-1 text-sm text-slate-500">Reminders sent to Telegram when they come due</p>
+          <h1 className="text-2xl font-semibold text-slate-900">{tr("Tasks")}</h1>
+          <p className="mt-1 text-sm text-slate-500">{tr("Reminders sent to Telegram when they come due")}</p>
         </div>
         <Button
           onClick={() => {
@@ -116,7 +119,7 @@ export function TasksClient({
             setModalOpen(true);
           }}
         >
-          + New task
+          + {tr("New task")}
         </Button>
       </div>
 
@@ -125,14 +128,14 @@ export function TasksClient({
           <TaskRow key={task.id} task={task} />
         ))}
         {pendingTasks.length === 0 && (
-          <div className="py-10 text-center text-slate-400">No pending tasks.</div>
+          <div className="py-10 text-center text-slate-400">{tr("No pending tasks.")}</div>
         )}
       </div>
 
       {doneTasks.length > 0 && (
         <details className="pt-2">
           <summary className="cursor-pointer text-sm font-medium text-slate-500">
-            Done ({doneTasks.length})
+            {tr("Done ({n})", { n: doneTasks.length })}
           </summary>
           <div className="mt-3 space-y-3">
             {doneTasks.map((task) => (

@@ -13,6 +13,8 @@ import { Driver, DriverMessagesMode, TransferCompany, TransferKind, TransferStat
 import { markTransferSent, markTransfersSent, setTransferStatus } from "../patients/transfer-actions";
 import { PeopleFilter, isAllFilter, matchesPeopleFilter } from "@/lib/people-filter";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
+import { useLocale, useT } from "@/i18n/client";
+import type { T } from "@/i18n";
 
 const KIND: Record<TransferKind, { label: string; tone: "green" | "amber" | "slate" }> = {
   arrival: { label: "Arrival", tone: "green" },
@@ -25,15 +27,15 @@ const STATUS: Record<TransferStatus, { label: string; tone: "slate" | "blue" | "
   done: { label: "Done", tone: "green" },
 };
 
-function dayLabel(iso: string, today: string): string {
+function dayLabel(iso: string, today: string, tx: T, locale: string): string {
   const [y, m, d] = iso.split("-").map(Number);
-  const label = new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const label = new Date(y, m - 1, d).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" });
   const tomorrow = (() => {
     const [ty, tm, td] = today.split("-").map(Number);
     const t = new Date(ty, tm - 1, td + 1);
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
   })();
-  return iso === today ? `Today · ${label}` : iso === tomorrow ? `Tomorrow · ${label}` : label;
+  return iso === today ? `${tx("Today")} · ${label}` : iso === tomorrow ? `${tx("Tomorrow")} · ${label}` : label;
 }
 
 /** One transfer detail: labelled on phones (two to a row, or a full row when `wide`), a plain
@@ -104,6 +106,8 @@ export function TransfersClient({
   // of their transfers, whatever the filter, so a driver never gets half a day
   const shown = transfers.filter((t) => matchesPeopleFilter(t.patient, people, currentUserId));
   const router = useRouter();
+  const tx = useT();
+  const locale = useLocale();
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -121,7 +125,7 @@ export function TransfersClient({
         if (ok) showToast(ok);
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : tx("Something went wrong"), "error");
       } finally {
         setBusyId(null);
       }
@@ -169,11 +173,11 @@ export function TransfersClient({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Transfers</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{tx("Transfers")}</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Every car journey across all patients, by driver.{" "}
-            {noDriver > 0 && <span className="font-medium text-amber-700">{noDriver} without a driver. </span>}
-            {notSent > 0 && <span className="font-medium text-slate-700">{notSent} not sent to the driver yet.</span>}
+            {tx("Every car journey across all patients, by driver.")}{" "}
+            {noDriver > 0 && <span className="font-medium text-amber-700">{tx("{n} without a driver.", { n: noDriver })} </span>}
+            {notSent > 0 && <span className="font-medium text-slate-700">{tx("{n} not sent to the driver yet.", { n: notSent })}</span>}
           </p>
           {driverMessages === "off" && isAdmin && (
             <div className="mt-1">
@@ -183,24 +187,24 @@ export function TransfersClient({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1">
-            <Link href={href(prevDate)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-200" aria-label="Earlier">
+            <Link href={href(prevDate)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-200" aria-label={tx("Earlier")}>
               ‹
             </Link>
             <Link
               href={href(today)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${from === today ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
             >
-              Today
+              {tx("Today")}
             </Link>
-            <DateInput value={from} onChange={(iso) => iso && router.push(href(iso))} className="w-40" aria-label="Start date" />
-            <Link href={href(nextDate)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-200" aria-label="Later">
+            <DateInput value={from} onChange={(iso) => iso && router.push(href(iso))} className="w-40" aria-label={tx("Start date")} />
+            <Link href={href(nextDate)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-200" aria-label={tx("Later")}>
               ›
             </Link>
           </div>
           <div className="flex rounded-lg bg-slate-100 p-1">
-            {rangeButton(1, "1 day")}
-            {rangeButton(2, "2 days")}
-            {rangeButton(7, "Week")}
+            {rangeButton(1, tx("1 day"))}
+            {rangeButton(2, tx("2 days"))}
+            {rangeButton(7, tx("Week"))}
           </div>
         </div>
       </div>
@@ -216,7 +220,7 @@ export function TransfersClient({
       />
       {!isAllFilter(people) && (
         <p className="-mt-3 text-xs text-slate-500">
-          Showing only the filtered patients&apos; transfers. A driver&apos;s day list still includes all of their transfers.
+          {tx("Showing only the filtered patients' transfers. A driver's day list still includes all of their transfers.")}
         </p>
       )}
 
@@ -225,10 +229,13 @@ export function TransfersClient({
         return (
           <section key={date} className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              {dayLabel(date, today)} <span className="font-normal normal-case text-slate-400">· {dayItems.length} transfer{dayItems.length === 1 ? "" : "s"}</span>
+              {dayLabel(date, today, tx, locale)}{" "}
+              <span className="font-normal normal-case text-slate-400">
+                · {dayItems.length === 1 ? tx("1 transfer") : tx("{n} transfers", { n: dayItems.length })}
+              </span>
             </h2>
             {dayItems.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">No transfers.</p>
+              <p className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">{tx("No transfers.")}</p>
             ) : (
               groupByDriver(dayItems, companies).map((g) => (
                 <Card key={g.key} className={`overflow-hidden ${g.driver ? "" : "ring-2 ring-amber-300"}`}>
@@ -241,11 +248,11 @@ export function TransfersClient({
                       <div className="min-w-0">
                         <p className="font-semibold text-slate-900">{g.driver.name}</p>
                         <p className="text-xs text-slate-500">
-                          {[g.company?.is_internal ? "Clinic" : g.company?.name, g.driver.vehicle, g.driver.phone].filter(Boolean).join(" · ")}
+                          {[g.company?.is_internal ? tx("Clinic") : g.company?.name, g.driver.vehicle, g.driver.phone].filter(Boolean).join(" · ")}
                         </p>
                       </div>
                     ) : (
-                      <p className="font-semibold text-amber-800">⚠ No driver yet — open the patient to assign one</p>
+                      <p className="font-semibold text-amber-800">⚠ {tx("No driver yet — open the patient to assign one")}</p>
                     )}
                     {g.driver && (() => {
                       const day = daySend(g, date);
@@ -258,7 +265,7 @@ export function TransfersClient({
                             disabled={day.transferIds.length === 0}
                             className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-40"
                           >
-                            Copy day list
+                            {tx("Copy day list")}
                           </button>
                           {driverMessages !== "off" &&
                             (fallbackUrl ? (
@@ -270,16 +277,18 @@ export function TransfersClient({
                                 disabled={!isWhatsAppable(g.driver.phone) || pending || day.transferIds.length === 0 || messages.busyKey === day.key}
                                 title={
                                   !isWhatsAppable(g.driver.phone)
-                                    ? "This driver has no phone number"
+                                    ? tx("This driver has no phone number")
                                     : driverMessages === "api"
-                                    ? "Sends all of this driver's open transfers for the day from the clinic's WhatsApp number"
-                                    : "One WhatsApp message with all of this driver's open transfers for the day"
+                                    ? tx("Sends all of this driver's open transfers for the day from the clinic's WhatsApp number")
+                                    : tx("One WhatsApp message with all of this driver's open transfers for the day")
                                 }
                                 className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
                               >
                                 {messages.busyKey === day.key
-                                  ? "Sending…"
-                                  : `${driverMessages === "api" ? "Send" : "WhatsApp"} day list (${day.transferIds.length})`}
+                                  ? tx("Sending…")
+                                  : driverMessages === "api"
+                                    ? tx("Send day list ({n})", { n: day.transferIds.length })
+                                    : tx("WhatsApp day list ({n})", { n: day.transferIds.length })}
                               </button>
                             ))}
                         </div>
@@ -294,36 +303,36 @@ export function TransfersClient({
                           <div className="flex items-center gap-2 sm:w-14 sm:shrink-0">
                             <span className="text-lg font-semibold tabular-nums text-slate-900 sm:text-base">{t.transfer_time ?? "--:--"}</span>
                             <span className="ml-auto flex flex-wrap justify-end gap-1.5 sm:hidden">
-                              <Badge tone={KIND[t.kind].tone}>{KIND[t.kind].label}</Badge>
-                              <Badge tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Badge>
+                              <Badge tone={KIND[t.kind].tone}>{tx(KIND[t.kind].label)}</Badge>
+                              <Badge tone={STATUS[t.status].tone}>{tx(STATUS[t.status].label)}</Badge>
                             </span>
                           </div>
 
                           <div className="min-w-0 flex-1 space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="hidden sm:inline-flex">
-                                <Badge tone={KIND[t.kind].tone}>{KIND[t.kind].label}</Badge>
+                                <Badge tone={KIND[t.kind].tone}>{tx(KIND[t.kind].label)}</Badge>
                               </span>
                               <span className="text-[15px] font-semibold text-slate-900 sm:text-sm sm:font-medium sm:text-slate-800">
                                 {t.from_place || "?"} → {t.to_place || "?"}
                               </span>
                               <span className="hidden sm:inline-flex">
-                                <Badge tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Badge>
+                                <Badge tone={STATUS[t.status].tone}>{tx(STATUS[t.status].label)}</Badge>
                               </span>
                               <WhatsAppDelivery transfer={t} />
                             </div>
 
                             {/* details — a labelled grid on phones, one compact line on wider screens */}
                             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:flex sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1 sm:text-xs sm:text-slate-600">
-                              <Detail label="Patient" wide>
+                              <Detail label={tx("Patient")} wide>
                                 <Link href={`/patients/${t.patient.id}`} className="font-semibold text-teal-700 hover:underline sm:font-medium">
                                   {t.patient.name}
                                 </Link>
                               </Detail>
-                              <Detail label="Pax">{t.pax} pax</Detail>
-                              {t.flight_no && <Detail label="Flight">✈ {t.flight_no}</Detail>}
+                              <Detail label={tx("Pax")}>{tx("{n} pax", { n: t.pax })}</Detail>
+                              {t.flight_no && <Detail label={tx("Flight")}>✈ {t.flight_no}</Detail>}
                               {t.patient.phone && (
-                                <Detail label="Patient phone" wide>
+                                <Detail label={tx("Patient phone")} wide>
                                   <span className="flex flex-wrap items-center gap-2">
                                     <a href={`tel:${t.patient.phone.replace(/[^\d+]/g, "")}`} className="font-medium text-slate-800 hover:underline sm:font-normal sm:text-slate-600">
                                       📞 {t.patient.phone}
@@ -335,14 +344,14 @@ export function TransfersClient({
                                         rel="noopener noreferrer"
                                         className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 sm:bg-transparent sm:p-0 sm:font-normal sm:hover:underline"
                                       >
-                                        WhatsApp patient
+                                        {tx("WhatsApp patient")}
                                       </a>
                                     )}
                                   </span>
                                 </Detail>
                               )}
                               {t.notes && (
-                                <Detail label="Notes" wide>
+                                <Detail label={tx("Notes")} wide>
                                   <span className="text-slate-700 sm:text-slate-400">{t.notes}</span>
                                 </Detail>
                               )}
@@ -356,9 +365,9 @@ export function TransfersClient({
                                 type="button"
                                 onClick={() => messages.copy(driverMessage(t, t.patient.name, t.patient.phone))}
                                 className="rounded-lg bg-slate-100 px-2.5 py-2 text-slate-700 hover:bg-slate-200 sm:py-1"
-                                title="Copy the driver message to paste anywhere"
+                                title={tx("Copy the driver message to paste anywhere")}
                               >
-                                Copy
+                                {tx("Copy")}
                               </button>
                             )}
                             {g.driver && t.status !== "done" && driverMessages !== "off" && (() => {
@@ -373,17 +382,17 @@ export function TransfersClient({
                                   disabled={!isWhatsAppable(g.driver.phone) || busyId === t.id || messages.busyKey === t.id}
                                   className="rounded-lg bg-emerald-50 px-2.5 py-2 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 sm:py-1"
                                 >
-                                  {messages.busyKey === t.id ? "Sending…" : sendLabel(driverMessages, t.status !== "planned")}
+                                  {messages.busyKey === t.id ? tx("Sending…") : tx(sendLabel(driverMessages, t.status !== "planned"))}
                                 </button>
                               );
                             })()}
                             <button
                               type="button"
-                              onClick={() => run(t.id, () => setTransferStatus(t.id, t.status === "done" ? "sent" : "done"), t.status === "done" ? "Marked not done" : "Marked done ✓")}
+                              onClick={() => run(t.id, () => setTransferStatus(t.id, t.status === "done" ? "sent" : "done"), t.status === "done" ? tx("Marked not done") : tx("Marked done ✓"))}
                               disabled={busyId === t.id}
                               className="rounded-lg bg-slate-100 px-2.5 py-2 text-slate-700 hover:bg-slate-200 disabled:opacity-40 sm:py-1"
                             >
-                              {t.status === "done" ? "Undo" : "Done ✓"}
+                              {t.status === "done" ? tx("Undo") : tx("Done ✓")}
                             </button>
                           </div>
                         </div>

@@ -34,7 +34,7 @@ for (const f of walk(path.join(root, "i18n", "tr"))) {
 
 // texts used in code
 const missing = new Map();
-const call = /\b(?:t|tx|msg)\(\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`$]*`)/g;
+const call = /\b(?:t|tx|tr|msg)\(\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`$]*`)/g;
 for (const f of walk(root)) {
   if (f.includes(`${path.sep}i18n${path.sep}`)) continue;
   const rel = path.relative(path.resolve(root, ".."), f).replace(/\\/g, "/");

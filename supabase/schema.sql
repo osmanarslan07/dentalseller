@@ -2840,7 +2840,8 @@ insert into public.permissions (key, module, description) values
   ('payments.record',  null,         'Record, edit and delete payments'),
   ('money.edit',       null,         'Change prices, extras and discounts'),
   ('transfers.manage', 'operations', 'Book transfers and hotels; add and edit drivers'),
-  ('drivers.manage',   'operations', 'Delete drivers and companies, transfer defaults, driver messages'),
+  ('drivers.manage',   'operations', 'Delete drivers and companies, transfer defaults'),
+  ('messaging.manage', 'operations', 'Driver messages: WhatsApp app / Business API / off, API details and templates'),
   ('quotes.use',       'sales',      'Make and send quotes'),
   ('earnings.own',     'sales',      'See your own commission'),
   ('earnings.all',     'sales',      'See every seller''s earnings (Team page)'),
@@ -3218,17 +3219,20 @@ create policy "activity_log_select_admin" on public.activity_log
 
 -- ---------- clinic settings ----------
 -- settings.clinic writes the clinic's settings; drivers.manage writes just the transfer
--- defaults and driver-message columns (checked column by column below).
+-- defaults and messaging.manage just the driver-message (WhatsApp) columns (checked column
+-- by column below).
 drop policy if exists "clinic_config_insert_admin" on public.clinic_config;
 create policy "clinic_config_insert_admin" on public.clinic_config
   for insert with check (
-    (public.has_permission(auth.uid(), 'settings.clinic') or public.has_permission(auth.uid(), 'drivers.manage'))
+    (public.has_permission(auth.uid(), 'settings.clinic') or public.has_permission(auth.uid(), 'drivers.manage')
+      or public.has_permission(auth.uid(), 'messaging.manage'))
     and clinic_id = public.my_clinic_id()
   );
 drop policy if exists "clinic_config_update_admin" on public.clinic_config;
 create policy "clinic_config_update_admin" on public.clinic_config
   for update using (
-    (public.has_permission(auth.uid(), 'settings.clinic') or public.has_permission(auth.uid(), 'drivers.manage'))
+    (public.has_permission(auth.uid(), 'settings.clinic') or public.has_permission(auth.uid(), 'drivers.manage')
+      or public.has_permission(auth.uid(), 'messaging.manage'))
     and clinic_id = public.my_clinic_id()
   );
 
@@ -3240,15 +3244,23 @@ set search_path = public
 as $$
 declare
   driver_cols text[] := array['default_airport_company_id', 'default_airport_driver_id', 'default_local_company_id',
-    'default_local_driver_id', 'driver_messages_mode', 'whatsapp_phone_number_id', 'whatsapp_business_account_id',
+    'default_local_driver_id'];
+  message_cols text[] := array['driver_messages_mode', 'whatsapp_phone_number_id', 'whatsapp_business_account_id',
     'whatsapp_template_single', 'whatsapp_template_day', 'whatsapp_template_lang', 'whatsapp_verified_at',
-    'whatsapp_last_error', 'whatsapp_last_error_at', 'updated_at'];
+    'whatsapp_last_error', 'whatsapp_last_error_at'];
+  allowed text[] := array['updated_at'];
 begin
   if auth.uid() is null or public.has_permission(auth.uid(), 'settings.clinic') then
     return new;
   end if;
+  if public.has_permission(auth.uid(), 'drivers.manage') then
+    allowed := allowed || driver_cols;
+  end if;
+  if public.has_permission(auth.uid(), 'messaging.manage') then
+    allowed := allowed || message_cols;
+  end if;
   -- (a clinic's row exists from its first settings save; a first insert isn't checked)
-  if tg_op = 'UPDATE' and (to_jsonb(new) - driver_cols) is distinct from (to_jsonb(old) - driver_cols) then
+  if tg_op = 'UPDATE' and (to_jsonb(new) - allowed) is distinct from (to_jsonb(old) - allowed) then
     raise exception 'Only an admin can change the clinic''s settings';
   end if;
   return new;

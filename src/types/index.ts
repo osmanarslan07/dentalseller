@@ -45,6 +45,7 @@ export type Permission =
   | "money.edit"
   | "transfers.manage"
   | "drivers.manage"
+  | "messaging.manage"
   | "quotes.use"
   | "earnings.own"
   | "earnings.all"

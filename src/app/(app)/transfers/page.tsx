@@ -43,7 +43,7 @@ export default async function TransfersPage({
       transfers={transfers}
       companies={companies}
       driverMessages={clinicConfig.driverMessages.mode}
-      isAdmin={can(viewer, "drivers.manage")}
+      isAdmin={can(viewer, "messaging.manage")}
       from={from}
       days={days}
       today={today}

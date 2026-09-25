@@ -202,15 +202,17 @@ export function SettingsClient({
 
           <TelegramCard connected={telegramConnected} />
 
-          <Card className="p-6">
-            <h2 className="mb-1 text-base font-semibold text-slate-900">Privacy</h2>
-            <p className="mb-4 text-sm text-slate-500">
-              {hidden
-                ? "Earnings/commission figures are hidden on Earnings and Patients. Safe to show your screen."
-                : "Earnings/commission figures are visible everywhere. Hide them before sharing your screen."}
-            </p>
-            <PrivacyToggleButton />
-          </Card>
+          {(has("earnings.own") || has("earnings.all")) && (
+            <Card className="p-6">
+              <h2 className="mb-1 text-base font-semibold text-slate-900">Privacy</h2>
+              <p className="mb-4 text-sm text-slate-500">
+                {hidden
+                  ? "Earnings/commission figures are hidden on Earnings and Patients. Safe to show your screen."
+                  : "Earnings/commission figures are visible everywhere. Hide them before sharing your screen."}
+              </p>
+              <PrivacyToggleButton />
+            </Card>
+          )}
 
           <Card className="p-6">
             <h2 className="mb-1 text-base font-semibold text-slate-900">Celebrations</h2>
@@ -496,7 +498,7 @@ export function SettingsClient({
 
       {activeTab === "transfers" && (
         <div className="space-y-6">
-          <DriverMessagesCard config={clinicConfig.driverMessages} isAdmin={has("drivers.manage")} secrets={whatsappSecrets} webhookUrl={webhookUrl} />
+          <DriverMessagesCard config={clinicConfig.driverMessages} isAdmin={has("messaging.manage")} secrets={whatsappSecrets} webhookUrl={webhookUrl} />
           <TransfersCard companies={transferCompanies} defaults={clinicConfig.transferDefaults} isAdmin={has("drivers.manage")} />
         </div>
       )}

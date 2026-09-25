@@ -70,7 +70,7 @@ export function TransfersCard({
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [pending, startTransition] = useTransition();
   const messages = useDriverMessages(driverMessages);
-  const canSetUpDriverMessages = useCan("drivers.manage");
+  const canSetUpDriverMessages = useCan("messaging.manage");
   const canBook = useCan("transfers.manage");
 
   const canSuggest = !!(travel.arrivalDate || travel.departureDate || travel.date);

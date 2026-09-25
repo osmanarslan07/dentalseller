@@ -37,7 +37,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           }))
       )
     : [];
-  const whatsappSecrets = viewer && can(viewer, "drivers.manage") ? await getSecretsStatus(viewer.clinicId) : null;
+  const whatsappSecrets = viewer && can(viewer, "messaging.manage") ? await getSecretsStatus(viewer.clinicId) : null;
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");

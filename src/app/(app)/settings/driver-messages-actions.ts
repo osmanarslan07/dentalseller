@@ -13,7 +13,7 @@ const MODE_NAMES: Record<DriverMessagesMode, string> = { app: "WhatsApp app", ap
 
 async function requireAdmin() {
   const supabase = await createClient();
-  const user = await requirePermission("drivers.manage");
+  const user = await requirePermission("messaging.manage");
   return { supabase, user, clinicId: user.viewer.clinicId };
 }
 

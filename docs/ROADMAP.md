@@ -69,7 +69,7 @@ To do:
 |---|---|
 | Shipping | Everything on branch `feature/roles-modules`, one commit per step, pushed to GitHub (Vercel preview). Merge to master only after the user tests. DB changes go live as each step is built, so they **must keep the current master code working** (additive columns; old `profiles.role` / `is_admin()` kept in sync). NB: preview deployments use the production database — test with TEST patients. |
 | Sales sees | All patients and calendar (as today); only their own commission. |
-| Coordinator | Patients, visits, hotels, transfers, payments, prices/extras/discounts, files, tasks; **pick/type sellers and reassign**; **manage drivers & transfer settings**; **Accounting page**. No quotes, no earnings, no commission settings, no team management, no deleting patients. |
+| Coordinator | Patients, visits, hotels, transfers, payments, prices/extras/discounts, files, tasks; **pick/type sellers and reassign**; **manage drivers & transfer defaults** (not the WhatsApp / driver-message settings — changed 2026-09-25); **Accounting page**. No quotes, no earnings, no commission settings, no team management, no deleting patients. |
 | Accountant | Accounting page, record payments, **every seller's earnings** (Team page). Patients read-only otherwise. No settings, no quotes. |
 | Modules | Per-clinic toggles in /platform, **prefilled by plan** (Trial = all, Starter = Operations, Pro = all, Custom = manual), still editable by hand. |
 | Discount | **Per visit, £ or %**, optional reason. Comes off that visit's total (treatment + extras). **Anyone who can edit money** may give one, no cap; always logged. |
@@ -81,8 +81,13 @@ Built as designed below. Notes:
   `member_roles()` (support mode → viewed-as member's roles, admin when viewing as nobody).
 - Sales keeps two own-record rules outside the catalog, exactly as before: the responsible
   seller can reassign and delete their own patient.
-- Prices (visit expected amounts) additionally need `money.edit` (DB trigger); coordinators
-  may write only the transfer-default / driver-message columns of `clinic_config` (trigger).
+- Prices (visit expected amounts) additionally need `money.edit` (DB trigger). In
+  `clinic_config`, `drivers.manage` may write only the transfer-default columns and
+  `messaging.manage` only the driver-message / WhatsApp columns (trigger).
+- 2026-09-25 (after the user's review): WhatsApp driver-message settings (app / API / off, API
+  details, templates) split out of `drivers.manage` into **`messaging.manage`, Admin only** —
+  coordinators see the setting but can't change it. The Privacy card ("hide commission
+  figures") in Settings → Account only shows to people with `earnings.own` / `earnings.all`.
 - Adding team members now needs `team.manage` (the UI already only showed it to admins).
 - Settings → Team: role tick-buttons per member and on the add form; last-admin and
   own-roles guards are in the database.
@@ -96,7 +101,7 @@ Built as designed below. Notes:
 - Permissions: `patients.view`, `patients.edit`, `patients.delete`, `sellers.assign`
   (pick/type any seller, reassign), `sellers.manage` (seller list + rates), `payments.record`,
   `money.edit` (prices, extras, discounts), `transfers.manage`, `drivers.manage`,
-  `quotes.use`, `earnings.own`, `earnings.all`, `accounting.view`, `files.manage`,
+  `messaging.manage` (WhatsApp driver-message settings), `quotes.use`, `earnings.own`, `earnings.all`, `accounting.view`, `files.manage`,
   `tasks.use`, `team.manage`, `settings.clinic`, `activity.view`. Room for `leads.*` /
   `inbox.*` later.
 - Admin = all. Sales = exactly what a seller can do today (check every current seller path).
@@ -158,8 +163,12 @@ to the support access log (`record_file_opened`).
   name / size / who / when, open, rename, delete (uploader or admin). Logged in History.
 
 ### Finish ◐ — apply the SQL, test, then merge
-- ☐ **Apply the SQL** (not applied yet: the cloud session that built B–F couldn't reach the
-  Supabase API). In the Supabase SQL editor, run everything in `supabase/schema.sql` from the
+- ☑ **Apply the SQL** — applied 2026-09-25 through the Management API (dry run, then twice);
+  verified roles, seller records, 43 role permissions, modules, `my_permissions()` per role,
+  RLS patient counts, identical commission attribution, `patient-files` bucket, discount
+  columns. Re-applied the same day with `messaging.manage` (now 44 role permissions; only the
+  admins gained it; coordinator refused on WhatsApp columns, still allowed on transfer
+  defaults; commission identical). For reference, the section is everything in `supabase/schema.sql` from the
   line `-- ROLES AND PERMISSIONS (roadmap step B)` down to just before
   `-- ONE-TIME MANUAL STEP`. It is safe to run twice and keeps the current master code
   working (tested on a local Postgres copy of the schema: backfill, re-run, every role, support
@@ -191,7 +200,9 @@ Roles (B)
 8. **Coordinator** account: sees Patients, Calendar, Tasks, Transfers, Accounting; no Quotes,
    no Earnings, no Commission tab. New patient → can pick any seller or type a new one;
    can reassign any patient; can't delete patients. Settings → Transfers: can change the
-   defaults and driver messages; Team & clinic tab is hidden.
+   transfer defaults and drivers, but **Driver messages (WhatsApp app / API / off) is
+   read-only** ("Only an admin can change this"). Settings → Account has **no Privacy card**.
+   Team & clinic tab is hidden.
 9. **Accountant** account: sees Patients (no edit buttons, no + Visit, no transfer actions),
    Accounting, Team page (every seller's earnings, no activity); can record/edit payments but
    not extras, prices or discounts.
@@ -229,6 +240,95 @@ Patient files (F)
 25. A file over 20 MB, or a .zip, is refused with a message.
 26. Delete the TEST patient → their files are gone from Storage (Supabase → Storage →
     patient-files) too.
+
+---
+
+## NEXT (after A–F are tested and merged)
+
+### Step G — Roles page: see, then customise, what each role can do ☐ (agreed 2026-09-25)
+
+Today the four roles (Admin, Sales, Coordinator, Accountant) and their permissions are the
+same for every clinic, and no screen shows which role can do what. The groundwork is there:
+permissions are data (`role_permissions`) and the app checks permissions, never role names.
+
+**G0 — Finer permissions and perfect default roles (do first: G1/G2 build on it)**
+- Every area gets the **levels that mean something there** — view / edit / delete (or record,
+  upload, …) — not all three by default. Sketch, to finalise when building:
+
+  | Area | Levels |
+  |---|---|
+  | Patients | view · edit · delete |
+  | Visits & travel | view · edit |
+  | Money (prices, extras, discounts) | view · edit |
+  | Payments | view · record · edit/delete |
+  | Transfers & hotels | view · book/edit |
+  | Drivers & companies | edit · delete |
+  | Files | view · upload · delete |
+  | Quotes | view · make/send |
+  | Earnings | own · everyone's |
+  | Accounting | view |
+  | Tasks | use |
+  | Team | view · manage members · manage roles |
+  | Activity log | view |
+  | Clinic settings — one per section | branding · Telegram group · commission rules · money rules · transfer defaults · **driver messages / WhatsApp** · modules-facing settings |
+
+- **Audit every screen and setting against the four roles** (like the two found on
+  2026-09-25: coordinators could change WhatsApp settings; everyone saw the "hide
+  commissions" Privacy card). Rule: if a role can't use a feature, it doesn't see its
+  settings either.
+- Existing keys map onto the new ones (e.g. `patients.edit` → `patients.edit` +
+  `visits.edit`) so nobody's access changes on migration day — snapshot `my_permissions()`
+  per member before/after.
+
+**G1 — Read-only view (build first; useful even if no clinic ever customises)**
+- Settings → **Roles** tab (admins): a grid with permissions down the side, grouped
+  (Patients, Money, Transfers, Team, …) and one column per role, ticked where the role has it.
+- Plain-English line per permission (e.g. "Money: change prices, extras and discounts"),
+  never raw keys like `money.edit`.
+- Permissions of a module the clinic doesn't have are greyed out with "module off".
+- Team card: "what can they do?" link per member → their combined permissions across roles.
+- Reads from the same data the checks use (`role_permissions`, modules), so it can't drift.
+
+**G2 — Customise roles**
+- Built-ins stay as templates: a clinic may change Sales / Coordinator / Accountant ticks,
+  with "Reset to default". **Admin is always everything and not editable** (no lock-out).
+- Custom roles per clinic (e.g. "Receptionist"): a name + permission tick-boxes; offered in
+  the Team card's role tick-buttons next to the built-ins.
+- Every change logged in Activity ("changed Coordinator: + payments.record").
+- Kept outside the tick-boxes on purpose:
+  - **Being a seller** (in the seller picker, earns commission) stays tied to the Sales role,
+    so a wrong tick can't start paying someone commission.
+  - Sales' own-patient rules (reassign/delete their own) stay fixed; the full
+    `sellers.assign` / `patients.delete` can still be given to any role.
+- Editing roles is its own permission, **`roles.manage`**, separate from `team.manage`. The
+  admin can give it to any role (even Sales), with these **anti-escalation rules** enforced
+  in the database, not just the UI:
+  - you can only tick permissions **you have yourself** (a seller with `roles.manage` can't
+    give Sales `team.manage` or `settings.*` and so make themselves an admin);
+  - you can't edit a role **you hold**, and can't change your own roles (exists);
+  - nobody but the Admin role touches the Admin role, which is always everything.
+- Guards: last admin can't be removed (exists); a role can't be deleted while members have
+  it.
+
+To do:
+- ☐ G0: finalise the level list; new keys + mapping from old keys (access unchanged);
+      split `settings.clinic` per section; audit every page, card and action per role.
+- ☐ G1: permission labels + groups (shared by grid and member view); Roles tab (read-only);
+      "what can they do?" on the Team card; module-off greying.
+- ☐ G2 SQL: `clinic_roles` (clinic_id, key, name, is_builtin); `role_permissions` gets
+      `clinic_id` (null = default); drop the fixed four-name check on `profiles.roles`
+      (validate against the clinic's roles instead); `has_permission()` / `my_permissions()`
+      read the clinic's version, falling back to defaults.
+- ☐ G2 SQL: **stop the migration wiping `role_permissions`** — today it deletes and
+      re-inserts the catalog on every run; change to insert missing defaults only, so
+      clinic edits survive re-runs.
+- ☐ G2 SQL: `roles.manage` + anti-escalation checks (grant only what you hold, not your own
+      role, Admin role locked) in the database.
+- ☐ G2 UI: edit ticks on built-ins + reset; create/rename/delete custom roles; activity log.
+- ☐ Snapshot `my_permissions()` for every member before/after — must be identical.
+- ☐ Type-check + lint; test checklist for the user.
+
+---
 
 ## Working notes for a new session (cloud or local)
 

@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLocale, useT } from "@/i18n/client";
 
-const rtf = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto" });
-
-function relativeLabel(fromMs: number, nowMs: number): string {
+function relativeLabel(fromMs: number, nowMs: number, locale: string, justNow: string): string {
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   const diffSec = Math.round((fromMs - nowMs) / 1000);
   const abs = Math.abs(diffSec);
-  if (abs < 10) return "just now";
+  if (abs < 10) return justNow;
   if (abs < 60) return rtf.format(diffSec, "second");
   const diffMin = Math.round(diffSec / 60);
   if (Math.abs(diffMin) < 60) return rtf.format(diffMin, "minute");
@@ -18,11 +18,13 @@ function relativeLabel(fromMs: number, nowMs: number): string {
 /** Ticking "updated Xm ago" label — re-renders every 15s to stay current. */
 export function RelativeTime({ timestamp }: { timestamp: number }) {
   const [, setTick] = useState(0);
+  const t = useT();
+  const locale = useLocale();
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 15000);
     return () => clearInterval(id);
   }, []);
 
-  return <>{relativeLabel(timestamp, Date.now())}</>;
+  return <>{relativeLabel(timestamp, Date.now(), locale, t("just now"))}</>;
 }

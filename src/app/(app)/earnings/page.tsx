@@ -31,6 +31,9 @@ import {
 } from "@/components/StatIcons";
 import { getViewerUser } from "@/lib/viewer";
 import { requirePagePermission } from "@/lib/permissions";
+import { getLang, getT } from "@/i18n/server";
+import { localeOf } from "@/i18n";
+import { rich } from "@/i18n/rich";
 
 function tierTone(total: number, settings: CommissionSettings): "slate" | "amber" | "green" {
   if (total <= settings.tier1_threshold) return "slate";
@@ -41,6 +44,8 @@ function tierTone(total: number, settings: CommissionSettings): "slate" | "amber
 export default async function EarningsPage() {
   await requirePagePermission("earnings.own");
   const updatedAt = Date.now();
+  const t = await getT();
+  const locale = localeOf(await getLang());
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const user = await getViewerUser();
@@ -69,7 +74,7 @@ export default async function EarningsPage() {
   const chartData = chartMonths.map((m) => {
     const a = aggregateMap.get(m);
     return {
-      label: monthLabel(m),
+      label: monthLabel(m, locale),
       actual: a?.actualCommission ?? 0,
       expected: a?.expectedCommission ?? 0,
     };
@@ -124,74 +129,72 @@ export default async function EarningsPage() {
   const cardsById: Record<DashboardCardId, ReactNode> = {
     total_earned: (
       <StatCard
-        label="Total earned to date"
+        label={t("Total earned to date")}
         value={<Money value={totalActualCommission} currency={currency} animate />}
-        sublabel="Confirmed commission, actual payments"
+        sublabel={t("Confirmed commission, actual payments")}
         icon={<WalletIcon className="h-4 w-4" />}
       />
     ),
     total_commission: (
       <StatCard
-        label="Total commission (earned + expected)"
+        label={t("Total commission (earned + expected)")}
         value={<Money value={totalActualCommission + totalExpectedCommission} currency={currency} animate />}
-        sublabel={
-          <>
-            <Money value={totalActualCommission} currency={currency} showConversion={false} /> earned +{" "}
-            <Money value={totalExpectedCommission} currency={currency} showConversion={false} /> expected
-          </>
-        }
+        sublabel={rich(t("{earned} earned + {expected} expected"), {
+          earned: <Money value={totalActualCommission} currency={currency} showConversion={false} />,
+          expected: <Money value={totalExpectedCommission} currency={currency} showConversion={false} />,
+        })}
         icon={<LayersIcon className="h-4 w-4" />}
       />
     ),
     month_earnings: (
       <StatCard
-        label="This month's earnings so far"
+        label={t("This month's earnings so far")}
         value={<Money value={thisMonthAgg?.actualCommission ?? 0} currency={currency} animate />}
-        sublabel={`From ${formatCurrency(thisMonthAgg?.actualTotal ?? 0, currency)} received`}
+        sublabel={t("From {amount} received", { amount: formatCurrency(thisMonthAgg?.actualTotal ?? 0, currency) })}
         icon={<TrendingUpIcon className="h-4 w-4" />}
       />
     ),
     expected_earnings: (
       <StatCard
-        label="Total expected earnings"
+        label={t("Total expected earnings")}
         value={<Money value={outstandingExpected} currency={currency} animate />}
-        sublabel="Remaining commission across confirmed treatment plans"
+        sublabel={t("Remaining commission across confirmed treatment plans")}
         icon={<HourglassIcon className="h-4 w-4" />}
       />
     ),
     upcoming_visits_value: (
       <StatCard
-        label="Upcoming visits value (30 days)"
+        label={t("Upcoming visits value (30 days)")}
         value={<Money value={upcomingValue} currency={currency} animate />}
-        sublabel={`${upcoming.length} visit${upcoming.length === 1 ? "" : "s"} scheduled`}
+        sublabel={upcoming.length === 1 ? t("1 visit scheduled") : t("{n} visits scheduled", { n: upcoming.length })}
         icon={<PlaneIcon className="h-4 w-4" />}
       />
     ),
     avg_commission_patient: (
       <StatCard
-        label="Average commission per patient"
+        label={t("Average commission per patient")}
         value={<Money value={avgCommissionPerPatient} currency={currency} animate />}
-        sublabel={`Across ${totalPatients} patients`}
+        sublabel={t("Across {n} patients", { n: totalPatients })}
         icon={<PercentIcon className="h-4 w-4" />}
       />
     ),
     avg_treatment_value: (
       <StatCard
-        label="Average treatment value per patient"
+        label={t("Average treatment value per patient")}
         value={<Money value={avgTreatmentValue} currency={currency} animate />}
-        sublabel="Visit 1 + visit 2 expected total"
+        sublabel={t("Visit 1 + visit 2 expected total")}
         icon={<TagIcon className="h-4 w-4" />}
       />
     ),
     highest_value_patient: (
       <StatCard
-        label="Highest-value patient this month"
+        label={t("Highest-value patient this month")}
         value={highestValuePatient ? highestValuePatient.name : "—"}
         sublabel={
           highestValuePatient ? (
             <Money value={highestValuePatient.value} currency={currency} />
           ) : (
-            "No patients confirmed this month"
+            t("No patients confirmed this month")
           )
         }
         icon={<TrophyIcon className="h-4 w-4" />}
@@ -240,18 +243,20 @@ export default async function EarningsPage() {
     <div className="space-y-8">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold text-slate-900">Earnings</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t("Earnings")}</h1>
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-            Private to you
+            {t("Private to you")}
           </span>
         </div>
         <p className="mt-1 text-sm text-slate-500">
-          Commission is <Percent value={settings.tier1_rate} /> up to{" "}
-          <Money value={settings.tier1_threshold} currency={currency} showConversion={false} />,{" "}
-          <Percent value={settings.tier2_rate} /> up to{" "}
-          <Money value={settings.tier2_threshold} currency={currency} showConversion={false} />, then{" "}
-          <Percent value={settings.tier3_rate} /> above. Plus{" "}
-          <Money value={settings.fixed_monthly_payment} currency={currency} showConversion={false} /> fixed per month.
+          {rich(t("Commission is {r1} up to {t1}, {r2} up to {t2}, then {r3} above. Plus {fixed} fixed per month."), {
+            r1: <Percent value={settings.tier1_rate} />,
+            t1: <Money value={settings.tier1_threshold} currency={currency} showConversion={false} />,
+            r2: <Percent value={settings.tier2_rate} />,
+            t2: <Money value={settings.tier2_threshold} currency={currency} showConversion={false} />,
+            r3: <Percent value={settings.tier3_rate} />,
+            fixed: <Money value={settings.fixed_monthly_payment} currency={currency} showConversion={false} />,
+          })}
         </p>
       </div>
 
@@ -265,12 +270,12 @@ export default async function EarningsPage() {
 
       <Card className="p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Earnings by month</h2>
-          <span className="text-xs text-slate-400">Last 12 months</span>
+          <h2 className="text-base font-semibold text-slate-900">{t("Earnings by month")}</h2>
+          <span className="text-xs text-slate-400">{t("Last 12 months")}</span>
         </div>
         <PrivateEarningsChart data={chartData} currency={currency} />
         <p className="mt-3 text-xs text-slate-400">
-          Updated <RelativeTime timestamp={updatedAt} />
+          {rich(t("Updated {when}"), { when: <RelativeTime timestamp={updatedAt} /> })}
         </p>
       </Card>
 
@@ -288,17 +293,17 @@ export default async function EarningsPage() {
           return (
             <Card key={r.month} className={`p-4 ${isCurrent ? "bg-teal-50/50" : ""}`}>
               <div className="flex items-center gap-2 font-medium text-slate-800">
-                {monthLabel(r.month)}
-                {isCurrent && <Badge tone="blue">Current</Badge>}
+                {monthLabel(r.month, locale)}
+                {isCurrent && <Badge tone="blue">{t("Current")}</Badge>}
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-400">Actual received</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">{t("Actual received")}</div>
                   <div className="text-slate-600">{formatCurrency(r.actualTotal, currency)}</div>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-400">Actual commission</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">{t("Actual commission")}</div>
                   <div className="font-medium text-slate-800">
                     <Money value={r.actualCommission} currency={currency} />
                   </div>
@@ -307,11 +312,11 @@ export default async function EarningsPage() {
                   </Badge>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-400">Expected (scheduled)</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">{t("Expected (scheduled)")}</div>
                   <div className="text-slate-600">{formatCurrency(r.expectedTotal, currency)}</div>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-400">Expected commission</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">{t("Expected commission")}</div>
                   <div className="font-medium text-slate-800">
                     <Money value={r.expectedCommission} currency={currency} />
                   </div>
@@ -330,13 +335,13 @@ export default async function EarningsPage() {
           <table className="w-full min-w-[820px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
-                <th className="py-3 pl-4 pr-4 font-medium">Month</th>
-                <th className="py-3 pr-4 font-medium">Actual received</th>
-                <th className="py-3 pr-4 font-medium">Actual tier</th>
-                <th className="py-3 pr-4 font-medium">Actual commission</th>
-                <th className="py-3 pr-4 font-medium">Expected (scheduled)</th>
-                <th className="py-3 pr-4 font-medium">Expected tier</th>
-                <th className="py-3 pr-4 font-medium">Expected commission</th>
+                <th className="py-3 pl-4 pr-4 font-medium">{t("Month")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Actual received")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Actual tier")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Actual commission")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Expected (scheduled)")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Expected tier")}</th>
+                <th className="py-3 pr-4 font-medium">{t("Expected commission")}</th>
               </tr>
             </thead>
             <tbody>
@@ -351,8 +356,8 @@ export default async function EarningsPage() {
                   >
                     <td className="py-3 pl-4 pr-4 font-medium text-slate-800">
                       <div className="flex items-center gap-2">
-                        {monthLabel(r.month)}
-                        {isCurrent && <Badge tone="blue">Current</Badge>}
+                        {monthLabel(r.month, locale)}
+                        {isCurrent && <Badge tone="blue">{t("Current")}</Badge>}
                       </div>
                     </td>
                     <td className="py-3 pr-4 text-slate-600">

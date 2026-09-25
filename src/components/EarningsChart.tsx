@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
+import { useT } from "@/i18n/client";
 
 interface DataPoint {
   label: string;
@@ -19,6 +20,7 @@ interface DataPoint {
 }
 
 export function EarningsChart({ data, currency }: { data: DataPoint[]; currency: string }) {
+  const t = useT();
   return (
     <ResponsiveContainer width="100%" height={280}>
       <BarChart data={data} margin={{ top: 4, right: 8, left: 8, bottom: 0 }} barGap={4}>
@@ -47,8 +49,8 @@ export function EarningsChart({ data, currency }: { data: DataPoint[]; currency:
           }}
         />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-        <Bar dataKey="actual" name="Actual commission" fill="#0d9488" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="expected" name="Expected commission" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="actual" name={t("Actual commission")} fill="#0d9488" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="expected" name={t("Expected commission")} fill="#94a3b8" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

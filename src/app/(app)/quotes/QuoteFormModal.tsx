@@ -14,6 +14,7 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { useCurrencies } from "@/components/currency";
 import { createQuote, updateQuote } from "./actions";
+import { useT } from "@/i18n/client";
 
 export function QuoteFormModal({
   open,
@@ -42,9 +43,10 @@ export function QuoteFormModal({
   );
   const isEdit = !!quote;
   const { showToast } = useToast();
+  const t = useT();
 
   function handleRequestClose() {
-    if (isDirty && !confirm("Discard unsaved changes?")) return;
+    if (isDirty && !confirm(t("Discard unsaved changes?"))) return;
     onClose();
   }
 
@@ -54,15 +56,15 @@ export function QuoteFormModal({
       try {
         if (isEdit && quote) {
           await updateQuote(quote.id, formData);
-          showToast("Quote saved ✓");
+          showToast(t("Quote saved ✓"));
           onClose();
         } else {
           await createQuote(formData);
-          showToast("Quote created ✓");
+          showToast(t("Quote created ✓"));
           onClose();
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Something went wrong");
+        setError(e instanceof Error ? e.message : t("Something went wrong"));
       }
     });
   }
@@ -75,54 +77,54 @@ export function QuoteFormModal({
   );
 
   return (
-    <Modal open={open} onClose={handleRequestClose} title={isEdit ? "Edit quote" : "New quote"}>
+    <Modal open={open} onClose={handleRequestClose} title={isEdit ? t("Edit quote") : t("New quote")}>
       <form action={handleSubmit} onChange={() => setIsDirty(true)} className="space-y-5">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <Label>Patient name</Label>
+            <Label>{t("Patient name")}</Label>
             <Input name="name" required defaultValue={quote?.name} placeholder="Jane Smith" />
           </div>
           <div>
-            <Label>Label (optional)</Label>
-            <Input name="label" defaultValue={quote?.label ?? ""} placeholder="Option A — implants" />
-            <p className="mt-1 text-xs text-slate-400">Tells apart multiple quotes for the same patient. Not shown on the offer.</p>
+            <Label>{t("Label (optional)")}</Label>
+            <Input name="label" defaultValue={quote?.label ?? ""} placeholder={t("Option A — implants")} />
+            <p className="mt-1 text-xs text-slate-400">{t("Tells apart multiple quotes for the same patient. Not shown on the offer.")}</p>
           </div>
           <div>
-            <Label>Status</Label>
+            <Label>{t("Status")}</Label>
             <Select name="status" defaultValue={quote?.status ?? "draft"}>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="accepted">Accepted</option>
-              <option value="declined">Declined</option>
+              <option value="draft">{t("Draft")}</option>
+              <option value="sent">{t("Sent")}</option>
+              <option value="accepted">{t("Accepted")}</option>
+              <option value="declined">{t("Declined")}</option>
             </Select>
           </div>
         </div>
 
         <div>
-          <Label>Offer intro</Label>
+          <Label>{t("Offer intro")}</Label>
           <Textarea
             name="intro_text"
             rows={5}
             defaultValue={quote?.intro_text ?? DEFAULT_QUOTE_INTRO}
-            placeholder="Explain the recommended treatment…"
+            placeholder={t("Explain the recommended treatment…")}
           />
-          <p className="mt-1 text-xs text-slate-400">Shown as the opening paragraph of the offer letter.</p>
+          <p className="mt-1 text-xs text-slate-400">{t("Shown as the opening paragraph of the offer letter.")}</p>
         </div>
 
         <div>
-          <Label>What&apos;s included</Label>
+          <Label>{t("What's included")}</Label>
           <Textarea
             name="inclusions"
             rows={6}
             defaultValue={quote?.inclusions ?? DEFAULT_QUOTE_INCLUSIONS}
-            placeholder="One item per line"
+            placeholder={t("One item per line")}
           />
-          <p className="mt-1 text-xs text-slate-400">One item per line — each becomes a bullet on the offer.</p>
+          <p className="mt-1 text-xs text-slate-400">{t("One item per line — each becomes a bullet on the offer.")}</p>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <Label>Total price</Label>
+            <Label>{t("Total price")}</Label>
             <Input
               type="number"
               step="0.01"
@@ -134,7 +136,7 @@ export function QuoteFormModal({
             />
           </div>
           <div>
-            <Label>Currency</Label>
+            <Label>{t("Currency")}</Label>
             {currencyOptions.length > 1 ? (
               <Select name="currency" defaultValue={quoteCurrency}>
                 {currencyOptions.map((c) => (
@@ -153,7 +155,7 @@ export function QuoteFormModal({
         </div>
 
         <div>
-          <Label>Payment split</Label>
+          <Label>{t("Payment split")}</Label>
           <div className="inline-flex rounded-lg bg-slate-100 p-1">
             <button
               type="button"
@@ -162,7 +164,7 @@ export function QuoteFormModal({
                 splitMode === "percent" ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              Show as percentage
+              {t("Show as percentage")}
             </button>
             <button
               type="button"
@@ -171,7 +173,7 @@ export function QuoteFormModal({
                 splitMode === "amount" ? "bg-white text-teal-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              Fixed amount
+              {t("Fixed amount")}
             </button>
           </div>
           <input type="hidden" name="split_mode" value={splitMode} />
@@ -179,7 +181,7 @@ export function QuoteFormModal({
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {splitMode === "percent" ? (
               <div>
-                <Label>First-visit deposit %</Label>
+                <Label>{t("First-visit deposit %")}</Label>
                 <Input
                   type="number"
                   step="1"
@@ -192,7 +194,7 @@ export function QuoteFormModal({
               </div>
             ) : (
               <div>
-                <Label>First-visit payment</Label>
+                <Label>{t("First-visit payment")}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -202,15 +204,17 @@ export function QuoteFormModal({
                   onChange={(e) => setFirstVisitAmount(e.target.value)}
                   placeholder="3150"
                 />
-                <p className="mt-1 text-xs text-slate-400">Second visit is total minus this amount.</p>
+                <p className="mt-1 text-xs text-slate-400">{t("Second visit is total minus this amount.")}</p>
               </div>
             )}
           </div>
 
           {totalPrice !== "" && first != null && second != null && (
             <p className="mt-3 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-700">
-              Split: {formatCurrency(first, quote?.currency ?? defaultCurrency)} at first visit +{" "}
-              {formatCurrency(second, quote?.currency ?? defaultCurrency)} at second visit
+              {t("Split: {first} at first visit + {second} at second visit", {
+                first: formatCurrency(first, quote?.currency ?? defaultCurrency),
+                second: formatCurrency(second, quote?.currency ?? defaultCurrency),
+              })}
             </p>
           )}
         </div>
@@ -224,7 +228,7 @@ export function QuoteFormModal({
               onChange={(e) => setIncludeBoneGraft(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
             />
-            Mention possible bone graft / sinus lift
+            {t("Mention possible bone graft / sinus lift")}
           </label>
           {includeBoneGraft && (
             <Textarea
@@ -237,23 +241,23 @@ export function QuoteFormModal({
         </div>
 
         <div className="sm:col-span-2">
-          <Label>Komo reference</Label>
-          <Input name="komo_reference" defaultValue={quote?.komo_reference ?? ""} placeholder="Komo lead link or ID" />
+          <Label>{t("Komo reference")}</Label>
+          <Input name="komo_reference" defaultValue={quote?.komo_reference ?? ""} placeholder={t("Komo lead link or ID")} />
         </div>
 
         <div>
-          <Label>Internal notes</Label>
-          <Textarea name="notes" rows={2} defaultValue={quote?.notes ?? ""} placeholder="Not shown on the offer…" />
+          <Label>{t("Internal notes")}</Label>
+          <Textarea name="notes" rows={2} defaultValue={quote?.notes ?? ""} placeholder={t("Not shown on the offer…")} />
         </div>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={handleRequestClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : isEdit ? "Save changes" : "Create quote"}
+            {pending ? t("Saving…") : isEdit ? t("Save changes") : t("Create quote")}
           </Button>
         </div>
       </form>

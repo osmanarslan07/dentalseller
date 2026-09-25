@@ -9,6 +9,8 @@ import {
 } from "@/lib/commission";
 import { SalesPerformanceClient } from "./SalesPerformanceClient";
 import { requirePagePermission } from "@/lib/permissions";
+import { getLang } from "@/i18n/server";
+import { localeOf } from "@/i18n";
 
 const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
 
@@ -16,6 +18,7 @@ const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
  * that has its own page under Activity). */
 export default async function SalesPerformancePage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   await requirePagePermission("earnings.all");
+  const locale = localeOf(await getLang());
   const supabase = await createClient();
 
   const profiles = await getProfiles(supabase);
@@ -74,13 +77,13 @@ export default async function SalesPerformancePage({ searchParams }: { searchPar
   const monthsSinceStart = (currentYear - startYear) * 12 + (currentMonthNum - startMonthNum) + 1;
   const monthOptions = lastNMonths(Math.max(monthsSinceStart, 1))
     .reverse()
-    .map((m) => ({ value: m, label: monthLabel(m) }));
+    .map((m) => ({ value: m, label: monthLabel(m, locale) }));
 
   return (
     <SalesPerformanceClient
       rows={rows}
       selectedMonth={selectedMonth}
-      selectedMonthLabel={monthLabel(selectedMonth)}
+      selectedMonthLabel={monthLabel(selectedMonth, locale)}
       monthOptions={monthOptions}
     />
   );

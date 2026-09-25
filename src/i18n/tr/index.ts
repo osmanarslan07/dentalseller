@@ -6,6 +6,7 @@ import { patientPage } from "./patientPage";
 import { activity } from "./activity";
 import { money } from "./money";
 import { ops } from "./ops";
+import { sales } from "./sales";
 
 /**
  * Turkish dictionary: English text → Turkish. One file per area of the app; later files win on
@@ -21,4 +22,5 @@ export const TR: Record<string, string> = {
   ...activity,
   ...money,
   ...ops,
+  ...sales,
 };

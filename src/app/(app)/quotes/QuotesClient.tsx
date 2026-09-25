@@ -13,6 +13,7 @@ import { fireConfetti, playChime } from "@/lib/celebrate";
 import { QuoteFormModal } from "./QuoteFormModal";
 import { QuoteCompareModal } from "./QuoteCompareModal";
 import { deleteQuote, convertQuoteToPatient, duplicateQuote } from "./actions";
+import { useT } from "@/i18n/client";
 
 const groupKey = (quote: Quote) => quote.name.trim().toLowerCase();
 
@@ -73,6 +74,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
   const { showToast } = useToast();
   const { enabled: soundEnabled } = useCelebrationSound();
   const router = useRouter();
+  const t = useT();
 
   function selectSort(key: SortKey) {
     setSortKey(key);
@@ -159,14 +161,14 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
   );
 
   function handleDelete(id: string) {
-    if (!confirm("Delete this quote? This cannot be undone.")) return;
+    if (!confirm(t("Delete this quote? This cannot be undone."))) return;
     setDeletingId(id);
     startTransition(async () => {
       try {
         await deleteQuote(id);
-        showToast("Quote deleted");
+        showToast(t("Quote deleted"));
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to delete quote", "error");
+        showToast(e instanceof Error ? e.message : t("Failed to delete quote"), "error");
       } finally {
         setDeletingId(null);
       }
@@ -178,10 +180,10 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
     startTransition(async () => {
       try {
         await duplicateQuote(id);
-        showToast("Quote duplicated ✓");
+        showToast(t("Quote duplicated ✓"));
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to duplicate quote", "error");
+        showToast(e instanceof Error ? e.message : t("Failed to duplicate quote"), "error");
       } finally {
         setDuplicatingId(null);
       }
@@ -189,17 +191,17 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
   }
 
   function handleConvert(id: string) {
-    if (!confirm("Convert this quote into a confirmed patient?")) return;
+    if (!confirm(t("Convert this quote into a confirmed patient?"))) return;
     setConvertingId(id);
     startTransition(async () => {
       try {
         const { patientId, celebration } = await convertQuoteToPatient(id);
         fireConfetti();
         if (soundEnabled) playChime();
-        showToast(`${celebration.message} Fill in travel details.`);
+        showToast(`${celebration.message} ${t("Fill in travel details.")}`);
         router.push(`/patients/${patientId}`);
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to convert quote", "error");
+        showToast(e instanceof Error ? e.message : t("Failed to convert quote"), "error");
       } finally {
         setConvertingId(null);
       }
@@ -210,8 +212,8 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Quotes</h1>
-          <p className="mt-1 text-sm text-slate-500">Draft offers for patients who aren&apos;t confirmed yet</p>
+          <h1 className="text-2xl font-semibold text-slate-900">{t("Quotes")}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t("Draft offers for patients who aren't confirmed yet")}</p>
         </div>
         <Button
           onClick={() => {
@@ -219,14 +221,14 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
             setModalOpen(true);
           }}
         >
-          + New quote
+          + {t("New quote")}
         </Button>
       </div>
 
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
-            placeholder="Search name, label, Komo ref…"
+            placeholder={t("Search name, label, Komo ref…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="sm:max-w-xs"
@@ -236,10 +238,10 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
             onChange={(e) => setStatusFilter(e.target.value as QuoteStatus | "all")}
             className="sm:max-w-[180px]"
           >
-            <option value="all">All statuses</option>
+            <option value="all">{t("All statuses")}</option>
             {(Object.keys(STATUS_LABELS) as QuoteStatus[]).map((s) => (
               <option key={s} value={s}>
-                {STATUS_LABELS[s]}
+                {t(STATUS_LABELS[s])}
               </option>
             ))}
           </Select>
@@ -251,14 +253,14 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
             >
               {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
                 <option key={k} value={k}>
-                  Sort: {SORT_LABELS[k]}
+                  {t("Sort: {by}", { by: t(SORT_LABELS[k]) })}
                 </option>
               ))}
             </Select>
             <button
               type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              title={sortDir === "asc" ? "Ascending" : "Descending"}
+              title={sortDir === "asc" ? t("Ascending") : t("Descending")}
               className="rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-500 hover:bg-slate-50"
             >
               {sortDir === "asc" ? "↑" : "↓"}
@@ -291,7 +293,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
             onToggle={() => toggleGroup(groupKeyValue)}
           />
         ))}
-        {rows.length === 0 && <div className="py-10 text-center text-slate-400">No quotes match your filters.</div>}
+        {rows.length === 0 && <div className="py-10 text-center text-slate-400">{t("No quotes match your filters.")}</div>}
       </div>
 
       <Card className="hidden overflow-hidden md:block">
@@ -300,20 +302,20 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
                 <th className="py-3 pl-4 pr-4">
-                  <SortHeader label="Name" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+                  <SortHeader label={t("Name")} sortKey="name" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
                 </th>
                 <th className="py-3 pr-4">
-                  <SortHeader label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+                  <SortHeader label={t("Status")} sortKey="status" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
                 </th>
                 <th className="py-3 pr-4">
-                  <SortHeader label="Total" sortKey="total" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+                  <SortHeader label={t("Total")} sortKey="total" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
                 </th>
-                <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">Split</th>
+                <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">{t("Split")}</th>
                 <th className="py-3 pr-4">
-                  <SortHeader label="Created" sortKey="created" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+                  <SortHeader label={t("Created")} sortKey="created" activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
                 </th>
                 <th className="py-3 pr-4 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
-                  Actions
+                  {t("Actions")}
                 </th>
               </tr>
             </thead>
@@ -346,7 +348,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
                               toggleGroup(groupKeyValue);
                             }}
                           >
-                            {isExpanded ? "▾" : "▸"} {groupCount} quotes
+                            {isExpanded ? "▾" : "▸"} {t("{n} quotes", { n: groupCount })}
                           </button>
                         )}
                         {isGroupStart && groupCount > 1 && (
@@ -357,13 +359,13 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
                               setCompareKey(groupKey(quote));
                             }}
                           >
-                            Compare
+                            {t("Compare")}
                           </button>
                         )}
                       </span>
                     </td>
                     <td className="py-3 pr-4">
-                      <Badge tone={STATUS_TONES[quote.status]}>{STATUS_LABELS[quote.status]}</Badge>
+                      <Badge tone={STATUS_TONES[quote.status]}>{t(STATUS_LABELS[quote.status])}</Badge>
                     </td>
                     <td className="py-3 pr-4 font-medium text-slate-700">
                       {quote.total_price != null ? formatCurrency(quote.total_price, quote.currency) : "—"}
@@ -381,7 +383,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
                           target="_blank"
                           className="rounded-lg px-2 py-1 text-xs font-medium text-teal-600 hover:bg-teal-50"
                         >
-                          Offer
+                          {t("Offer")}
                         </Link>
                         {!quote.converted_patient_id && (
                           <button
@@ -389,7 +391,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
                             className="rounded-lg px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
                             onClick={() => handleConvert(quote.id)}
                           >
-                            Convert
+                            {t("Convert")}
                           </button>
                         )}
                         <button
@@ -397,14 +399,14 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
                           className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50"
                           onClick={() => handleDuplicate(quote.id)}
                         >
-                          Duplicate
+                          {t("Duplicate")}
                         </button>
                         <button
                           disabled={deletingId === quote.id}
                           className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
                           onClick={() => handleDelete(quote.id)}
                         >
-                          Delete
+                          {t("Delete")}
                         </button>
                       </div>
                     </td>
@@ -414,7 +416,7 @@ export function QuotesClient({ quotes, defaultCurrency }: { quotes: Quote[]; def
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-slate-400">
-                    No quotes match your filters.
+                    {t("No quotes match your filters.")}
                   </td>
                 </tr>
               )}
@@ -496,6 +498,7 @@ function QuoteCard({
   onCompare: () => void;
   onToggle: () => void;
 }) {
+  const t = useT();
   const { first, second } = computeQuoteSplit(
     quote.total_price,
     quote.split_mode,
@@ -517,7 +520,7 @@ function QuoteCard({
                   onToggle();
                 }}
               >
-                {isExpanded ? "▾" : "▸"} {groupCount} quotes
+                {isExpanded ? "▾" : "▸"} {t("{n} quotes", { n: groupCount })}
               </button>
             )}
             {showCompare && (
@@ -528,7 +531,7 @@ function QuoteCard({
                   onCompare();
                 }}
               >
-                Compare
+                {t("Compare")}
               </button>
             )}
           </div>
@@ -536,7 +539,7 @@ function QuoteCard({
             {quote.total_price != null ? formatCurrency(quote.total_price, quote.currency || defaultCurrency) : "—"}
           </div>
         </div>
-        <Badge tone={STATUS_TONES[quote.status]}>{STATUS_LABELS[quote.status]}</Badge>
+        <Badge tone={STATUS_TONES[quote.status]}>{t(STATUS_LABELS[quote.status])}</Badge>
       </div>
       {first != null && second != null && (
         <div className="mt-2 text-xs text-slate-400">
@@ -552,7 +555,7 @@ function QuoteCard({
           target="_blank"
           className="rounded-lg px-2 py-1 text-xs font-medium text-teal-600 hover:bg-teal-50"
         >
-          Offer
+          {t("Offer")}
         </Link>
         {!quote.converted_patient_id && (
           <button
@@ -560,7 +563,7 @@ function QuoteCard({
             className="rounded-lg px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
             onClick={onConvert}
           >
-            Convert
+            {t("Convert")}
           </button>
         )}
         <button
@@ -568,14 +571,14 @@ function QuoteCard({
           className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50"
           onClick={onDuplicate}
         >
-          Duplicate
+          {t("Duplicate")}
         </button>
         <button
           disabled={deleting}
           className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
           onClick={onDelete}
         >
-          Delete
+          {t("Delete")}
         </button>
       </div>
     </Card>

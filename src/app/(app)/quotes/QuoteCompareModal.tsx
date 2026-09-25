@@ -6,6 +6,7 @@ import { Quote, QuoteStatus } from "@/types";
 import { formatCurrency } from "@/lib/format";
 import { computeQuoteSplit } from "@/lib/quote-templates";
 import { Badge } from "@/components/ui";
+import { useT } from "@/i18n/client";
 
 const STATUS_TONES: Record<QuoteStatus, "slate" | "green" | "amber" | "blue"> = {
   draft: "slate",
@@ -30,6 +31,7 @@ export function QuoteCompareModal({
   onClose: () => void;
   quotes: Quote[];
 }) {
+  const t = useT();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -54,12 +56,12 @@ export function QuoteCompareModal({
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 className="text-lg font-semibold text-slate-900">
-            Compare quotes {quotes[0] ? `— ${quotes[0].name}` : ""}
+            {t("Compare quotes")} {quotes[0] ? `— ${quotes[0].name}` : ""}
           </h2>
           <button
             onClick={onClose}
             className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            aria-label="Close"
+            aria-label={t("Close")}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
@@ -84,9 +86,9 @@ export function QuoteCompareModal({
                 <div key={quote.id} className="flex flex-col rounded-xl border border-slate-100 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-sm font-semibold text-slate-800">{quote.label || "Untitled option"}</div>
+                      <div className="text-sm font-semibold text-slate-800">{quote.label || t("Untitled option")}</div>
                     </div>
-                    <Badge tone={STATUS_TONES[quote.status]}>{STATUS_LABELS[quote.status]}</Badge>
+                    <Badge tone={STATUS_TONES[quote.status]}>{t(STATUS_LABELS[quote.status])}</Badge>
                   </div>
 
                   <div className="mt-3 text-2xl font-bold tabular-nums text-slate-900">
@@ -95,8 +97,7 @@ export function QuoteCompareModal({
 
                   {first != null && second != null && (
                     <div className="mt-1 text-xs text-slate-500">
-                      {formatCurrency(first, quote.currency)} first visit + {formatCurrency(second, quote.currency)}{" "}
-                      second visit
+                      {t("{first} first visit + {second} second visit", { first: formatCurrency(first, quote.currency), second: formatCurrency(second, quote.currency) })}
                     </div>
                   )}
 
@@ -117,7 +118,7 @@ export function QuoteCompareModal({
                       target="_blank"
                       className="inline-block rounded-lg bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-600 hover:bg-teal-100"
                     >
-                      Open / Print offer
+                      {t("Open / Print offer")}
                     </Link>
                   </div>
                 </div>

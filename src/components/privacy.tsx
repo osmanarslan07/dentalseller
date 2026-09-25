@@ -7,6 +7,7 @@ import { CountUp } from "@/components/CountUp";
 import { tierLabel } from "@/lib/commission";
 import { CommissionSettings } from "@/types";
 import { setHideEarnings } from "@/lib/privacy-actions";
+import { useT } from "@/i18n/client";
 
 /** `approx` is the viewer's "also show approx. in …": 1 unit of the clinic's main currency in
  * their chosen currency. Null when it's off (or no rate is known). */
@@ -103,10 +104,11 @@ export function TierSublabel({ total, settings, currency }: { total: number; set
 
 export function PrivateEarningsChart(props: { data: { label: string; actual: number; expected: number }[]; currency: string }) {
   const { hidden } = usePrivacy();
+  const t = useT();
   if (hidden) {
     return (
       <div className="flex h-[280px] items-center justify-center text-sm text-slate-400">
-        Earnings chart hidden
+        {t("Earnings chart hidden")}
       </div>
     );
   }
@@ -115,11 +117,12 @@ export function PrivateEarningsChart(props: { data: { label: string; actual: num
 
 export function PrivacyToggleButton() {
   const { hidden, toggle } = usePrivacy();
+  const t = useT();
   return (
     <button
       onClick={toggle}
       className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
-      title={hidden ? "Show earnings" : "Hide earnings"}
+      title={hidden ? t("Show earnings") : t("Hide earnings")}
     >
       {hidden ? (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -131,7 +134,7 @@ export function PrivacyToggleButton() {
           <circle cx="12" cy="12" r="3" />
         </svg>
       )}
-      {hidden ? "Show earnings" : "Hide earnings"}
+      {hidden ? t("Show earnings") : t("Hide earnings")}
     </button>
   );
 }

@@ -62,11 +62,14 @@ export default async function ActivityHistoryPage({ searchParams }: { searchPara
         <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" action="/activity">
           <select name="actor" defaultValue={actor} aria-label="Person" className="rounded-lg border border-slate-200 px-3 py-2 text-sm lg:col-span-1">
             <option value="">Everyone</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.display_name || "Unnamed seller"}
-              </option>
-            ))}
+            {/* someone who never signed in has done nothing to filter by */}
+            {profiles
+              .filter((p) => p.display_name || p.id === actor)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name || "Unnamed seller"}
+                </option>
+              ))}
             <option value={SUPPORT_ACTOR}>DentalSeller support</option>
           </select>
           <select name="category" defaultValue={category ?? ""} aria-label="Category" className="rounded-lg border border-slate-200 px-3 py-2 text-sm">

@@ -656,6 +656,13 @@ Patient → Patient info, and lists / the dashboard only filter by seller ("Mine
   table): same security as their other settings. "Me" is saved as "me", so it stays right per
   person; a saved person who no longer exists falls back to All.
 - The dashboard's count cards follow the filter too (counts only — no money on the dashboard).
+- **Each filter is a checklist, not a dropdown** (your feedback): tick any number of people
+  (e.g. Seller = Leo + Emin, Coordinator = Me + No coordinator); nothing ticked = All. Within a
+  filter the choices are "any of these"; Seller and Coordinator still combine. Old saved
+  single-choice defaults still load.
+- **People who have never signed in** (invited accounts, no name yet) aren't offered in the
+  filters, the coordinator pickers, the handover lists or the Activity person filter — unless
+  they're already set on something.
 - Transfers: the filter narrows the list, but a driver's **day list** always contains all of
   that driver's transfers, so a driver never gets half a day.
 - A new or changed coordinator must be active with `patients.edit` — checked by the picker,
@@ -683,7 +690,8 @@ To do:
 
 **Test checklist — step K**
 1. ☐ Patients list shows Seller and Coordinator columns (phone: "Coordinator: X" under the name).
-2. ☐ Seller filter: All / Me / each seller (incl. a seller without an account); Coordinator filter: All / Me / None / each coordinator; the two combine (e.g. Seller = Leo and Coordinator = Me).
+2. ☐ Seller and Coordinator open as checklists: tick several (e.g. Seller = Leo + a seller without an account; Coordinator = Me + No coordinator) → patients matching any ticked seller and any ticked coordinator; "All" unticks everything. On a phone the list fits the screen.
+2a. ☐ Invited accounts that have never signed in are not in any of these lists (filters, coordinator pickers, handover, Activity person filter).
 3. ☐ Dashboard: the same filters; the count cards, upcoming events, follow-ups, logistics and unpaid lists all follow them. Default is All / All.
 4. ☐ Calendar and Transfers follow the filters; on Transfers a driver's "day list" still has all their transfers when filtered.
 5. ☐ "Save as my default" on each page separately; reload → it comes back; open on the phone → same default; another user's view is unchanged; "Reset to All" works (and saving All clears the default).

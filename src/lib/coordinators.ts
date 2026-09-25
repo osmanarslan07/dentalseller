@@ -9,13 +9,14 @@ export { hasVisitToCome };
 export interface CoordinatorOption {
   id: string;
   name: string;
-  /** May be picked for a patient now (active, with patients.edit). Others are only listed
-   * because they still coordinate someone. */
+  /** May be picked for a patient now (signed in at least once, active, with patients.edit).
+   * Others are only listed because they still coordinate someone. */
   pickable: boolean;
 }
 
 /** Who can coordinate patients: active members whose roles include patients.edit (the
- * database checks the same when a coordinator is set). Anyone still coordinating a patient
+ * database checks the same when a coordinator is set) and who have signed in — an invited
+ * account has no name yet and follows nobody up. Anyone still coordinating a patient
  * — deactivated, or since moved to a role without it — stays listed so filters and existing
  * patients keep showing them. */
 export async function getCoordinatorOptions(
@@ -31,15 +32,14 @@ export async function getCoordinatorOptions(
     .map((p) => ({
       id: p.id,
       name: p.display_name || "Not signed in yet",
-      pickable: p.is_active && (p.roles ?? []).some((r) => editors.has(r)),
+      pickable: !!p.display_name && p.is_active && (p.roles ?? []).some((r) => editors.has(r)),
     }))
     .filter((o) => o.pickable || coordinating.has(o.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** What a page's Seller / Coordinator filter starts on: a link's ?seller= / ?coordinator=
- * (e.g. from the workload card) wins, else the viewer's saved default; a saved id that is
- * no longer offered falls back to All. */
+ * (comma-separated; e.g. from the workload card) wins, else the viewer's saved default. */
 export function initialPeopleFilter(
   params: { seller?: string; coordinator?: string },
   saved: PeopleFilter | undefined,
@@ -47,14 +47,8 @@ export function initialPeopleFilter(
   coordinatorIds: Set<string>,
   currentUserId: string
 ): PeopleFilter {
-  const f =
-    params.seller || params.coordinator
-      ? resolveFilter(cleanPeopleFilter(params), sellerIds, coordinatorIds)
-      : resolveFilter(saved, sellerIds, coordinatorIds);
-  // the dropdowns offer the viewer as "me", never by id — so an id of theirs (e.g. their own
-  // row on the workload card) must read as "me" for the dropdown to show it
-  const asMe = (v: string) => (v === currentUserId ? "me" : v);
-  return { seller: asMe(f.seller), coordinator: asMe(f.coordinator) };
+  const fromLink = params.seller || params.coordinator ? cleanPeopleFilter(params) : null;
+  return resolveFilter(fromLink ?? saved, sellerIds, coordinatorIds, currentUserId);
 }
 
 const ARRIVAL_KINDS = new Set(["visit1_arrival", "visit2_arrival", "visit1_self", "visit2_self", "extra_visit"]);

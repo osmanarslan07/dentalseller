@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getProfiles, getSavedFilters, getSellers, getTransferCompanies, getTransfersInRange } from "@/lib/data";
-import { sellerLabel } from "@/lib/sellers";
 import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
-import { ALL_FILTER } from "@/lib/people-filter";
+import { ALL_FILTER, sellerFilterOptions } from "@/lib/people-filter";
 import { clinicTodayIso } from "@/lib/balance";
 import { TransfersClient } from "./TransfersClient";
 import { can, requirePagePermission } from "@/lib/permissions";
@@ -57,7 +56,7 @@ export default async function TransfersPage({
       dates={Array.from({ length: days }, (_, i) => addDays(from, i))}
       prevDate={addDays(from, -days)}
       nextDate={addDays(from, days)}
-      sellers={sellers.map((s) => ({ id: s.id, name: sellerLabel(s) })).sort((a, b) => a.name.localeCompare(b.name))}
+      sellers={sellerFilterOptions(sellers)}
       coordinators={coordinators}
       initialFilter={initialFilter}
       savedFilter={saved.transfers ?? ALL_FILTER}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Select } from "@/components/ui";
+import { MultiSelectFilter } from "@/components/MultiSelectFilter";
 import { useToast } from "@/components/Toast";
 import { ALL_FILTER, FilterPage, PeopleFilter, isAllFilter, sameFilter } from "@/lib/people-filter";
 import { saveMyDefaultFilter } from "@/lib/people-filter-actions";
@@ -11,8 +11,10 @@ export interface PersonOption {
   name: string;
 }
 
-/** Seller + Coordinator filters side by side, with "Save as my default" and "Reset to All".
- * The page owns the value; this only edits it and saves the viewer's own default. */
+/** Seller + Coordinator filters side by side — each a checklist, so several people can be
+ * combined — with "Save as my default" and "Reset to All". The page owns the value; this only
+ * edits it and saves the viewer's own default. People who have never signed in aren't
+ * offered (the caller's lists already leave them out). */
 export function PeopleFilterBar({
   page,
   value,
@@ -49,39 +51,25 @@ export function PeopleFilterBar({
     });
   }
 
-  const others = (list: PersonOption[]) => list.filter((o) => o.id !== currentUserId);
+  const others = (list: PersonOption[]) =>
+    list.filter((o) => o.id !== currentUserId).map((o) => ({ value: o.id, label: o.name }));
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      <Select
-        value={value.seller}
-        onChange={(e) => onChange({ ...value, seller: e.target.value })}
-        aria-label="Seller"
-        className="w-auto max-w-[180px]"
-      >
-        <option value="all">All sellers</option>
-        <option value="me">Seller: me</option>
-        {others(sellers).map((s) => (
-          <option key={s.id} value={s.id}>
-            Seller: {s.name}
-          </option>
-        ))}
-      </Select>
-      <Select
-        value={value.coordinator}
-        onChange={(e) => onChange({ ...value, coordinator: e.target.value })}
-        aria-label="Coordinator"
-        className="w-auto max-w-[200px]"
-      >
-        <option value="all">All coordinators</option>
-        <option value="me">Coordinator: me</option>
-        <option value="none">No coordinator</option>
-        {others(coordinators).map((c) => (
-          <option key={c.id} value={c.id}>
-            Coordinator: {c.name}
-          </option>
-        ))}
-      </Select>
+      <MultiSelectFilter
+        title="Seller"
+        allLabel="All sellers"
+        choices={[{ value: "me", label: "Me" }, ...others(sellers)]}
+        selected={value.sellers}
+        onChange={(sellersChosen) => onChange({ ...value, sellers: sellersChosen })}
+      />
+      <MultiSelectFilter
+        title="Coordinator"
+        allLabel="All coordinators"
+        choices={[{ value: "me", label: "Me" }, { value: "none", label: "No coordinator" }, ...others(coordinators)]}
+        selected={value.coordinators}
+        onChange={(coordinatorsChosen) => onChange({ ...value, coordinators: coordinatorsChosen })}
+      />
       {!sameFilter(value, saved) && (
         <button
           type="button"

@@ -19,7 +19,7 @@ import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
 import { deletePatient, sendPatientTelegramMessage } from "./actions";
 import { patientDueNow, todayIsoLocal } from "@/lib/balance";
-import { PeopleFilter, hasVisitToCome, matchesPeopleFilter } from "@/lib/people-filter";
+import { PeopleFilter, hasVisitToCome, matchesPeopleFilter, sellerFilterOptions } from "@/lib/people-filter";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 
 /** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. */
@@ -410,13 +410,9 @@ export function PatientsClient({
   // Only sellers who actually show up as "responsible" on a patient here — no point
   // listing a colleague with an empty roster (plus whoever the filter is on right now).
   const sellerOptions = useMemo(() => {
-    const ids = new Set(patients.map((p) => p.responsible_seller_id));
-    ids.add(people.seller);
-    return sellers
-      .filter((s) => ids.has(s.id))
-      .map((s) => ({ id: s.id, name: sellerLabel(s) }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [patients, sellers, people.seller]);
+    const ids = new Set([...patients.map((p) => p.responsible_seller_id), ...people.sellers]);
+    return sellerFilterOptions(sellers).filter((s) => ids.has(s.id));
+  }, [patients, sellers, people.sellers]);
 
   const rows = useMemo(() => {
     let list = patients.map((p) => {

@@ -1,4 +1,4 @@
-import { Patient } from "@/types";
+import { Patient, Seller } from "@/types";
 
 /** The Seller + Coordinator filters shared by the patients list, dashboard, calendar and
  * transfers. They decide *which patients* a page shows — never whose money: commission shown
@@ -8,28 +8,38 @@ import { Patient } from "@/types";
 export type FilterPage = "patients" | "dashboard" | "calendar" | "transfers";
 export const FILTER_PAGES: FilterPage[] = ["patients", "dashboard", "calendar", "transfers"];
 
+/** Each half holds any number of choices; empty means everyone ("All"). */
 export interface PeopleFilter {
-  /** "all", "me", or a seller's id (accounts and sellers without one). */
-  seller: string;
-  /** "all", "me", "none" (no coordinator), or a member's id. */
-  coordinator: string;
+  /** "me" and/or sellers' ids (accounts and sellers without one). */
+  sellers: string[];
+  /** "me", "none" (no coordinator) and/or members' ids. */
+  coordinators: string[];
 }
 
 export type SavedFilters = Partial<Record<FilterPage, PeopleFilter>>;
 
-export const ALL_FILTER: PeopleFilter = { seller: "all", coordinator: "all" };
+export const ALL_FILTER: PeopleFilter = { sellers: [], coordinators: [] };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_CHOICES = 50;
 
-function cleanValue(value: unknown, allowNone: boolean): string {
-  if (value === "all" || value === "me" || (allowNone && value === "none")) return value;
-  return typeof value === "string" && UUID_RE.test(value) ? value : "all";
+/** From an array, a comma-separated link value, or a saved default from before choices
+ * could be combined ("all" / "me" / one id). Unknown values are dropped. */
+function cleanList(raw: unknown, allowNone: boolean): string[] {
+  const items = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [];
+  const ok = items
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter((v) => v === "me" || (allowNone && v === "none") || UUID_RE.test(v));
+  return [...new Set(ok)].slice(0, MAX_CHOICES);
 }
 
-/** Anything from the client or the database, made into a valid filter (unknown → All). */
+/** Anything from the client, a link or the database, made into a valid filter. */
 export function cleanPeopleFilter(raw: unknown): PeopleFilter {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return { seller: cleanValue(r.seller, false), coordinator: cleanValue(r.coordinator, true) };
+  return {
+    sellers: cleanList(r.sellers ?? r.seller, false),
+    coordinators: cleanList(r.coordinators ?? r.coordinator, true),
+  };
 }
 
 export function parseSavedFilters(raw: unknown): SavedFilters {
@@ -40,34 +50,56 @@ export function parseSavedFilters(raw: unknown): SavedFilters {
 }
 
 export function isAllFilter(f: PeopleFilter): boolean {
-  return f.seller === "all" && f.coordinator === "all";
+  return f.sellers.length === 0 && f.coordinators.length === 0;
 }
+
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((v) => b.includes(v));
 
 export function sameFilter(a: PeopleFilter, b: PeopleFilter): boolean {
-  return a.seller === b.seller && a.coordinator === b.coordinator;
+  return sameSet(a.sellers, b.sellers) && sameSet(a.coordinators, b.coordinators);
 }
 
-/** A saved filter naming someone who is no longer offered (deleted, merged) falls back to All
- * for that half, so a stale default never silently empties a page. */
+/** Drops anyone no longer offered (deleted, merged, never signed in), so a stale default
+ * never silently empties a page; an id of the viewer's own becomes "me", which is how the
+ * filter offers them. */
 export function resolveFilter(
-  saved: PeopleFilter | undefined,
+  f: PeopleFilter | undefined,
   sellerIds: Set<string>,
-  coordinatorIds: Set<string>
+  coordinatorIds: Set<string>,
+  currentUserId: string
 ): PeopleFilter {
-  if (!saved) return ALL_FILTER;
-  const known = (v: string, ids: Set<string>) => (v === "all" || v === "me" || v === "none" || ids.has(v) ? v : "all");
-  return { seller: known(saved.seller, sellerIds), coordinator: known(saved.coordinator, coordinatorIds) };
+  if (!f) return ALL_FILTER;
+  const keep = (values: string[], ids: Set<string>) => [
+    ...new Set(values.map((v) => (v === currentUserId ? "me" : v)).filter((v) => v === "me" || v === "none" || ids.has(v))),
+  ];
+  return { sellers: keep(f.sellers, sellerIds), coordinators: keep(f.coordinators, coordinatorIds) };
 }
 
+/** A patient matches when its seller is any of the chosen sellers and its coordinator any of
+ * the chosen coordinators (an empty half matches everyone). */
 export function matchesPeopleFilter(
   p: Pick<Patient, "responsible_seller_id" | "coordinator_id">,
   f: PeopleFilter,
   me: string
 ): boolean {
-  if (f.seller !== "all" && p.responsible_seller_id !== (f.seller === "me" ? me : f.seller)) return false;
-  if (f.coordinator === "none") return p.coordinator_id == null;
-  if (f.coordinator !== "all" && p.coordinator_id !== (f.coordinator === "me" ? me : f.coordinator)) return false;
+  const is = (value: string, id: string | null) => (value === "none" ? id == null : id === (value === "me" ? me : value));
+  if (f.sellers.length > 0 && !f.sellers.some((v) => is(v, p.responsible_seller_id))) return false;
+  if (f.coordinators.length > 0 && !f.coordinators.some((v) => is(v, p.coordinator_id))) return false;
   return true;
+}
+
+/** The sellers a filter offers: everyone who can get credit for a sale, except accounts that
+ * have never signed in (no name yet — they can't have sold anything). */
+export function sellerFilterOptions(sellers: Seller[]): { id: string; name: string }[] {
+  return sellers
+    .filter((s) => !!s.name?.trim())
+    .map((s) => ({ id: s.id, name: s.name!.trim() }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Only the viewer in the Seller filter: every patient shown is theirs. */
+export function onlyMine(f: PeopleFilter): boolean {
+  return f.sellers.length === 1 && f.sellers[0] === "me";
 }
 
 /** Still has a visit to come: an active patient for whoever follows them up. */

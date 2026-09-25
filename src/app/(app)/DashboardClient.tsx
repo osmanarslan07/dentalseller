@@ -7,8 +7,7 @@ import { CountUp } from "@/components/CountUp";
 import { CheckCircleIcon, PeopleIcon, UserPlusIcon } from "@/components/StatIcons";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 import { addMonths, currentMonthKey } from "@/lib/commission";
-import { sellerLabel } from "@/lib/sellers";
-import { PeopleFilter, matchesPeopleFilter } from "@/lib/people-filter";
+import { PeopleFilter, matchesPeopleFilter, onlyMine, sellerFilterOptions } from "@/lib/people-filter";
 import { TeamOperationsPanel } from "./TeamOperationsPanel";
 
 type CountCardId = "patients_sold" | "confirmed_this_month" | "new_patients_delta";
@@ -46,10 +45,7 @@ export function DashboardClient({
     [allPatients, filter, currentUserId]
   );
 
-  const sellerOptions = useMemo(
-    () => sellers.map((s) => ({ id: s.id, name: sellerLabel(s) })).sort((a, b) => a.name.localeCompare(b.name)),
-    [sellers]
-  );
+  const sellerOptions = useMemo(() => sellerFilterOptions(sellers), [sellers]);
 
   const counts = useMemo(() => {
     const thisMonth = currentMonthKey();
@@ -108,7 +104,7 @@ export function DashboardClient({
 
       <TeamOperationsPanel
         patients={patients}
-        showResponsible={filter.seller !== "me"}
+        showResponsible={!onlyMine(filter)}
         sellers={sellers}
         currency={currency}
         todayIso={todayIso}

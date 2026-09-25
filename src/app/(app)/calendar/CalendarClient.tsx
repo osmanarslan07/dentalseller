@@ -18,7 +18,7 @@ import {
 import { Patient, Seller } from "@/types";
 import { sellerLabel } from "@/lib/sellers";
 import { Button, Card } from "@/components/ui";
-import { PeopleFilter, matchesPeopleFilter } from "@/lib/people-filter";
+import { PeopleFilter, matchesPeopleFilter, sellerFilterOptions } from "@/lib/people-filter";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 import { CalendarEvent, KIND_STYLES, flattenCalendarEvents, groupEventsByDate } from "@/lib/calendar-events";
 
@@ -49,13 +49,9 @@ export function CalendarClient({
 
   // Only sellers who actually have a patient here — no point listing an empty roster.
   const sellerOptions = useMemo(() => {
-    const ids = new Set(patients.map((p) => p.responsible_seller_id));
-    ids.add(people.seller);
-    return sellers
-      .filter((s) => ids.has(s.id))
-      .map((s) => ({ id: s.id, name: sellerLabel(s) }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [patients, sellers, people.seller]);
+    const ids = new Set([...patients.map((p) => p.responsible_seller_id), ...people.sellers]);
+    return sellerFilterOptions(sellers).filter((s) => ids.has(s.id));
+  }, [patients, sellers, people.sellers]);
 
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);

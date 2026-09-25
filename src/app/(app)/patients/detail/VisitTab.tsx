@@ -20,6 +20,7 @@ import { forVisit, nightsBetween, shortDate, travelOf, VisitView } from "./visit
 import { sellerLabel } from "@/lib/sellers";
 import { useCan, useModule } from "@/components/permissions";
 import { visitDiscountSetting, visitExpectedTotal } from "@/lib/commission";
+import { useLocale, useT } from "@/i18n/client";
 
 export interface VisitTabProps {
   patient: Patient;
@@ -61,8 +62,9 @@ export function VisitTab(props: VisitTabProps) {
   const owed = Math.round((visitExpectedTotal(patient, visit.key, visit.expected) ?? 0) * 100) / 100;
   const paid = Math.round(payments.reduce((s, p) => s + p.amount, 0) * 100) / 100;
   const dueNow = isDueNow({ key: visit.key, label: visit.label, date: visit.date, status: visit.status, owed, paid, due: owed - paid }, today);
+  const t = useT();
   const seller = sellers.find((s) => s.id === patient.responsible_seller_id);
-  const sellerName = seller ? sellerLabel(seller) : "the seller";
+  const sellerName = seller ? sellerLabel(seller) : t("the seller");
 
   return (
     <div className="flex flex-col gap-5">
@@ -132,6 +134,8 @@ function SummaryStrip({
   onRemoved,
 }: VisitTabProps & { owed: number; paid: number; dueNow: boolean; today: string; hasMoney: boolean; hasTransfers: boolean }) {
   const router = useRouter();
+  const t = useT();
+  const locale = useLocale();
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [editingDetails, setEditingDetails] = useState(false);
@@ -148,46 +152,47 @@ function SummaryStrip({
         after?.();
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : t("Something went wrong"), "error");
       }
     });
   }
 
+  const vLabel = t(visit.label);
   function setStatus(status: "completed" | "upcoming") {
     const task = status === "completed" && visit.key === "visit1" && patient.needs_visit2 && !patient.visit2_date;
     run(
       () => updateVisitFields(patient.id, visit.key, { status }),
       status === "completed"
-        ? `${visit.label} marked completed ✓${task ? " A “Book visit 2” task was created." : ""}`
-        : `${visit.label} reopened`
+        ? `${t("{visit} marked completed ✓", { visit: vLabel })}${task ? ` ${t("A “Book visit 2” task was created.")}` : ""}`
+        : t("{visit} reopened", { visit: vLabel })
     );
   }
 
   function remove() {
     if (visit.key === "visit2") {
-      if (!confirm("Remove visit 2? The patient will be treated as a single-visit patient.")) return;
-      run(() => updatePatientFields(patient.id, { needs_visit2: false }), "Visit 2 removed", onRemoved);
+      if (!confirm(t("Remove visit 2? The patient will be treated as a single-visit patient."))) return;
+      run(() => updatePatientFields(patient.id, { needs_visit2: false }), t("Visit 2 removed"), onRemoved);
     } else {
-      if (!confirm(`Remove “${visit.label}”? Its extras and transfers are deleted with it.`)) return;
-      run(() => deleteExtraVisit(visit.key), "Visit removed", onRemoved);
+      if (!confirm(t("Remove “{visit}”? Its extras and transfers are deleted with it.", { visit: vLabel }))) return;
+      run(() => deleteExtraVisit(visit.key), t("Visit removed"), onRemoved);
     }
   }
 
   const opsSheet = visit.date && (visit.kind === "extra" || patient.confirmation_date);
   const letter = visit.kind === "main" && visit.arrival_flight_no;
-  const blockRemove = hasMoney ? "payments and extras must be moved first" : visit.key === "visit2" && hasTransfers ? "delete its transfers first" : null;
+  const blockRemove = hasMoney ? t("payments and extras must be moved first") : visit.key === "visit2" && hasTransfers ? t("delete its transfers first") : null;
   const menuItems: MenuItem[] = [
-    ...(canEdit ? [{ label: visit.kind === "extra" ? "Change date / details" : "Change date", onSelect: () => setEditingDetails(true) }] : []),
+    ...(canEdit ? [{ label: visit.kind === "extra" ? t("Change date / details") : t("Change date"), onSelect: () => setEditingDetails(true) }] : []),
     {
-      label: "Send to Telegram",
-      hint: "to the seller’s chat",
+      label: t("Send to Telegram"),
+      hint: t("to the seller’s chat"),
       disabled: pending,
-      onSelect: () => run(() => sendPatientTelegramMessage(patient.id, visit.key), "Sent to Telegram ✓"),
+      onSelect: () => run(() => sendPatientTelegramMessage(patient.id, visit.key), t("Sent to Telegram ✓")),
     },
-    ...(opsSheet ? [{ label: "Open operations sheet", hint: "for the team", href: `/patients/${patient.id}/document?visit=${visit.kind === "main" ? visit.key.slice(-1) : visit.key}` }] : []),
-    ...(letter ? [{ label: "Open confirmation letter", hint: "for the patient", href: `/patients/${patient.id}/confirmation-letter?visit=${visit.key.slice(-1)}` }] : []),
+    ...(opsSheet ? [{ label: t("Open operations sheet"), hint: t("for the team"), href: `/patients/${patient.id}/document?visit=${visit.kind === "main" ? visit.key.slice(-1) : visit.key}` }] : []),
+    ...(letter ? [{ label: t("Open confirmation letter"), hint: t("for the patient"), href: `/patients/${patient.id}/confirmation-letter?visit=${visit.key.slice(-1)}` }] : []),
     ...(visit.key !== "visit1" && canEdit
-      ? [{ label: "Remove this visit…", hint: blockRemove ?? "asks to confirm", danger: true, divider: true, disabled: !!blockRemove || pending, onSelect: remove }]
+      ? [{ label: t("Remove this visit…"), hint: blockRemove ?? t("asks to confirm"), danger: true, divider: true, disabled: !!blockRemove || pending, onSelect: remove }]
       : []),
   ];
 
@@ -195,18 +200,18 @@ function SummaryStrip({
   if (!canEdit) {
     primary = null;
   } else if (!visit.date) {
-    primary = <Button onClick={() => setEditingDetails(true)}>Set visit date</Button>;
+    primary = <Button onClick={() => setEditingDetails(true)}>{t("Set visit date")}</Button>;
   } else if (visit.status !== "completed") {
     primary = (
       <Button onClick={() => setStatus("completed")} disabled={pending}>
         <CheckIcon size={16} />
-        Mark visit completed
+        {t("Mark visit completed")}
       </Button>
     );
   } else {
     primary = (
       <Button variant="secondary" onClick={() => setStatus("upcoming")} disabled={pending}>
-        Reopen visit
+        {t("Reopen visit")}
       </Button>
     );
   }
@@ -215,42 +220,43 @@ function SummaryStrip({
   const recallAround = visit1.date
     ? (() => {
         const [y, m] = visit1.date.split("-").map(Number);
-        return new Date(y, m - 1 + recallMonths, 1).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+        return new Date(y, m - 1 + recallMonths, 1).toLocaleDateString(locale, { month: "short", year: "numeric" });
       })()
     : null;
 
   return (
     <section className="flex flex-wrap items-center gap-x-7 gap-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:px-5">
       <div className="flex min-w-[11rem] flex-col gap-0.5">
-        <span className={LABEL_CAPS}>{visit.kind === "extra" ? "Extra visit" : "Treatment day"}</span>
+        <span className={LABEL_CAPS}>{visit.kind === "extra" ? t("Extra visit") : t("Treatment day")}</span>
         <span className={`text-xl font-bold ${visit.date ? "text-slate-900" : "text-slate-500"}`}>
-          {visit.date ? shortDate(visit.date, true) : "Not booked yet"}
+          {visit.date ? shortDate(visit.date, true, locale) : t("Not booked yet")}
         </span>
       </div>
       <Divider />
       {visit.key === "visit2" && !visit.date ? (
-        <Stat label="Recall">
+        <Stat label={t("Recall")}>
           <span className="text-[15px] font-semibold text-slate-900">
-            {recallMonths} month{recallMonths === 1 ? "" : "s"} after visit 1{recallAround ? ` → around ${recallAround}` : ""}
+            {recallMonths === 1 ? t("1 month after visit 1") : t("{n} months after visit 1", { n: recallMonths })}
+            {recallAround ? ` → ${t("around {when}", { when: recallAround })}` : ""}
           </span>
           <span className="text-xs text-slate-500">
             {patient.visit1_status === "completed"
-              ? "A “Book visit 2” task was created for the seller."
-              : "A “Book visit 2” task is created when visit 1 is marked completed."}
+              ? t("A “Book visit 2” task was created for the seller.")
+              : t("A “Book visit 2” task is created when visit 1 is marked completed.")}
           </span>
         </Stat>
       ) : (
         <div className="flex gap-7">
-          <Stat label="Status">
-            <Pill tone={stage.tone}>{stage.label}</Pill>
+          <Stat label={t("Status")}>
+            <Pill tone={stage.tone}>{t(stage.label)}</Pill>
           </Stat>
-          <Stat label="Pax">
+          <Stat label={t("Pax")}>
             <span className="text-[15px] font-semibold text-slate-900">
-              {visit.pax} {visit.pax === 1 ? "person" : "people"}
+              {visit.pax === 1 ? t("1 person") : t("{n} people", { n: visit.pax })}
             </span>
           </Stat>
           {visit.kind === "extra" && visit.treatment && (
-            <Stat label="Reason">
+            <Stat label={t("Reason")}>
               <span className="max-w-xs text-[15px] font-semibold text-slate-900">{visit.treatment}</span>
             </Stat>
           )}
@@ -258,29 +264,29 @@ function SummaryStrip({
       )}
       <Divider />
       <div className="flex gap-7">
-        <Stat label="Owed">
+        <Stat label={t("Owed")}>
           <span className="font-mono text-lg font-semibold text-slate-900">{fmt(owed)}</span>
         </Stat>
-        <Stat label="Paid">
+        <Stat label={t("Paid")}>
           <span className="font-mono text-lg font-semibold text-slate-900">{fmt(paid)}</span>
         </Stat>
-        <Stat label={due > 0 && dueNow ? "Due" : "Balance"}>
+        <Stat label={due > 0 && dueNow ? t("Due") : t("Balance")}>
           {owed === 0 && paid === 0 ? (
             <span className="text-slate-400">—</span>
           ) : due > 0 && dueNow ? (
             <span className="font-mono text-lg font-bold text-amber-700">{fmt(due)}</span>
           ) : due > 0 ? (
-            <Pill>Upcoming</Pill>
+            <Pill>{t("Upcoming")}</Pill>
           ) : due < 0 ? (
-            <Pill tone="blue">Overpaid {fmt(-due)}</Pill>
+            <Pill tone="blue">{t("Overpaid {amount}", { amount: fmt(-due) })}</Pill>
           ) : (
-            <Pill tone="green">Paid in full</Pill>
+            <Pill tone="green">{t("Paid in full")}</Pill>
           )}
         </Stat>
       </div>
       <div className="flex w-full items-center gap-2 md:ml-auto md:w-auto">
         <div className="grow md:grow-0 [&>button]:w-full">{primary}</div>
-        <Menu trigger={<KebabIcon />} ariaLabel="Visit actions" heading="This visit" items={menuItems} buttonClassName="rounded-xl bg-slate-100 p-2.5 text-slate-700 hover:bg-slate-200" />
+        <Menu trigger={<KebabIcon />} ariaLabel={t("Visit actions")} heading={t("This visit")} items={menuItems} buttonClassName="rounded-xl bg-slate-100 p-2.5 text-slate-700 hover:bg-slate-200" />
       </div>
 
       <VisitDetailsModal open={editingDetails} onClose={() => setEditingDetails(false)} patientId={patient.id} visit={visit} />
@@ -291,6 +297,7 @@ function SummaryStrip({
 /** Date — and for an extra visit its reason, treatment and notes. */
 function VisitDetailsModal({ open, onClose, patientId, visit }: { open: boolean; onClose: () => void; patientId: string; visit: VisitView }) {
   const router = useRouter();
+  const t = useT();
   const { showToast } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -308,48 +315,48 @@ function VisitDetailsModal({ open, onClose, patientId, visit }: { open: boolean;
     startTransition(async () => {
       try {
         await updateVisitFields(patientId, visit.key, patch);
-        showToast(`${visit.kind === "extra" ? "Visit" : visit.label} saved ✓`);
+        showToast(t("{visit} saved ✓", { visit: visit.kind === "extra" ? t("Visit") : t(visit.label) }));
         onClose();
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(err instanceof Error ? err.message : t("Something went wrong"));
       }
     });
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={visit.kind === "extra" ? `Edit ${visit.label}` : `${visit.label} date`}>
+    <Modal open={open} onClose={onClose} title={visit.kind === "extra" ? t("Edit {visit}", { visit: t(visit.label) }) : t("{visit} date", { visit: t(visit.label) })}>
       <form onSubmit={submit} className="space-y-3">
         {visit.kind === "extra" && (
           <div>
-            <Label>Name</Label>
-            <Input name="label" required defaultValue={visit.label} placeholder="Temp crown fix" />
+            <Label>{t("Name")}</Label>
+            <Input name="label" required defaultValue={visit.label} placeholder={t("Temp crown fix")} />
           </div>
         )}
         <div>
-          <Label>Treatment day</Label>
+          <Label>{t("Treatment day")}</Label>
           <DateInput name="date" defaultValue={visit.date ?? ""} autoFocus />
-          {visit.kind === "main" && <p className="mt-1 text-xs text-slate-400">The treatment itself is on the Patient info tab.</p>}
+          {visit.kind === "main" && <p className="mt-1 text-xs text-slate-400">{t("The treatment itself is on the Patient info tab.")}</p>}
         </div>
         {visit.kind === "extra" && (
           <>
             <div>
-              <Label>Reason / treatment</Label>
-              <Textarea name="treatment" rows={2} defaultValue={visit.treatment ?? ""} placeholder="Temporary crown came loose — re-cement" />
+              <Label>{t("Reason / treatment")}</Label>
+              <Textarea name="treatment" rows={2} defaultValue={visit.treatment ?? ""} placeholder={t("Temporary crown came loose — re-cement")} />
             </div>
             <div>
-              <Label>Notes</Label>
-              <Textarea name="notes" rows={2} defaultValue={visit.notes ?? ""} placeholder="What was done, how it went…" />
+              <Label>{t("Notes")}</Label>
+              <Textarea name="notes" rows={2} defaultValue={visit.notes ?? ""} placeholder={t("What was done, how it went…")} />
             </div>
           </>
         )}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Save"}
+            {pending ? t("Saving…") : t("Save")}
           </Button>
         </div>
       </form>
@@ -372,6 +379,8 @@ type TravelDraft = Partial<Record<(typeof TRAVEL_FIELDS)[number], string>>;
 
 function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTypeOptions }: VisitTabProps) {
   const router = useRouter();
+  const t = useT();
+  const locale = useLocale();
   // the hotel is the clinic's own cost, in its main currency
   const fmt = moneyIn(useCurrencies().main);
   const { showToast } = useToast();
@@ -391,7 +400,7 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
         after?.();
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : t("Something went wrong"), "error");
       }
     });
   }
@@ -401,7 +410,7 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
 
   return (
     <Section
-      title="Travel & hotel"
+      title={t("Travel & hotel")}
       aside={editing && <EditingChip />}
       actions={!editing && hasTravel && <EditButton onClick={() => setEditing(draftFrom(visit))} />}
     >
@@ -414,73 +423,73 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
           roomTypeOptions={roomTypeOptions}
           pending={pending}
           onCancel={() => setEditing(null)}
-          onSave={(patch) => save(patch, "Travel & hotel saved ✓", () => setEditing(null))}
+          onSave={(patch) => save(patch, t("Travel & hotel saved ✓"), () => setEditing(null))}
         />
       ) : !hasTravel ? (
         <div className="flex flex-col items-center gap-2.5 rounded-xl border-[1.5px] border-dashed border-slate-300 px-5 py-6 text-center">
           <PlaneIcon className="text-slate-400" />
-          <span className="text-sm font-semibold">No flights or hotel yet</span>
+          <span className="text-sm font-semibold">{t("No flights or hotel yet")}</span>
           <span className="max-w-xs text-[13px] text-slate-500">
             {visit.kind === "extra"
-              ? "Leave empty if the patient is already here — local transfers only."
-              : "Add them when the patient books — transfers can then be suggested in one click."}
+              ? t("Leave empty if the patient is already here — local transfers only.")
+              : t("Add them when the patient books — transfers can then be suggested in one click.")}
           </span>
           <div className="mt-1 flex flex-wrap justify-center gap-2">
             {canEdit && (
             <Button size="sm" onClick={() => setEditing(draftFrom(visit))}>
-              Add flights &amp; hotel
+              {t("Add flights & hotel")}
             </Button>
             )}
             {canEdit && canCopy && (
               <Button
                 size="sm"
                 variant="secondary"
-                title="Starts the form with visit 1’s hotel and room"
+                title={t("Starts the form with visit 1’s hotel and room")}
                 onClick={() => setEditing({ ...draftFrom(visit), ...draftFrom(visit1, ["hotel_name", "room_type"]) })}
               >
-                Copy hotel from visit 1
+                {t("Copy hotel from visit 1")}
               </Button>
             )}
           </div>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <TravelLine icon={<PlaneIcon />} label="Arrives">
+          <TravelLine icon={<PlaneIcon />} label={t("Arrives")}>
             {visit.arrival_date ? (
               <>
                 <span className="font-semibold">
-                  {shortDate(visit.arrival_date)}
+                  {shortDate(visit.arrival_date, false, locale)}
                   {visit.arrival_time && <span className="font-mono"> · {visit.arrival_time}</span>}
                 </span>
                 {visit.arrival_flight_no && (
                   <span className="text-xs text-slate-500">
-                    Flight <span className="font-mono">{visit.arrival_flight_no}</span>
+                    {t("Flight")} <span className="font-mono">{visit.arrival_flight_no}</span>
                   </span>
                 )}
               </>
             ) : (
-              <span className="text-slate-400">Not set</span>
+              <span className="text-slate-400">{t("Not set")}</span>
             )}
           </TravelLine>
-          <TravelLine icon={<PlaneIcon departing />} label="Departs">
+          <TravelLine icon={<PlaneIcon departing />} label={t("Departs")}>
             {visit.departure_date ? (
               <>
                 <span className="font-semibold">
-                  {shortDate(visit.departure_date)}
+                  {shortDate(visit.departure_date, false, locale)}
                   {visit.departure_time && <span className="font-mono"> · {visit.departure_time}</span>}
                 </span>
                 {visit.departure_flight_no && (
                   <span className="text-xs text-slate-500">
-                    Flight <span className="font-mono">{visit.departure_flight_no}</span>
+                    {t("Flight")} <span className="font-mono">{visit.departure_flight_no}</span>
                   </span>
                 )}
               </>
             ) : (
-              <span className="text-slate-400">Not set</span>
+              <span className="text-slate-400">{t("Not set")}</span>
             )}
           </TravelLine>
           <div className="border-t border-slate-100" />
-          <TravelLine icon={<BedIcon />} label="Hotel">
+          <TravelLine icon={<BedIcon />} label={t("Hotel")}>
             {visit.hotel_name ? (
               <>
                 <span className="font-semibold">
@@ -490,10 +499,10 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
                 <span className="text-xs text-slate-500">
                   {[
                     visit.arrival_date && visit.departure_date
-                      ? `${shortDate(visit.arrival_date).replace(/^\w+ /, "")} → ${shortDate(visit.departure_date).replace(/^\w+ /, "")}`
+                      ? `${shortDate(visit.arrival_date).replace(/^\S+ /, "")} → ${shortDate(visit.departure_date).replace(/^\S+ /, "")}`
                       : null,
-                    nights ? `${nights} night${nights === 1 ? "" : "s"}` : null,
-                    visit.hotel_cost != null ? `clinic pays ${fmt(visit.hotel_cost)}` : "patient pays own hotel",
+                    nights ? (nights === 1 ? t("1 night") : t("{n} nights", { n: nights })) : null,
+                    visit.hotel_cost != null ? t("clinic pays {amount}", { amount: fmt(visit.hotel_cost) }) : t("patient pays own hotel"),
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -502,14 +511,14 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
                   <Toggle
                     on={visit.hotel_arranged}
                     disabled={pending}
-                    onChange={(on) => save({ hotel_arranged: on }, on ? "Hotel marked as booked ✓" : "Hotel marked as not booked")}
+                    onChange={(on) => save({ hotel_arranged: on }, on ? t("Hotel marked as booked ✓") : t("Hotel marked as not booked"))}
                   >
-                    {visit.hotel_arranged ? "Hotel booked" : "Mark hotel booked"}
+                    {visit.hotel_arranged ? t("Hotel booked") : t("Mark hotel booked")}
                   </Toggle>
                 </div>
               </>
             ) : (
-              <span className="text-slate-400">No hotel</span>
+              <span className="text-slate-400">{t("No hotel")}</span>
             )}
           </TravelLine>
         </div>
@@ -517,14 +526,14 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
 
       {!editing && (
         <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-[13px] text-slate-600">
-          <span>People travelling (patient included)</span>
-          <Stepper label="people" value={visit.pax} disabled={pending} onChange={(n) => save({ pax: n }, `Pax set to ${n} ✓`)} />
+          <span>{t("People travelling (patient included)")}</span>
+          <Stepper label={t("people")} value={visit.pax} disabled={pending} onChange={(n) => save({ pax: n }, t("Pax set to {n} ✓", { n }))} />
         </div>
       )}
 
       {visit.kind === "extra" && !editing && (visit.notes || visit.treatment) && (
         <div className="flex flex-col gap-1 border-t border-slate-100 pt-3">
-          <span className="text-[13px] text-slate-600">Treatment notes</span>
+          <span className="text-[13px] text-slate-600">{t("Treatment notes")}</span>
           <p className="whitespace-pre-line text-sm leading-relaxed">{[visit.treatment, visit.notes].filter(Boolean).join("\n")}</p>
         </div>
       )}
@@ -593,42 +602,43 @@ function TravelForm({
   onSave: (patch: Record<string, unknown>) => void;
 }) {
   const { main: mainCurrency } = useCurrencies();
+  const t = useT();
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     onSave(Object.fromEntries(TRAVEL_FIELDS.map((k) => [k, String(fd.get(k) ?? "")])));
   }
-  const time = { inputMode: "numeric" as const, pattern: "([01]\\d|2[0-3]):[0-5]\\d", title: "Use 24-hour format, e.g. 14:30", placeholder: "14:30" };
+  const time = { inputMode: "numeric" as const, pattern: "([01]\\d|2[0-3]):[0-5]\\d", title: t("Use 24-hour format, e.g. 14:30"), placeholder: "14:30" };
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
         <div className="col-span-2 sm:col-span-1">
-          <Label>Arrival date</Label>
+          <Label>{t("Arrival date")}</Label>
           <DateInput name="arrival_date" defaultValue={draft.arrival_date} autoFocus />
         </div>
         <div>
-          <Label>Time</Label>
+          <Label>{t("Time")}</Label>
           <Input name="arrival_time" defaultValue={draft.arrival_time} {...time} />
         </div>
         <div>
-          <Label>Flight</Label>
+          <Label>{t("Flight")}</Label>
           <Input name="arrival_flight_no" defaultValue={draft.arrival_flight_no} placeholder="TK1987" />
         </div>
         <div className="col-span-2 sm:col-span-1">
-          <Label>Departure date</Label>
+          <Label>{t("Departure date")}</Label>
           <DateInput name="departure_date" defaultValue={draft.departure_date} />
         </div>
         <div>
-          <Label>Time</Label>
+          <Label>{t("Time")}</Label>
           <Input name="departure_time" defaultValue={draft.departure_time} {...time} />
         </div>
         <div>
-          <Label>Flight</Label>
+          <Label>{t("Flight")}</Label>
           <Input name="departure_flight_no" defaultValue={draft.departure_flight_no} placeholder="TK1988" />
         </div>
         <div className="col-span-2 sm:col-span-1">
-          <Label>Hotel</Label>
+          <Label>{t("Hotel")}</Label>
           <Input name="hotel_name" defaultValue={draft.hotel_name} list={`hotels-${visit.key}`} autoComplete="off" />
           <datalist id={`hotels-${visit.key}`}>
             {hotelOptions.map((h) => (
@@ -637,8 +647,8 @@ function TravelForm({
           </datalist>
         </div>
         <div>
-          <Label>Room</Label>
-          <Input name="room_type" defaultValue={draft.room_type} placeholder="Double" list={`rooms-${visit.key}`} autoComplete="off" />
+          <Label>{t("Room")}</Label>
+          <Input name="room_type" defaultValue={draft.room_type} placeholder={t("Double")} list={`rooms-${visit.key}`} autoComplete="off" />
           <datalist id={`rooms-${visit.key}`}>
             {roomTypeOptions.map((r) => (
               <option key={r} value={r} />
@@ -646,22 +656,23 @@ function TravelForm({
           </datalist>
         </div>
         <div>
-          <Label>Hotel cost ({currencySymbol(mainCurrency)})</Label>
-          <Input type="number" step="0.01" min="0" name="hotel_cost" defaultValue={draft.hotel_cost} placeholder="Clinic's cost" />
+          <Label>{t("Hotel cost ({sym})", { sym: currencySymbol(mainCurrency) })}</Label>
+          <Input type="number" step="0.01" min="0" name="hotel_cost" defaultValue={draft.hotel_cost} placeholder={t("Clinic's cost")} />
         </div>
       </div>
       <p className="text-xs text-slate-500">
-        Hotel cost empty = the patient pays their own hotel.{deductCosts && " The clinic’s cost is deducted before commission."}
+        {t("Hotel cost empty = the patient pays their own hotel.")}
+        {deductCosts && ` ${t("The clinic’s cost is deducted before commission.")}`}
       </p>
       {deductCosts && isPastMonth(visit.date) && (
-        <p className="text-xs text-amber-700">⚠ This visit is in a past month — changing the cost changes that month&apos;s commission.</p>
+        <p className="text-xs text-amber-700">⚠ {t("This visit is in a past month — changing the cost changes that month's commission.")}</p>
       )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
-          Cancel
+          {t("Cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "Saving…" : "Save"}
+          {pending ? t("Saving…") : t("Save")}
         </Button>
       </div>
     </form>

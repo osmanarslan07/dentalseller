@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { ActivityLogRow, describeActivity } from "@/lib/activity-log";
+import { ActivityLogRow, activityActorName, describeActivity } from "@/lib/activity-log";
 import { Patient, Profile, Seller } from "@/types";
 import { peopleNameMap } from "@/lib/sellers";
 import { Pill, PillTone } from "./bits";
+import { useDateFnsLocale, useT } from "@/i18n/client";
+import type { T } from "@/i18n";
 
 type Filter = "All" | "Payments" | "Transfers" | "Visits" | "Details";
 const FILTERS: Filter[] = ["All", "Payments", "Transfers", "Visits", "Details"];
@@ -27,14 +29,14 @@ function initials(name: string): string {
   return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
-function dayLabel(iso: string): string {
+function dayLabel(iso: string, t: T, locale: ReturnType<typeof useDateFnsLocale>): string {
   const d = new Date(iso);
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-  const label = format(d, "EEE d MMM yyyy");
-  if (d.toDateString() === today.toDateString()) return `Today · ${label}`;
-  if (d.toDateString() === yesterday.toDateString()) return `Yesterday · ${label}`;
+  const label = format(d, "EEE dd/MM/yyyy", { locale });
+  if (d.toDateString() === today.toDateString()) return `${t("Today")} · ${label}`;
+  if (d.toDateString() === yesterday.toDateString()) return `${t("Yesterday")} · ${label}`;
   return label;
 }
 
@@ -53,6 +55,8 @@ export function HistoryTab({
   error: string | null;
 }) {
   const [filter, setFilter] = useState<Filter>("All");
+  const t = useT();
+  const dfLocale = useDateFnsLocale();
   const nameById = peopleNameMap(profiles, sellers);
   const patientNameById = new Map([[patient.id, patient.name]]);
   const colourOf = (id: string | null) => {
@@ -63,7 +67,7 @@ export function HistoryTab({
   const shown = (entries ?? []).filter((e) => filter === "All" || tagOf(e) === filter);
   const days: { day: string; items: ActivityLogRow[] }[] = [];
   for (const e of shown) {
-    const day = dayLabel(e.created_at);
+    const day = dayLabel(e.created_at, t, dfLocale);
     if (days[days.length - 1]?.day !== day) days.push({ day, items: [] });
     days[days.length - 1].items.push(e);
   }
@@ -81,26 +85,26 @@ export function HistoryTab({
               f === filter ? "border-teal-700 bg-teal-700 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >
-            {f}
+            {t(f)}
           </button>
         ))}
-        <span className="text-[13px] text-slate-500 sm:ml-auto">Every change, who made it and when — kept forever.</span>
+        <span className="text-[13px] text-slate-500 sm:ml-auto">{t("Every change, who made it and when — kept forever.")}</span>
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white px-4 pb-4 pt-1 sm:px-5">
         {error ? (
           <p className="py-6 text-center text-sm text-red-600">{error}</p>
         ) : entries === null ? (
-          <p className="py-6 text-center text-sm text-slate-400">Loading…</p>
+          <p className="py-6 text-center text-sm text-slate-400">{t("Loading…")}</p>
         ) : days.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-400">{entries.length === 0 ? "Nothing logged yet." : "Nothing of this kind yet."}</p>
+          <p className="py-6 text-center text-sm text-slate-400">{entries.length === 0 ? t("Nothing logged yet.") : t("Nothing of this kind yet.")}</p>
         ) : (
           days.map((d) => (
             <div key={d.day}>
               <p className="pb-1.5 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-500">{d.day}</p>
               {d.items.map((e) => {
-                const who = e.via_support ? "DentalSeller support" : (e.actor_id && nameById.get(e.actor_id)) || "Someone";
-                const full = describeActivity(e, nameById, patientNameById);
+                const who = activityActorName(e, nameById, t);
+                const full = describeActivity(e, nameById, patientNameById, t);
                 const what = full.startsWith(who) ? full.slice(who.length).trim() : full;
                 const tag = tagOf(e);
                 return (
@@ -118,7 +122,7 @@ export function HistoryTab({
                     </p>
                     <span className="hidden sm:inline">
                       <Pill tone={TAG_TONES[tag]} small>
-                        {tag}
+                        {t(tag)}
                       </Pill>
                     </span>
                     <span className="w-12 shrink-0 text-right font-mono text-[13px] text-slate-500">{format(new Date(e.created_at), "HH:mm")}</span>

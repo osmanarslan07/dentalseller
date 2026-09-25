@@ -125,10 +125,10 @@ export function transfersWithoutDriver(transfers: Transfer[]): Transfer[] {
 }
 
 /** "Thu 25/09" (+ "/2026" when asked) — from a local YYYY-MM-DD, never shifted by timezone. */
-export function shortDate(iso: string | null, withYear = false): string {
+export function shortDate(iso: string | null, withYear = false, locale = "en-GB"): string {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-").map(Number);
-  const weekday = new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "short" });
+  const weekday = new Date(y, m - 1, d).toLocaleDateString(locale, { weekday: "short" });
   const dm = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
   return `${weekday} ${dm}${withYear ? `/${y}` : ""}`;
 }

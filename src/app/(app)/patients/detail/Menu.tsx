@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useT } from "@/i18n/client";
 
 export interface MenuItem {
   label: string;
@@ -54,6 +55,7 @@ export function Menu({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const [upward, setUpward] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -113,7 +115,7 @@ export function Menu({
           {heading && (
             <p className="px-2.5 pb-1 pt-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{heading}</p>
           )}
-          {items.length === 0 && <p className="px-2.5 py-2 text-sm text-slate-400">Nothing here yet</p>}
+          {items.length === 0 && <p className="px-2.5 py-2 text-sm text-slate-400">{t("Nothing here yet")}</p>}
           {items.map((i, n) => (
             <div key={n}>
               {i.divider && <div className="my-1 border-t border-slate-100" />}

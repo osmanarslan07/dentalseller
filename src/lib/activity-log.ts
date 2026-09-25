@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
+import { makeT, msg, T } from "@/i18n";
 
 /** Best-effort audit log — a logging failure should never break the action it's recording. */
 export async function logActivity(
@@ -58,239 +59,131 @@ export interface ActivityLogRow {
 
 /** Who did it, as the history shows it. A deleted account keeps its id (former_actor_id) and,
  * through its surviving seller record, usually its name. */
-export function activityActorName(entry: ActivityLogRow, nameById: Map<string, string>): string {
-  if (entry.via_support) return "DentalSeller support";
-  if (entry.actor_id) return nameById.get(entry.actor_id) || "Someone";
+export function activityActorName(entry: ActivityLogRow, nameById: Map<string, string>, t: T = EN): string {
+  if (entry.via_support) return t("DentalSeller support");
+  if (entry.actor_id) return nameById.get(entry.actor_id) || t("Someone");
   if (entry.former_actor_id) {
-    const ref = `deleted user #${entry.former_actor_id.slice(0, 6)}`;
+    const ref = t("deleted user #{id}", { id: entry.former_actor_id.slice(0, 6) });
     const name = nameById.get(entry.former_actor_id);
     return name ? `${name} (${ref})` : ref.charAt(0).toUpperCase() + ref.slice(1);
   }
-  return "Someone";
+  return t("Someone");
 }
+
+const EN = makeT("en");
+
+/** English sentence template per action (translated through `t`). Every one starts with
+ * {actor} — the patient History tab strips that prefix. {patient} is the patient's name,
+ * {target} a member/seller. The stored detail stays as written: `tail` appends it as
+ * " — detail" or " (detail)" when there is one. */
+const TEMPLATES: Record<string, { text: string; tail?: "dash" | "paren" }> = {
+  terms_accepted: { text: msg("{actor} accepted the terms of service"), tail: "paren" },
+  seller_added: { text: msg("{actor} added seller"), tail: "paren" },
+  seller_activated: { text: msg("{actor} reactivated {target}") },
+  seller_deactivated: { text: msg("{actor} deactivated {target}") },
+  seller_promoted: { text: msg("{actor} promoted {target} to admin") },
+  seller_demoted: { text: msg("{actor} demoted {target} to seller") },
+  telegram_linked: { text: msg("{actor} connected their Telegram") },
+  member_roles_changed: { text: msg("{actor} changed {target}'s roles"), tail: "paren" },
+  seller_deleted: { text: msg("{actor} deleted seller"), tail: "paren" },
+  role_created: { text: msg("{actor} created a role"), tail: "paren" },
+  role_changed: { text: msg("{actor} changed a role"), tail: "paren" },
+  role_reset: { text: msg("{actor} reset a role"), tail: "paren" },
+  role_deleted: { text: msg("{actor} deleted a role"), tail: "paren" },
+  password_reset: { text: msg("{actor} reset {target}'s password") },
+  seller_record_added: { text: msg("{actor} added a seller without an account"), tail: "paren" },
+  seller_record_renamed: { text: msg("{actor} renamed a seller"), tail: "paren" },
+  seller_record_activated: { text: msg("{actor} reactivated seller {target}") },
+  seller_record_deactivated: { text: msg("{actor} deactivated seller {target}") },
+  seller_record_deleted: { text: msg("{actor} removed a seller"), tail: "paren" },
+  seller_record_merged: { text: msg("{actor} merged sellers"), tail: "paren" },
+  seller_commission_updated: { text: msg("{actor} changed {target}'s commission rates") },
+  seller_currency_updated: { text: msg("{actor} set {target}'s usual currency"), tail: "paren" },
+  deal_currency_updated: { text: msg("{actor} changed {patient}'s deal currency or rate"), tail: "dash" },
+  patient_created: { text: msg("{actor} added patient {patient}") },
+  patient_updated: { text: msg("{actor} edited {patient}"), tail: "dash" },
+  patient_deleted: { text: msg("{actor} deleted a patient"), tail: "paren" },
+  payment_added: { text: msg("{actor} recorded a payment for {patient}"), tail: "paren" },
+  payment_updated: { text: msg("{actor} edited a payment for {patient}"), tail: "paren" },
+  payment_deleted: { text: msg("{actor} deleted a payment for {patient}"), tail: "paren" },
+  file_uploaded: { text: msg("{actor} uploaded a file to {patient}"), tail: "paren" },
+  file_renamed: { text: msg("{actor} renamed a file of {patient}"), tail: "paren" },
+  file_deleted: { text: msg("{actor} deleted a file from {patient}"), tail: "paren" },
+  discount_set: { text: msg("{actor} gave {patient} a discount"), tail: "dash" },
+  discount_removed: { text: msg("{actor} removed a discount for {patient}"), tail: "dash" },
+  extra_added: { text: msg("{actor} added an extra for {patient}"), tail: "paren" },
+  extra_updated: { text: msg("{actor} edited an extra for {patient}"), tail: "paren" },
+  extra_deleted: { text: msg("{actor} deleted an extra for {patient}"), tail: "paren" },
+  transfer_added: { text: msg("{actor} added a transfer for {patient}"), tail: "paren" },
+  transfer_updated: { text: msg("{actor} edited a transfer for {patient}"), tail: "paren" },
+  transfer_deleted: { text: msg("{actor} deleted a transfer for {patient}"), tail: "paren" },
+  transfer_sent: { text: msg("{actor} sent a transfer to the driver for {patient}"), tail: "paren" },
+  visit_added: { text: msg("{actor} added a visit for {patient}"), tail: "paren" },
+  visit_updated: { text: msg("{actor} edited a visit for {patient}"), tail: "dash" },
+  visit_deleted: { text: msg("{actor} deleted a visit for {patient}"), tail: "paren" },
+  patient_logistics_toggled: { text: msg("{actor} updated {patient}'s logistics"), tail: "paren" },
+  visit_logistics_toggled: { text: msg("{actor} updated a visit's logistics for {patient}"), tail: "paren" },
+  patient_telegram_sent: { text: msg("{actor} sent a Telegram message for {patient}"), tail: "paren" },
+  quote_created: { text: msg("{actor} created a quote"), tail: "paren" },
+  quote_updated: { text: msg("{actor} edited a quote"), tail: "dash" },
+  quote_duplicated: { text: msg("{actor} duplicated a quote"), tail: "paren" },
+  quote_deleted: { text: msg("{actor} deleted a quote"), tail: "paren" },
+  quote_converted: { text: msg("{actor} converted a quote into a patient") },
+  commission_settings_updated: { text: msg("{actor} changed commission settings"), tail: "dash" },
+  clinic_branding_updated: { text: msg("{actor} updated clinic branding"), tail: "dash" },
+  transfer_company_added: { text: msg("{actor} added a transfer company"), tail: "paren" },
+  transfer_company_updated: { text: msg("{actor} updated a transfer company"), tail: "dash" },
+  transfer_company_deleted: { text: msg("{actor} deleted a transfer company"), tail: "paren" },
+  driver_messages_updated: { text: msg("{actor} changed how drivers get transfer messages"), tail: "dash" },
+  transfer_defaults_updated: { text: msg("{actor} changed the default transfer company/driver") },
+  driver_added: { text: msg("{actor} added a driver"), tail: "paren" },
+  driver_updated: { text: msg("{actor} updated a driver"), tail: "dash" },
+  driver_deleted: { text: msg("{actor} deleted a driver"), tail: "paren" },
+  system_settings_updated: { text: msg("{actor} changed system settings"), tail: "dash" },
+  dashboard_cards_updated: { text: msg("{actor} changed their dashboard cards") },
+  task_created: { text: msg("{actor} created a task"), tail: "paren" },
+  task_updated: { text: msg("{actor} edited a task"), tail: "dash" },
+  task_status_changed: { text: msg("{actor} changed a task's status"), tail: "paren" },
+  task_deleted: { text: msg("{actor} deleted a task"), tail: "paren" },
+  display_name_updated: { text: msg("{actor} changed their display name"), tail: "paren" },
+  password_changed: { text: msg("{actor} changed their password") },
+  phone_updated: { text: msg("{actor} changed their phone"), tail: "paren" },
+  email_changed: { text: msg("{actor} changed their sign-in email"), tail: "paren" },
+  avatar_updated: { text: msg("{actor} changed their photo") },
+  avatar_removed: { text: msg("{actor} removed their photo") },
+  coordinator_handover: { text: msg("{actor} handed {target}'s coordinated patients over"), tail: "paren" },
+  member_profile_updated: { text: msg("{actor} changed {target}'s details"), tail: "paren" },
+  telegram_link_generated: { text: msg("{actor} generated a Telegram link code") },
+  telegram_group_chat_updated: { text: msg("{actor} changed the shared Telegram group chat"), tail: "dash" },
+};
 
 /** Shared between the team page's full activity feed and a single patient's History tab —
  * `nameById` resolves actor/reassignment-target sellers, `patientNameById` resolves patient
- * targets. Both can be as small as a single entry when the caller already knows the subject. */
+ * targets. Both can be as small as a single entry when the caller already knows the subject.
+ * `t` gives the sentence in the viewer's language; the stored detail stays as written. */
 export function describeActivity(
   entry: ActivityLogRow,
   nameById: Map<string, string>,
-  patientNameById: Map<string, string>
+  patientNameById: Map<string, string>,
+  t: T = EN
 ): string {
-  const actor = activityActorName(entry, nameById);
-  const target = (entry.target_id && nameById.get(entry.target_id)) || "a seller";
+  const actor = activityActorName(entry, nameById, t);
+  const target = (entry.target_id && nameById.get(entry.target_id)) || t("a seller");
+  const knownPatient = entry.target_id ? patientNameById.get(entry.target_id) : undefined;
+  const patient = knownPatient || t("a patient");
+  const d = entry.detail;
 
-  switch (entry.action) {
-    case "terms_accepted":
-      return `${actor} accepted the terms of service ${entry.detail ?? ""}`.trim();
-    case "seller_added":
-      return `${actor} added seller (${entry.detail ?? "unknown email"})`;
-    case "seller_activated":
-      return `${actor} reactivated ${target}`;
-    case "seller_deactivated":
-      return `${actor} deactivated ${target}`;
-    case "seller_promoted":
-      return `${actor} promoted ${target} to admin`;
-    case "seller_demoted":
-      return `${actor} demoted ${target} to seller`;
-    case "telegram_linked":
-      return `${actor} connected their Telegram`;
-    case "member_roles_changed":
-      return `${actor} changed ${target}'s roles${entry.detail ? ` (${entry.detail})` : ""}`;
-    case "seller_deleted":
-      return `${actor} deleted seller (${entry.detail ?? "unknown email"})`;
-    case "role_created":
-      return `${actor} created the role ${entry.detail ?? ""}`.trim();
-    case "role_changed":
-      return `${actor} changed the role ${entry.detail ?? ""}`.trim();
-    case "role_reset":
-      return `${actor} reset the role ${entry.detail ?? ""}`.trim();
-    case "role_deleted":
-      return `${actor} deleted the role ${entry.detail ?? ""}`.trim();
-    case "password_reset":
-      return `${actor} reset ${target}'s password`;
-    case "seller_record_added":
-      return `${actor} added seller ${entry.detail ?? ""} (no account)`.trim();
-    case "seller_record_renamed":
-      return `${actor} renamed seller ${entry.detail ?? ""}`.trim();
-    case "seller_record_activated":
-      return `${actor} reactivated seller ${target}`;
-    case "seller_record_deactivated":
-      return `${actor} deactivated seller ${target}`;
-    case "seller_record_deleted":
-      return `${actor} removed seller ${entry.detail ?? ""}`.trim();
-    case "seller_record_merged":
-      return `${actor} merged seller ${entry.detail ?? ""}`.trim();
-    case "seller_commission_updated":
-      return `${actor} changed ${target}'s commission rates`;
-    case "seller_currency_updated":
-      return `${actor} set ${target}'s usual currency${entry.detail ? ` to ${entry.detail}` : ""}`;
-    case "deal_currency_updated": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} changed ${patientName}'s deal currency or rate${entry.detail ? ` — ${entry.detail}` : ""}`;
-    }
-    case "patient_reassigned": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      const newSeller = (entry.detail && nameById.get(entry.detail)) || "another seller";
-      return `${actor} reassigned ${patientName} to ${newSeller}`;
-    }
-    case "patient_created": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || entry.detail || "a patient";
-      return `${actor} added patient ${patientName}`;
-    }
-    case "patient_updated": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} edited ${patientName}${entry.detail ? ` — ${entry.detail}` : ""}`;
-    }
-    case "patient_deleted":
-      return `${actor} deleted patient ${entry.detail || "(unnamed)"}`;
-    case "payment_added": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} recorded a payment for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "payment_updated": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} edited a payment for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "payment_deleted": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} deleted a payment for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "file_uploaded": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} uploaded ${entry.detail ?? "a file"} to ${patientName}`;
-    }
-    case "file_renamed": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} renamed a file of ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "file_deleted": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} deleted ${entry.detail ?? "a file"} from ${patientName}`;
-    }
-    case "discount_set": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} gave ${patientName} a discount${entry.detail ? ` — ${entry.detail}` : ""}`;
-    }
-    case "discount_removed": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} removed a discount for ${patientName}${entry.detail ? ` — ${entry.detail}` : ""}`;
-    }
-    case "extra_added": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} added an extra for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "extra_updated": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} edited an extra for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "extra_deleted": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} deleted an extra for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "transfer_added": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} added a transfer for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "transfer_updated": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} edited a transfer for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "transfer_deleted": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} deleted a transfer for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "transfer_sent": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} sent a transfer to the driver for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "visit_added": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} added a visit for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "visit_updated": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} edited a visit for ${patientName}${entry.detail ? ` — ${entry.detail}` : ""}`;
-    }
-    case "visit_deleted": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} deleted a visit for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "patient_logistics_toggled": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} marked ${patientName}'s ${entry.detail ?? "logistics"}`;
-    }
-    case "visit_logistics_toggled": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} marked a visit's ${entry.detail ?? "logistics"} for ${patientName}`;
-    }
-    case "patient_telegram_sent": {
-      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
-      return `${actor} sent a Telegram message for ${patientName}${entry.detail ? ` (${entry.detail})` : ""}`;
-    }
-    case "quote_created":
-      return `${actor} created quote${entry.detail ? ` "${entry.detail}"` : ""}`;
-    case "quote_updated":
-      return `${actor} edited a quote${entry.detail ? ` — ${entry.detail}` : ""}`;
-    case "quote_duplicated":
-      return `${actor} duplicated quote${entry.detail ? ` "${entry.detail}"` : ""}`;
-    case "quote_deleted":
-      return `${actor} deleted quote ${entry.detail || "(unnamed)"}`;
-    case "quote_converted":
-      return `${actor} converted a quote into a patient`;
-    case "commission_settings_updated":
-      return `${actor} changed commission settings${entry.detail ? ` — ${entry.detail}` : ""}`;
-    case "clinic_branding_updated":
-      return `${actor} updated clinic branding${entry.detail ? ` — ${entry.detail}` : ""}`;
-    case "transfer_company_added":
-      return `${actor} added transfer company${entry.detail ? ` ${entry.detail}` : ""}`;
-    case "transfer_company_updated":
-      return `${actor} updated transfer company${entry.detail ? ` — ${entry.detail}` : ""}`;
-    case "transfer_company_deleted":
-      return `${actor} deleted transfer company${entry.detail ? ` ${entry.detail}` : ""}`;
-    case "driver_messages_updated":
-      return `${actor} changed how drivers get transfer messages${entry.detail ? ` — ${entry.detail}` : ""}`;
-    case "transfer_defaults_updated":
-      return `${actor} changed the default transfer company/driver`;
-    case "driver_added":
-      return `${actor} added driver${entry.detail ? ` ${entry.detail}` : ""}`;
-    case "driver_updated":
-      return `${actor} updated driver${entry.detail ? ` — ${entry.detail}` : ""}`;
-    case "driver_deleted":
-      return `${actor} deleted driver${entry.detail ? ` ${entry.detail}` : ""}`;
-    case "system_settings_updated":
-      return `${actor} changed system settings${entry.detail ? ` — ${entry.detail}` : ""}`;
-    case "dashboard_cards_updated":
-      return `${actor} changed their dashboard cards`;
-    case "task_created":
-      return `${actor} created task${entry.detail ? ` "${entry.detail}"` : ""}`;
-    case "task_updated":
-      return `${actor} edited a task${entry.detail ? ` — ${entry.detail}` : ""}`;
-    case "task_status_changed":
-      return `${actor} marked a task ${entry.detail ?? "updated"}`;
-    case "task_deleted":
-      return `${actor} deleted task ${entry.detail || "(unnamed)"}`;
-    case "display_name_updated":
-      return `${actor} changed their display name${entry.detail ? ` (${entry.detail})` : ""}`;
-    case "password_changed":
-      return `${actor} changed their password`;
-    case "phone_updated":
-      return `${actor} changed their phone${entry.detail ? ` (${entry.detail})` : ""}`;
-    case "email_changed":
-      return `${actor} changed their sign-in email${entry.detail ? ` (${entry.detail})` : ""}`;
-    case "avatar_updated":
-      return `${actor} changed their photo`;
-    case "avatar_removed":
-      return `${actor} removed their photo`;
-    case "coordinator_handover":
-      return `${actor} handed ${target}'s coordinated patients over${entry.detail ? ` (${entry.detail})` : ""}`;
-    case "member_profile_updated":
-      return `${actor} changed ${target}'s details${entry.detail ? ` (${entry.detail})` : ""}`;
-    case "telegram_link_generated":
-      return `${actor} generated a Telegram link code`;
-    case "telegram_group_chat_updated":
-      return `${actor} changed the shared Telegram group chat${entry.detail ? ` — ${entry.detail}` : ""}`;
-    default:
-      return `${actor} — ${entry.action}`;
+  if (entry.action === "patient_reassigned") {
+    const seller = (d && nameById.get(d)) || t("another seller");
+    return t("{actor} reassigned {patient} to {seller}", { actor, patient, seller });
   }
+  // a patient added and since deleted: the detail holds the name
+  if (entry.action === "patient_created" && !knownPatient && d) {
+    return t("{actor} added patient {patient}", { actor, patient: d });
+  }
+  const tpl = TEMPLATES[entry.action];
+  if (!tpl) return `${actor} — ${entry.action}`;
+  const text = t(tpl.text, { actor, target, patient });
+  if (!d || !tpl.tail) return text;
+  return tpl.tail === "dash" ? `${text} — ${d}` : `${text} (${d})`;
 }

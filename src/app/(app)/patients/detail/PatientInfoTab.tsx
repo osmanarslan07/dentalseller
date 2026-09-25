@@ -19,6 +19,8 @@ import { dealToMain, rateLabel } from "@/lib/money";
 import { forVisit, shortDate, VisitView } from "./visits";
 import { useCan } from "@/components/permissions";
 import { FilesCard } from "./FilesCard";
+import type { T } from "@/i18n";
+import { useLocale, useT } from "@/i18n/client";
 
 export interface DocLink {
   label: string;
@@ -28,18 +30,18 @@ export interface DocLink {
 
 /** Operations sheets (for the team) and confirmation letters (for the patient) that can be
  * produced so far — they need a date / flights to say anything useful. */
-export function documentLinks(p: Patient, visits: VisitView[]): DocLink[] {
+export function documentLinks(p: Patient, visits: VisitView[], t: T): DocLink[] {
   const docs: DocLink[] = [];
   for (const v of visits) {
     if (v.kind === "main" && v.arrival_flight_no) {
-      docs.push({ label: `Confirmation letter · ${v.label}`, hint: "for the patient", href: `/patients/${p.id}/confirmation-letter?visit=${v.key.slice(-1)}` });
+      docs.push({ label: `${t("Confirmation letter")} · ${t(v.label)}`, hint: t("for the patient"), href: `/patients/${p.id}/confirmation-letter?visit=${v.key.slice(-1)}` });
     }
   }
   for (const v of visits) {
     if (!v.date || (v.kind === "main" && !p.confirmation_date)) continue;
     docs.push({
-      label: `Operations sheet · ${v.label}`,
-      hint: "for the team",
+      label: `${t("Operations sheet")} · ${t(v.label)}`,
+      hint: t("for the team"),
       href: `/patients/${p.id}/document?visit=${v.kind === "main" ? v.key.slice(-1) : v.key}`,
     });
   }
@@ -74,6 +76,7 @@ function EditCard({
   openEvent?: string;
 }) {
   const router = useRouter();
+  const t = useT();
   const { showToast } = useToast();
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +107,7 @@ function EditCard({
         setEditing(false);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(err instanceof Error ? err.message : t("Something went wrong"));
       }
     });
   }
@@ -128,10 +131,10 @@ function EditCard({
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button type="submit" size="sm" disabled={pending}>
-              {pending ? "Saving…" : "Save"}
+              {pending ? t("Saving…") : t("Save")}
             </Button>
           </div>
         </form>
@@ -165,40 +168,41 @@ export function PatientInfoTab({
   canAssignSellers: boolean;
   onOpenVisit: (key: string) => void;
 }) {
+  const t = useT();
   const save = (patch: Record<string, unknown>) => updatePatientFields(patient.id, patch);
   const letterItems = (patient.letter_treatment_items ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   const komoIsLink = !!patient.komo_reference && /^https?:\/\//i.test(patient.komo_reference);
-  const docs = documentLinks(patient, visits);
+  const docs = documentLinks(patient, visits, t);
 
   return (
     <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_26rem]">
       <div className="flex min-w-0 flex-col gap-5">
         <EditCard
-          title="Contact"
-          saved="Contact saved ✓"
+          title={t("Contact")}
+          saved={t("Contact saved ✓")}
           onSave={save}
           toPatch={(fd) => ({ name: str(fd, "name"), phone: str(fd, "phone") })}
           view={
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Full name">{patient.name}</Field>
-              <Field label="Phone (WhatsApp)">
-                <span className="font-mono">{patient.phone || <span className="font-sans font-normal text-slate-400">Not added</span>}</span>
+              <Field label={t("Full name")}>{patient.name}</Field>
+              <Field label={t("Phone (WhatsApp)")}>
+                <span className="font-mono">{patient.phone || <span className="font-sans font-normal text-slate-400">{t("Not added")}</span>}</span>
               </Field>
             </div>
           }
           form={
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label>Full name</Label>
+                <Label>{t("Full name")}</Label>
                 <Input name="name" required defaultValue={patient.name} autoFocus />
               </div>
               <div>
-                <Label>Phone (WhatsApp)</Label>
+                <Label>{t("Phone (WhatsApp)")}</Label>
                 <Input name="phone" type="tel" defaultValue={patient.phone ?? ""} placeholder="+44 7700 900123" autoComplete="off" />
-                <p className="mt-1 text-xs text-slate-400">With country code, e.g. +44.</p>
+                <p className="mt-1 text-xs text-slate-400">{t("With country code, e.g. +44.")}</p>
               </div>
             </div>
           }
@@ -209,27 +213,27 @@ export function PatientInfoTab({
         <SaleCard patient={patient} coordinators={coordinators} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} komoIsLink={komoIsLink} />
 
         <EditCard
-          title="Notes"
-          saved="Notes saved ✓"
+          title={t("Notes")}
+          saved={t("Notes saved ✓")}
           onSave={save}
           toPatch={(fd) => ({ notes: str(fd, "notes") })}
           view={
             patient.notes ? (
               <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{patient.notes}</p>
             ) : (
-              <p className="text-sm text-slate-400">No notes yet.</p>
+              <p className="text-sm text-slate-400">{t("No notes yet.")}</p>
             )
           }
-          form={<Textarea name="notes" rows={4} defaultValue={patient.notes ?? ""} placeholder="Anything the team should know…" autoFocus />}
+          form={<Textarea name="notes" rows={4} defaultValue={patient.notes ?? ""} placeholder={t("Anything the team should know…")} autoFocus />}
         />
       </div>
 
       <div className="flex flex-col gap-5">
         <VisitsAtAGlance patient={patient} visits={visits} onOpenVisit={onOpenVisit} />
         <FilesCard patientId={patient.id} files={files} profiles={profiles} currentUserId={currentUserId} />
-        <Section title="Documents">
+        <Section title={t("Documents")}>
           {docs.length === 0 ? (
-            <p className="text-sm text-slate-400">Appear once a visit has a date (operations sheet) or flights (confirmation letter).</p>
+            <p className="text-sm text-slate-400">{t("Appear once a visit has a date (operations sheet) or flights (confirmation letter).")}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {docs.map((d) => (
@@ -264,10 +268,11 @@ function TreatmentCard({
   letterItems: string[];
   onSave: (patch: Record<string, unknown>) => Promise<void>;
 }) {
+  const t = useT();
   return (
     <EditCard
-      title="Treatment"
-      saved="Treatment saved ✓"
+      title={t("Treatment")}
+      saved={t("Treatment saved ✓")}
       onSave={onSave}
       toPatch={(fd) => ({
         treatment: str(fd, "treatment"),
@@ -277,12 +282,12 @@ function TreatmentCard({
       })}
       view={
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Treatment (short label)">{patient.treatment || <span className="font-normal text-slate-400">Not set</span>}</Field>
-          <Field label="Visits">
-            {patient.needs_visit2 ? `2 stages · visit 2 recall ${patient.visit2_recall_months} months` : "Single visit"}
-            {patient.extra_visits.length > 0 && ` · ${patient.extra_visits.length} extra`}
+          <Field label={t("Treatment (short label)")}>{patient.treatment || <span className="font-normal text-slate-400">{t("Not set")}</span>}</Field>
+          <Field label={t("Visits")}>
+            {patient.needs_visit2 ? t("2 stages · visit 2 recall {n} months", { n: patient.visit2_recall_months }) : t("Single visit")}
+            {patient.extra_visits.length > 0 && ` · ${patient.extra_visits.length} ${t("extra")}`}
           </Field>
-          <Field label="On the confirmation letter" className="sm:col-span-2">
+          <Field label={t("On the confirmation letter")} className="sm:col-span-2">
             {letterItems.length > 0 ? (
               <ul className="list-disc space-y-0.5 pl-5 font-normal">
                 {letterItems.map((i) => (
@@ -290,7 +295,7 @@ function TreatmentCard({
                 ))}
               </ul>
             ) : (
-              <span className="font-normal text-slate-400">Uses the treatment label</span>
+              <span className="font-normal text-slate-400">{t("Uses the treatment label")}</span>
             )}
           </Field>
         </div>
@@ -298,19 +303,19 @@ function TreatmentCard({
       form={
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Label>Treatment (short label)</Label>
-            <Input name="treatment" defaultValue={patient.treatment ?? ""} placeholder="Full mouth zirconium crowns" autoFocus />
-            <p className="mt-1 text-xs text-slate-400">Shown on the dashboard, calendar and upcoming visits.</p>
+            <Label>{t("Treatment (short label)")}</Label>
+            <Input name="treatment" defaultValue={patient.treatment ?? ""} placeholder={t("Full mouth zirconium crowns")} autoFocus />
+            <p className="mt-1 text-xs text-slate-400">{t("Shown on the dashboard, calendar and upcoming visits.")}</p>
           </div>
           <div className="sm:col-span-2">
-            <Label>On the confirmation letter</Label>
+            <Label>{t("On the confirmation letter")}</Label>
             <Textarea
               name="letter_treatment_items"
               rows={2}
               defaultValue={patient.letter_treatment_items ?? ""}
               placeholder="12x Nucleoss T6 dental implants, 24x Dental Direkt zirconium crowns"
             />
-            <p className="mt-1 text-xs text-slate-400">Comma-separated — each item is a bullet. Empty = the treatment label.</p>
+            <p className="mt-1 text-xs text-slate-400">{t("Comma-separated — each item is a bullet. Empty = the treatment label.")}</p>
           </div>
           <SecondVisitFields initial={patient.needs_visit2} recallMonths={patient.visit2_recall_months} />
         </div>
@@ -322,14 +327,15 @@ function TreatmentCard({
 /** Mounted fresh each time the card opens, so a cancelled toggle doesn't stick. */
 function SecondVisitFields({ initial, recallMonths }: { initial: boolean; recallMonths: number }) {
   const [on, setOn] = useState(initial);
+  const t = useT();
   return (
     <div className="flex flex-wrap items-end gap-3 sm:col-span-2">
       <Toggle name="needs_visit2" on={on} onChange={setOn}>
-        Needs a second visit
+        {t("Needs a second visit")}
       </Toggle>
       {on && (
         <div className="w-44">
-          <Label>Visit 2 recall (months)</Label>
+          <Label>{t("Visit 2 recall (months)")}</Label>
           <Input type="number" min="1" step="1" name="visit2_recall_months" defaultValue={recallMonths} />
         </div>
       )}
@@ -359,6 +365,8 @@ function SaleCard({
   komoIsLink: boolean;
 }) {
   const [pick, setPick] = useState<SellerPick>({ sellerId: patient.responsible_seller_id, newName: null });
+  const t = useT();
+  const locale = useLocale();
   const canEdit = useCan("patients.edit");
   const canReassign = canEdit && (patient.responsible_seller_id === currentUserId || canAssignSellers);
   const seller = sellers.find((s) => s.id === patient.responsible_seller_id);
@@ -372,8 +380,8 @@ function SaleCard({
   return (
     <div id="reassign">
       <EditCard
-        title="Sale"
-        saved="Sale details saved ✓"
+        title={t("Sale")}
+        saved={t("Sale details saved ✓")}
         openEvent={canEdit ? EDIT_SALE_EVENT : undefined}
         onEdit={() => setPick({ sellerId: patient.responsible_seller_id, newName: null })}
         toPatch={(fd) => ({
@@ -384,7 +392,7 @@ function SaleCard({
           coordinator_id: str(fd, "coordinator_id"),
         })}
         confirmSave={(patch) =>
-          !sellerChanged(patch) || confirm("Reassign this patient to another seller? They will earn the commission from now on.")
+          !sellerChanged(patch) || confirm(t("Reassign this patient to another seller? They will earn the commission from now on."))
         }
         onSave={(patch) =>
           updatePatientSale(patient.id, {
@@ -401,21 +409,21 @@ function SaleCard({
         }
         view={
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Seller">
+            <Field label={t("Seller")}>
               {sellerName}
-              {seller && !seller.profile_id && <span className="ml-1.5 text-xs font-normal text-slate-400">no account</span>}
+              {seller && !seller.profile_id && <span className="ml-1.5 text-xs font-normal text-slate-400">{t("no account")}</span>}
             </Field>
-            <Field label="Coordinator">
+            <Field label={t("Coordinator")}>
               {coordinator ? (
                 coordinator.name
               ) : patient.coordinator_id ? (
-                "Former member"
+                t("Former member")
               ) : (
-                <span className="font-normal text-slate-400">None — the seller follows up</span>
+                <span className="font-normal text-slate-400">{t("None — the seller follows up")}</span>
               )}
             </Field>
-            <Field label="Confirmed">{patient.confirmation_date ? shortDate(patient.confirmation_date, true) : <span className="font-normal text-slate-400">Not set</span>}</Field>
-            <Field label="Komo reference">
+            <Field label={t("Confirmed")}>{patient.confirmation_date ? shortDate(patient.confirmation_date, true, locale) : <span className="font-normal text-slate-400">{t("Not set")}</span>}</Field>
+            <Field label={t("Komo reference")}>
               {patient.komo_reference ? (
                 komoIsLink ? (
                   <a href={patient.komo_reference} target="_blank" rel="noopener noreferrer" className="break-all text-teal-700 hover:text-teal-800">
@@ -425,7 +433,7 @@ function SaleCard({
                   patient.komo_reference
                 )
               ) : (
-                <span className="font-normal text-slate-400">Not set</span>
+                <span className="font-normal text-slate-400">{t("Not set")}</span>
               )}
             </Field>
           </div>
@@ -433,7 +441,7 @@ function SaleCard({
         form={
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label>Seller</Label>
+              <Label>{t("Seller")}</Label>
               {canReassign ? (
                 <SellerPicker
                   sellers={sellers}
@@ -446,30 +454,30 @@ function SaleCard({
               ) : (
                 <p className="py-2 text-sm font-semibold text-slate-700">
                   {sellerName}
-                  <span className="ml-1.5 text-xs font-normal text-slate-400">only their seller or a coordinator can change it</span>
+                  <span className="ml-1.5 text-xs font-normal text-slate-400">{t("only their seller or a coordinator can change it")}</span>
                 </p>
               )}
             </div>
             <div>
-              <Label>Coordinator</Label>
-              <Select name="coordinator_id" defaultValue={patient.coordinator_id ?? ""} aria-label="Coordinator">
-                <option value="">None — the seller follows up</option>
+              <Label>{t("Coordinator")}</Label>
+              <Select name="coordinator_id" defaultValue={patient.coordinator_id ?? ""} aria-label={t("Coordinator")}>
+                <option value="">{t("None — the seller follows up")}</option>
                 {coordinatorChoices.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
-                    {c.id === currentUserId ? " (you)" : ""}
-                    {c.pickable ? "" : " (can no longer coordinate)"}
+                    {c.id === currentUserId ? ` ${t("(you)")}` : ""}
+                    {c.pickable ? "" : ` ${t("(can no longer coordinate)")}`}
                   </option>
                 ))}
               </Select>
             </div>
             <div>
-              <Label>Confirmation date</Label>
+              <Label>{t("Confirmation date")}</Label>
               <DateInput name="confirmation_date" defaultValue={patient.confirmation_date ?? ""} />
             </div>
             <div>
-              <Label>Komo reference</Label>
-              <Input name="komo_reference" defaultValue={patient.komo_reference ?? ""} placeholder="Lead link or ID" />
+              <Label>{t("Komo reference")}</Label>
+              <Input name="komo_reference" defaultValue={patient.komo_reference ?? ""} placeholder={t("Lead link or ID")} />
             </div>
           </div>
         }
@@ -482,6 +490,8 @@ function VisitsAtAGlance({ patient, visits, onOpenVisit }: { patient: Patient; v
   const today = todayIsoLocal();
   const gbp = moneyIn(patient.currency);
   const { main } = useCurrencies();
+  const t = useT();
+  const locale = useLocale();
   const rows = visits.map((v) => {
     const owed = Math.round((visitExpectedTotal(patient, v.key, v.expected) ?? 0) * 100) / 100;
     const paid = Math.round(forVisit(patient.payments, v.key).reduce((s, p) => s + p.amount, 0) * 100) / 100;
@@ -489,25 +499,25 @@ function VisitsAtAGlance({ patient, visits, onOpenVisit }: { patient: Patient; v
     const now = isDueNow({ key: v.key, label: v.label, date: v.date, status: v.status, owed, paid, due }, today);
     return { v, owed, paid, due, now };
   });
-  const totals = rows.reduce((t, r) => ({ owed: t.owed + r.owed, paid: t.paid + r.paid }), { owed: 0, paid: 0 });
+  const totals = rows.reduce((sum, r) => ({ owed: sum.owed + r.owed, paid: sum.paid + r.paid }), { owed: 0, paid: 0 });
   const dueNow = rows.filter((r) => r.now && r.due > 0).reduce((s, r) => s + r.due, 0);
   const later = rows.filter((r) => !r.now && r.due > 0);
   const cols = "grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_6rem] gap-2";
 
   return (
-    <Section title="All visits at a glance">
+    <Section title={t("All visits at a glance")}>
       <div className={`${cols} border-b border-slate-100 pb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500`}>
-        <span>Visit</span>
-        <span className="text-right">Owed</span>
-        <span className="text-right">Paid</span>
-        <span className="text-right">Balance</span>
+        <span>{t("Visit")}</span>
+        <span className="text-right">{t("Owed")}</span>
+        <span className="text-right">{t("Paid")}</span>
+        <span className="text-right">{t("Balance")}</span>
       </div>
       <div className="-my-1 flex flex-col">
         {rows.map(({ v, owed, paid, due, now }) => (
           <button key={v.key} type="button" onClick={() => onOpenVisit(v.key)} className={`${cols} items-center rounded-lg py-1.5 text-left text-sm hover:bg-slate-50`}>
             <span className="flex min-w-0 flex-col">
-              <span className="truncate font-semibold">{v.label}</span>
-              <span className="text-xs text-slate-500">{v.date ? shortDate(v.date) : "Not booked"}</span>
+              <span className="truncate font-semibold">{t(v.label)}</span>
+              <span className="text-xs text-slate-500">{v.date ? shortDate(v.date, false, locale) : t("Not booked")}</span>
             </span>
             <span className="text-right font-mono">{gbp(owed)}</span>
             <span className="text-right font-mono">{gbp(paid)}</span>
@@ -515,32 +525,32 @@ function VisitsAtAGlance({ patient, visits, onOpenVisit }: { patient: Patient; v
               {owed === 0 && paid === 0 ? (
                 <span className="text-slate-400">—</span>
               ) : due < 0 ? (
-                <Pill tone="blue">Overpaid</Pill>
+                <Pill tone="blue">{t("Overpaid")}</Pill>
               ) : due === 0 ? (
-                <Pill tone="green">Paid</Pill>
+                <Pill tone="green">{t("Paid")}</Pill>
               ) : now ? (
-                <Pill tone="amber">{gbp(due)} due</Pill>
+                <Pill tone="amber">{t("{amount} due", { amount: gbp(due) })}</Pill>
               ) : (
-                <Pill>Upcoming</Pill>
+                <Pill>{t("Upcoming")}</Pill>
               )}
             </span>
           </button>
         ))}
       </div>
       <div className={`${cols} border-t-2 border-slate-900 pt-2 text-sm font-bold`}>
-        <span>Total</span>
+        <span>{t("Total")}</span>
         <span className="text-right font-mono">{gbp(totals.owed)}</span>
         <span className="text-right font-mono">{gbp(totals.paid)}</span>
-        <span className={`text-right ${dueNow > 0 ? "text-amber-700" : "text-emerald-700"}`}>{dueNow > 0 ? `${gbp(dueNow)} due` : "Nothing due"}</span>
+        <span className={`text-right ${dueNow > 0 ? "text-amber-700" : "text-emerald-700"}`}>{dueNow > 0 ? t("{amount} due", { amount: gbp(dueNow) }) : t("Nothing due")}</span>
       </div>
       {later.length > 0 && (
         <p className="text-xs text-slate-500">
-          {later.map((r) => `${r.v.label}’s ${gbp(r.due)}`).join(", ")} {later.length === 1 ? "isn’t" : "aren’t"} due until the visit starts.
+          {t("Not due until the visit starts: {list}.", { list: later.map((r) => `${t(r.v.label)} ${gbp(r.due)}`).join(", ") })}
         </p>
       )}
       {patient.currency !== main && totals.owed > 0 && (
         <p className="text-xs text-slate-500">
-          Owed ≈ {moneyIn(main)(dealToMain(patient, totals.owed))} at the agreed rate ({rateLabel(patient.currency, main, patient.deal_rate)}).
+          {t("Owed ≈ {amount} at the agreed rate ({rate}).", { amount: moneyIn(main)(dealToMain(patient, totals.owed)), rate: rateLabel(patient.currency, main, patient.deal_rate) })}
         </p>
       )}
     </Section>

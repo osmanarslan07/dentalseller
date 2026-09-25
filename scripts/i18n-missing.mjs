@@ -27,8 +27,8 @@ const unquote = (q) => {
 const known = new Set();
 for (const f of walk(path.join(root, "i18n", "tr"))) {
   const src = fs.readFileSync(f, "utf8");
-  for (const m of src.matchAll(/^\s*("(?:[^"\\]|\\.)*"|[A-Za-z_$][\w$]*)\s*:/gm)) {
-    known.add(m[1][0] === '"' ? unquote(m[1]) : m[1]);
+  for (const m of src.matchAll(/^\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[A-Za-z_$][\w$]*)\s*:/gm)) {
+    known.add(m[1][0] === '"' || m[1][0] === "'" ? unquote(m[1]) : m[1]);
   }
 }
 

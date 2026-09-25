@@ -22,6 +22,7 @@ import { documentLinks, EDIT_SALE_EVENT, PatientInfoTab } from "./detail/Patient
 import { HistoryTab } from "./detail/HistoryTab";
 import { sellerLabel } from "@/lib/sellers";
 import { useCan } from "@/components/permissions";
+import { useLocale, useT } from "@/i18n/client";
 
 const PAGE_TABS = ["info", "history"] as const;
 
@@ -74,6 +75,8 @@ export function PatientDetail({
   driverMessages?: DriverMessagesMode;
 }) {
   const router = useRouter();
+  const t = useT();
+  const locale = useLocale();
   const canEdit = useCan("patients.edit");
   const canDelete = useCan("patients.delete");
   const canExport = useCan("patients.export");
@@ -83,16 +86,16 @@ export function PatientDetail({
   const today = todayIsoLocal();
 
   const visits = patientVisits(patient);
-  const isValidTab = (t: string | undefined): t is string =>
-    !!t && (visits.some((v) => v.key === t) || (PAGE_TABS as readonly string[]).includes(t));
+  const isValidTab = (k: string | undefined): k is string =>
+    !!k && (visits.some((v) => v.key === k) || (PAGE_TABS as readonly string[]).includes(k));
   const [tab, setTabState] = useState(() => (isValidTab(initialTab) ? initialTab : currentVisitKey(visits)));
   // a removed visit (or visit 2 switched off elsewhere) falls back to the current visit
   const activeTab = isValidTab(tab) ? tab : currentVisitKey(visits);
 
-  function setTab(t: string) {
-    setTabState(t);
+  function setTab(k: string) {
+    setTabState(k);
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", t);
+    url.searchParams.set("tab", k);
     window.history.replaceState(null, "", url);
   }
 
@@ -104,7 +107,7 @@ export function PatientDetail({
     let cancelled = false;
     getPatientActivity(patient.id)
       .then((rows) => !cancelled && setHistory(rows))
-      .catch((e) => !cancelled && setHistoryError(e instanceof Error ? e.message : "Failed to load history"));
+      .catch((e) => !cancelled && setHistoryError(e instanceof Error ? e.message : t("Failed to load history")));
     return () => {
       cancelled = true;
     };
@@ -117,20 +120,20 @@ export function PatientDetail({
         showToast(done);
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : t("Something went wrong"), "error");
       }
     });
   }
 
   function handleDelete() {
-    if (!confirm(`Delete ${patient.name}? Their visits, payments, extras and transfers go too. This cannot be undone.`)) return;
+    if (!confirm(t("Delete {name}? Their visits, payments, extras and transfers go too. This cannot be undone.", { name: patient.name }))) return;
     startTransition(async () => {
       try {
         await deletePatient(patient.id);
-        showToast("Patient deleted");
+        showToast(t("Patient deleted"));
         router.push("/patients");
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to delete patient", "error");
+        showToast(e instanceof Error ? e.message : t("Failed to delete patient"), "error");
       }
     });
   }
@@ -139,11 +142,11 @@ export function PatientDetail({
     startTransition(async () => {
       try {
         await updatePatientFields(patient.id, { needs_visit2: true });
-        showToast("Visit 2 added ✓");
+        showToast(t("Visit 2 added ✓"));
         setTab("visit2");
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : t("Something went wrong"), "error");
       }
     });
   }
@@ -164,7 +167,7 @@ export function PatientDetail({
   const fmt = moneyIn(patient.currency);
   const wa = patient.phone ? whatsappNumber(patient.phone) : "";
   const komoIsLink = !!patient.komo_reference && /^https?:\/\//i.test(patient.komo_reference);
-  const docs = documentLinks(patient, visits);
+  const docs = documentLinks(patient, visits, t);
 
   const tabClass = (key: string) =>
     `flex shrink-0 flex-col gap-0.5 border-b-2 px-3.5 pb-2.5 pt-1 text-left text-sm font-semibold transition ${
@@ -177,7 +180,7 @@ export function PatientDetail({
       {/* Header */}
       <header className="flex flex-col gap-3 border-b border-slate-200">
         <Link href="/patients" className="self-start text-[13px] font-medium text-teal-700 hover:text-teal-800">
-          ← Patients
+          ← {t("Patients")}
         </Link>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-6">
@@ -185,16 +188,16 @@ export function PatientDetail({
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="mr-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-[26px]">{patient.name}</h1>
               <Pill tone={allDone ? "green" : stage.tone === "slate" ? "slate" : "teal"}>
-                {allDone ? "All visits completed" : `${current.label} · ${stage.label}`}
+                {allDone ? t("All visits completed") : `${t(current.label)} · ${t(stage.label)}`}
               </Pill>
               {dueBadges.map((b) => (
                 <Pill key={b.key} tone={b.due > 0 ? "amber" : "blue"}>
-                  {b.label}: {b.due > 0 ? `${fmt(b.due)} due` : `overpaid ${fmt(-b.due)}`}
+                  {t(b.label)}: {b.due > 0 ? t("{amount} due", { amount: fmt(b.due) }) : t("Overpaid {amount}", { amount: fmt(-b.due) })}
                 </Pill>
               ))}
               {noDriver.length > 0 && (
                 <Pill tone="amber">
-                  {noDriver.length} transfer{noDriver.length === 1 ? "" : "s"} without driver
+                  {noDriver.length === 1 ? t("1 transfer without driver") : t("{n} transfers without driver", { n: noDriver.length })}
                 </Pill>
               )}
             </div>
@@ -214,7 +217,7 @@ export function PatientDetail({
                         href={`tel:${patient.phone.replace(/[^\d+]/g, "")}`}
                         className="rounded-lg border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                       >
-                        Call
+                        {t("Call")}
                       </a>
                       <a
                         href={`https://wa.me/${wa}`}
@@ -229,19 +232,19 @@ export function PatientDetail({
                 </span>
               ) : (
                 <button type="button" onClick={() => setTab("info")} className="font-medium text-teal-700 hover:text-teal-800">
-                  + Add phone
+                  + {t("Add phone")}
                 </button>
               )}
               <span className="hidden text-slate-300 sm:inline">|</span>
               <span>
-                Seller <span className="font-semibold text-slate-900">{sellerName}</span>
+                {t("Seller")} <span className="font-semibold text-slate-900">{sellerName}</span>
               </span>
               {patient.komo_reference && (
                 <>
                   <span className="hidden text-slate-300 sm:inline">|</span>
                   {komoIsLink ? (
                     <a href={patient.komo_reference} target="_blank" rel="noopener noreferrer" className="font-medium text-teal-700 hover:text-teal-800">
-                      Komo lead ↗
+                      {t("Komo lead")} ↗
                     </a>
                   ) : (
                     <span>Komo {patient.komo_reference}</span>
@@ -255,36 +258,36 @@ export function PatientDetail({
             <Menu
               trigger={
                 <>
-                  {pending ? "Working…" : "Telegram"} <ChevronIcon />
+                  {pending ? t("Working…") : "Telegram"} <ChevronIcon />
                 </>
               }
-              heading="Send to the seller’s Telegram"
+              heading={t("Send to the seller’s Telegram")}
               disabled={pending}
               items={visits.map((v) => ({
-                label: v.label,
-                hint: v.date ? shortDate(v.date) : "not booked yet",
-                onSelect: () => run(() => sendPatientTelegramMessage(patient.id, v.key), "Sent to Telegram ✓"),
+                label: t(v.label),
+                hint: v.date ? shortDate(v.date, false, locale) : t("not booked yet"),
+                onSelect: () => run(() => sendPatientTelegramMessage(patient.id, v.key), t("Sent to Telegram ✓")),
               }))}
             />
             <Menu
               trigger={
                 <>
-                  Documents <ChevronIcon />
+                  {t("Documents")} <ChevronIcon />
                 </>
               }
-              heading="Open in a new tab"
+              heading={t("Open in a new tab")}
               items={docs.map((d) => ({ label: d.label, hint: d.hint, href: d.href }))}
             />
             <Menu
               trigger={<KebabIcon />}
-              ariaLabel="More actions"
-              heading="Patient"
+              ariaLabel={t("More actions")}
+              heading={t("Patient")}
               buttonClassName="rounded-xl bg-slate-100 px-2.5 py-2 text-slate-700 hover:bg-slate-200"
               items={[
-                ...(canEdit ? [{ label: "Duplicate for a group booking", hint: "same flights & hotel", onSelect: () => router.push(`/patients/new?from=${patient.id}`) }] : []),
+                ...(canEdit ? [{ label: t("Duplicate for a group booking"), hint: t("same flights & hotel"), onSelect: () => router.push(`/patients/new?from=${patient.id}`) }] : []),
                 ...(canEdit && (canAssignSellers || patient.responsible_seller_id === currentUserId) ? [{
-                  label: "Reassign seller…",
-                  hint: `${sellerName} now`,
+                  label: t("Reassign seller…"),
+                  hint: t("{name} now", { name: sellerName }),
                   onSelect: () => {
                     setTab("info");
                     // after the tab switch has rendered the Sale card: open it for editing, then show it
@@ -295,11 +298,11 @@ export function PatientDetail({
                   },
                 }] : []),
                 ...(canExport ? [{
-                  label: "Export to CSV",
+                  label: t("Export to CSV"),
                   onSelect: () => downloadCsv(`${patient.name.replace(/[^\w\- ]+/g, "").trim() || "patient"}.csv`, patientsToCsv([patient])),
                 }] : []),
                 ...(canDelete || (canEdit && patient.responsible_seller_id === currentUserId)
-                  ? [{ label: "Delete patient…", hint: "asks to confirm", danger: true, divider: true, disabled: pending, onSelect: handleDelete }]
+                  ? [{ label: t("Delete patient…"), hint: t("asks to confirm"), danger: true, divider: true, disabled: pending, onSelect: handleDelete }]
                   : []),
               ]}
             />
@@ -307,40 +310,44 @@ export function PatientDetail({
         </div>
 
         {/* Tabs */}
-        <nav className="-mb-px mt-1 flex items-end gap-1 overflow-x-auto" aria-label="Patient sections">
+        <nav className="-mb-px mt-1 flex items-end gap-1 overflow-x-auto" aria-label={t("Patient sections")}>
           {visits.map((v) => (
             <button key={v.key} type="button" onClick={() => setTab(v.key)} className={tabClass(v.key)} aria-current={v.key === activeTab ? "page" : undefined}>
               <span className="flex items-center gap-1.5 whitespace-nowrap">
-                {v.label}
-                {needsAttention(v.key) && <span className="h-[7px] w-[7px] rounded-full bg-amber-600" aria-label="needs attention" />}
+                {t(v.label)}
+                {needsAttention(v.key) && <span className="h-[7px] w-[7px] rounded-full bg-amber-600" aria-label={t("needs attention")} />}
               </span>
               <span className="whitespace-nowrap text-[11px] font-medium text-slate-500">
-                {v.status === "completed" ? "Completed" : v.date ? shortDate(v.date) : "Not booked"}
+                {v.status === "completed" ? t("Completed") : v.date ? shortDate(v.date, false, locale) : t("Not booked")}
               </span>
             </button>
           ))}
           {canEdit && (
           <Menu
-            trigger={<>+ Visit</>}
-            heading="Add a visit"
+            trigger={<>+ {t("Visit")}</>}
+            heading={t("Add a visit")}
             align="left"
             disabled={pending}
             buttonClassName="shrink-0 whitespace-nowrap px-3 pb-3 text-[13px] font-semibold text-teal-700 hover:text-teal-800"
             items={[
-              ...(!patient.needs_visit2 ? [{ label: "Visit 2", hint: "second stage, recall reminder", onSelect: addVisit2 }] : []),
-              { label: "Extra visit", hint: "e.g. temporary crown fix", onSelect: () => setAddingExtra(true) },
+              ...(!patient.needs_visit2 ? [{ label: t("Visit 2"), hint: t("second stage, recall reminder"), onSelect: addVisit2 }] : []),
+              { label: t("Extra visit"), hint: t("e.g. temporary crown fix"), onSelect: () => setAddingExtra(true) },
             ]}
           />
           )}
           <div className="min-w-4 grow" />
           <button type="button" onClick={() => setTab("info")} className={tabClass("info")} aria-current={activeTab === "info" ? "page" : undefined}>
-            <span className="whitespace-nowrap">Patient info</span>
-            <span className="whitespace-nowrap text-[11px] font-medium text-slate-500">Details &amp; totals</span>
+            <span className="whitespace-nowrap">{t("Patient info")}</span>
+            <span className="whitespace-nowrap text-[11px] font-medium text-slate-500">{t("Details & totals")}</span>
           </button>
           <button type="button" onClick={() => setTab("history")} className={tabClass("history")} aria-current={activeTab === "history" ? "page" : undefined}>
-            <span>History</span>
+            <span>{t("History")}</span>
             <span className="whitespace-nowrap text-[11px] font-medium text-slate-500">
-              {history ? `${history.length}${history.length === 100 ? "+" : ""} change${history.length === 1 ? "" : "s"}` : "Every change"}
+              {history
+                ? history.length === 1
+                  ? t("1 change")
+                  : t("{n} changes", { n: `${history.length}${history.length === 100 ? "+" : ""}` })
+                : t("Every change")}
             </span>
           </button>
         </nav>
@@ -400,6 +407,7 @@ function AddExtraVisitModal({
   onAdded: (id: string) => void;
 }) {
   const router = useRouter();
+  const t = useT();
   const { showToast } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -411,42 +419,42 @@ function AddExtraVisitModal({
     startTransition(async () => {
       try {
         const { id } = await addExtraVisit(patientId, fd);
-        showToast("Extra visit added ✓");
+        showToast(t("Extra visit added ✓"));
         onAdded(id);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(err instanceof Error ? err.message : t("Something went wrong"));
       }
     });
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add an extra visit">
+    <Modal open={open} onClose={onClose} title={t("Add an extra visit")}>
       <form onSubmit={submit} className="space-y-3">
         <p className="text-sm text-slate-500">
-          Any visit besides visits 1 and 2 — e.g. fixing a temporary crown. Flights, hotel, money and transfers go on its tab.
+          {t("Any visit besides visits 1 and 2 — e.g. fixing a temporary crown. Flights, hotel, money and transfers go on its tab.")}
         </p>
         <div>
-          <Label>Name</Label>
-          <Input name="label" required placeholder="Temp crown fix" autoFocus />
+          <Label>{t("Name")}</Label>
+          <Input name="label" required placeholder={t("Temp crown fix")} autoFocus />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>Date</Label>
+            <Label>{t("Date")}</Label>
             <DateInput name="visit_date" />
           </div>
           <div>
-            <Label>Price ({currencySymbol(currency)})</Label>
-            <Input type="number" min="0" step="0.01" name="expected" placeholder="Optional" />
+            <Label>{t("Price ({sym})", { sym: currencySymbol(currency) })}</Label>
+            <Input type="number" min="0" step="0.01" name="expected" placeholder={t("Optional")} />
           </div>
         </div>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button type="submit" disabled={pending}>
-            {pending ? "Adding…" : "Add visit"}
+            {pending ? t("Adding…") : t("Add visit")}
           </Button>
         </div>
       </form>

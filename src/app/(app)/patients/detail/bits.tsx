@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { formatCurrency } from "@/lib/format";
 import { useCan } from "@/components/permissions";
 import { Permission } from "@/types";
+import { useT } from "@/i18n/client";
 
 /** A formatter for one currency: the patient's deal currency for prices and payments, the
  * clinic's main currency for its own costs (hotel, transfers). */
@@ -65,6 +66,7 @@ export function EditButton({
   perm?: Permission;
 }) {
   const allowed = useCan(perm);
+  const t = useT();
   if (!allowed) return null;
   return (
     <button
@@ -74,14 +76,15 @@ export function EditButton({
       className="flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-800 disabled:opacity-40"
     >
       <PencilIcon />
-      {label}
+      {t(label)}
     </button>
   );
 }
 
 /** "Editing" chip shown in a card's title row while its form is open. */
 export function EditingChip() {
-  return <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-800">Editing</span>;
+  const t = useT();
+  return <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-800">{t("Editing")}</span>;
 }
 
 /** A label above a value, for read-only cards. */
@@ -187,15 +190,16 @@ export function Stepper({
   disabled?: boolean;
   label: string;
 }) {
+  const t = useT();
   const btn =
     "flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40";
   return (
     <span className="flex items-center gap-2">
-      <button type="button" aria-label={`Fewer ${label}`} className={btn} disabled={disabled || value <= min} onClick={() => onChange(value - 1)}>
+      <button type="button" aria-label={t("Fewer {what}", { what: label })} className={btn} disabled={disabled || value <= min} onClick={() => onChange(value - 1)}>
         −
       </button>
       <span className="w-6 text-center text-[15px] font-semibold text-slate-900">{value}</span>
-      <button type="button" aria-label={`More ${label}`} className={btn} disabled={disabled || value >= max} onClick={() => onChange(value + 1)}>
+      <button type="button" aria-label={t("More {what}", { what: label })} className={btn} disabled={disabled || value >= max} onClick={() => onChange(value + 1)}>
         +
       </button>
     </span>

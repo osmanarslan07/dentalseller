@@ -354,6 +354,55 @@ To do:
 
 ---
 
+## Open issues & small fixes (before or alongside the plan)
+
+### ⚠ WhatsApp delivery status never updates ("Sending…" forever) — needs the Meta setup (user, later)
+
+Found 2026-09-25. Not a code bug: **Meta has never called our webhook.**
+- Database: all 3 driver messages sent through the API are still at "accepted" (shown as
+  "Sending…"); no sent / delivered / read ever arrived.
+- Vercel logs: no requests to `/api/whatsapp/webhook` in 48 h (production or preview).
+- Our endpoint is reachable (`https://dentalseller.vercel.app/api/whatsapp/webhook`: wrong verify
+  token → 403, POST → 200).
+- Meta: the phone number (Thera Dental Clinic, Cloud API, connected) reports **no webhook
+  configuration**.
+
+**To do in Meta (developers.facebook.com, app ID `2507097539775020`)** — the user can't reach it
+right now:
+1. WhatsApp → Configuration → Webhook → Edit:
+   - Callback URL: **`https://dentalseller.vercel.app/api/whatsapp/webhook`** (not the localhost
+     one Settings shows when opened on localhost),
+   - Verify token: from Settings → Transfers → Driver messages → Delivery status. Verify & save.
+2. Webhook fields: subscribe to **messages**.
+3. Check the App Secret saved in our settings matches App settings → Basic (otherwise Meta's
+   calls arrive but are refused with 401 — visible in the Vercel logs).
+4. Send a new driver message → it should go Sent → Delivered → Read within seconds. (The 3 old
+   ones stay as they are — Meta doesn't resend old statuses.) Still nothing → check whether the
+   Meta app is still in Development mode, and the Vercel logs.
+
+### Small fixes (suggested 2026-09-25, not started)
+- ☐ Status label: "accepted" reads **"Sent to WhatsApp"**; no report after ~10 min → admins see
+  "No delivery report — check the webhook in Settings → Transfers" instead of "Sending…" forever.
+- ☐ Settings → Transfers shows the **production** callback URL, never localhost.
+
+### Basic message history — interim, until step M (suggested 2026-09-25, not started, ~1 day)
+Today only the **latest** API message per transfer keeps a status, the text isn't saved, replies
+are ignored, and WhatsApp-app sends leave no trace beyond an activity entry.
+- ☐ **Message log** table: every WhatsApp message we send — recipient (driver / member), transfer
+  and patient, the exact text / template, who sent it, `wa_message_id`, each status with its time
+  (sent / delivered / read / failed + reason). App-mode sends logged as "opened in WhatsApp" with
+  the text (no delivery report possible there). The webhook updates the log as well.
+- ☐ Transfer row: clicking the status opens that transfer's message history (oldest → newest).
+- ☐ Patient History tab lists those messages.
+- ☐ Failed messages → a warning for admins on the Transfers page.
+- ☐ Kept 12 months, then deleted by the daily job.
+- Left for step M: replies / inbox, a full message-log page with filters, coordinator messages —
+  step M builds on this same log.
+- Limits: someone with read receipts off only ever shows "Delivered"; WhatsApp-app mode can never
+  be tracked.
+
+---
+
 ## NEXT — the plan (ordered 2026-09-25)
 
 Seven notes from the user (profiles, WhatsApp instead of Telegram, a new menu, a clearer
@@ -654,6 +703,7 @@ and a clinic group. The WhatsApp Business API is already connected for driver me
 
 To do:
 - ☐ **Early (during H):** draft the templates (Turkish + English) and submit them to Meta
+- ☐ Prerequisite: the Meta webhook set up (see Open issues) and the basic message log built on
 - ☐ Messaging section: connection card (moved from Transfers), rules table, not-connected hint
 - ☐ Personal mute settings; phone-missing hint
 - ☐ Senders: new patient, visit info, reminders crons, task reminders → WhatsApp by rule

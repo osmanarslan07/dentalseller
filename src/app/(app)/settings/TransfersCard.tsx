@@ -14,11 +14,14 @@ import {
   setDriverActive,
   setTransferCompanyActive,
 } from "./transfer-actions";
+import { useT } from "@/i18n/client";
+import type { T } from "@/i18n";
 
 /** Runs a server action with the shared toast/refresh/error handling every row here needs. */
 function useAction() {
   const router = useRouter();
   const { showToast } = useToast();
+  const t = useT();
   const [pending, startTransition] = useTransition();
 
   function run(fn: () => Promise<void>, success: string, after?: () => void) {
@@ -29,12 +32,12 @@ function useAction() {
         after?.();
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : t("Something went wrong"), "error");
       }
     });
   }
 
-  return { pending, run };
+  return { pending, run, t };
 }
 
 export function TransfersCard({
@@ -47,22 +50,22 @@ export function TransfersCard({
   isAdmin: boolean;
 }) {
   const [adding, setAdding] = useState(false);
+  const t = useT();
 
   return (
     <>
       <DefaultsCard companies={companies} defaults={defaults} isAdmin={isAdmin} />
       <Card className="p-6">
         <div className="mb-1 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-slate-900">Transfer companies &amp; drivers</h2>
+          <h2 className="text-base font-semibold text-slate-900">{t("Transfer companies & drivers")}</h2>
           {!adding && (
             <Button type="button" size="sm" variant="secondary" onClick={() => setAdding(true)}>
-              + Add company
+              + {t("Add company")}
             </Button>
           )}
         </div>
         <p className="mb-5 text-sm text-slate-500">
-          Pick a company and driver for each transfer. The clinic&apos;s own car and drivers are listed as
-          internal — internal transfers never cost anything. Transfer details are sent to the driver&apos;s phone.
+          {t("Pick a company and driver for each transfer. The clinic's own car and drivers are listed as internal — internal transfers never cost anything. Transfer details are sent to the driver's phone.")}
         </p>
 
         {adding && (
@@ -81,7 +84,7 @@ export function TransfersCard({
   );
 }
 
-const companyName = (c: TransferCompany) => (c.is_internal ? `${c.name} (internal)` : c.name);
+const companyName = (c: TransferCompany, t: T) => (c.is_internal ? `${c.name} (${t("internal")})` : c.name);
 
 /** One company + driver pair of selects; the driver list follows the chosen company. */
 function DefaultPicker({
@@ -101,6 +104,7 @@ function DefaultPicker({
   initialDriverId: string | null;
   disabled: boolean;
 }) {
+  const t = useT();
   const [companyId, setCompanyId] = useState(initialCompanyId ?? "");
   const [driverId, setDriverId] = useState(initialDriverId ?? "");
   const company = companies.find((c) => c.id === companyId);
@@ -113,7 +117,7 @@ function DefaultPicker({
       <p className="mb-2 text-xs text-slate-500">{hint}</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <Label>Company</Label>
+          <Label>{t("Company")}</Label>
           <Select
             name={`${kind}_company_id`}
             value={companyId}
@@ -123,23 +127,23 @@ function DefaultPicker({
               setDriverId("");
             }}
           >
-            <option value="">No default</option>
+            <option value="">{t("No default")}</option>
             {activeCompanies.map((c) => (
               <option key={c.id} value={c.id}>
-                {companyName(c)}
+                {companyName(c, t)}
               </option>
             ))}
           </Select>
         </div>
         <div>
-          <Label>Driver</Label>
+          <Label>{t("Driver")}</Label>
           <Select
             name={`${kind}_driver_id`}
             value={driverId}
             disabled={disabled || !company}
             onChange={(e) => setDriverId(e.target.value)}
           >
-            <option value="">{company ? "No default driver" : "Pick a company first"}</option>
+            <option value="">{company ? t("No default driver") : t("Pick a company first")}</option>
             {drivers.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
@@ -162,26 +166,26 @@ function DefaultsCard({
   defaults: TransferDefaults;
   isAdmin: boolean;
 }) {
-  const { pending, run } = useAction();
+  const { pending, run, t } = useAction();
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    run(() => saveTransferDefaults(formData), "Defaults saved ✓");
+    run(() => saveTransferDefaults(formData), t("Defaults saved ✓"));
   }
 
   return (
     <Card className="p-6">
-      <h2 className="mb-1 text-base font-semibold text-slate-900">Defaults</h2>
+      <h2 className="mb-1 text-base font-semibold text-slate-900">{t("Defaults")}</h2>
       <p className="mb-5 text-sm text-slate-500">
-        “Suggest transfers” and new transfers start with these — you can still change them on each transfer.
-        {!isAdmin && " Only an admin can change them."}
+        {t("“Suggest transfers” and new transfers start with these — you can still change them on each transfer.")}
+        {!isAdmin && ` ${t("Only an admin can change them.")}`}
       </p>
       <form onSubmit={handleSubmit} className="space-y-5">
         <DefaultPicker
           kind="airport"
-          label="Airport transfers"
-          hint="Arrival (airport → hotel) and departure (hotel → airport)."
+          label={t("Airport transfers")}
+          hint={t("Arrival (airport → hotel) and departure (hotel → airport).")}
           companies={companies}
           initialCompanyId={defaults.airportCompanyId}
           initialDriverId={defaults.airportDriverId}
@@ -189,8 +193,8 @@ function DefaultsCard({
         />
         <DefaultPicker
           kind="local"
-          label="Local transfers"
-          hint="Hotel ↔ clinic."
+          label={t("Local transfers")}
+          hint={t("Hotel ↔ clinic.")}
           companies={companies}
           initialCompanyId={defaults.localCompanyId}
           initialDriverId={defaults.localDriverId}
@@ -199,7 +203,7 @@ function DefaultsCard({
         {isAdmin && (
           <div className="flex justify-end">
             <Button type="submit" disabled={pending}>
-              {pending ? "Saving…" : "Save defaults"}
+              {pending ? t("Saving…") : t("Save defaults")}
             </Button>
           </div>
         )}
@@ -209,36 +213,36 @@ function DefaultsCard({
 }
 
 function CompanyForm({ company, onDone }: { company?: TransferCompany; onDone: () => void }) {
-  const { pending, run } = useAction();
+  const { pending, run, t } = useAction();
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    run(() => saveTransferCompany(company?.id ?? null, formData), company ? "Company saved ✓" : "Company added ✓", onDone);
+    run(() => saveTransferCompany(company?.id ?? null, formData), company ? t("Company saved ✓") : t("Company added ✓"), onDone);
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <Label>Company name</Label>
+          <Label>{t("Company name")}</Label>
           <Input name="name" required defaultValue={company?.name} placeholder="Antalya VIP Transfer" autoFocus />
         </div>
         <div>
-          <Label>Phone (dispatch)</Label>
+          <Label>{t("Phone (dispatch)")}</Label>
           <Input name="phone" type="tel" defaultValue={company?.phone ?? ""} placeholder="+90 5xx xxx xx xx" />
         </div>
       </div>
       <div>
-        <Label>Notes</Label>
-        <Input name="notes" defaultValue={company?.notes ?? ""} placeholder="Prices, contact person…" />
+        <Label>{t("Notes")}</Label>
+        <Input name="notes" defaultValue={company?.notes ?? ""} placeholder={t("Prices, contact person…")} />
       </div>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" size="sm" onClick={onDone}>
-          Cancel
+          {t("Cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "Saving…" : company ? "Save" : "Add company"}
+          {pending ? t("Saving…") : company ? t("Save") : t("Add company")}
         </Button>
       </div>
     </form>
@@ -248,7 +252,7 @@ function CompanyForm({ company, onDone }: { company?: TransferCompany; onDone: (
 function CompanyBlock({ company, isAdmin }: { company: TransferCompany; isAdmin: boolean }) {
   const [editing, setEditing] = useState(false);
   const [addingDriver, setAddingDriver] = useState(false);
-  const { pending, run } = useAction();
+  const { pending, run, t } = useAction();
 
   return (
     <div className={`rounded-xl border border-slate-200 ${company.is_active ? "" : "opacity-60"}`}>
@@ -262,8 +266,8 @@ function CompanyBlock({ company, isAdmin }: { company: TransferCompany; isAdmin:
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-slate-800">{company.name}</span>
-                <Badge tone={company.is_internal ? "blue" : "slate"}>{company.is_internal ? "Internal" : "External"}</Badge>
-                {!company.is_active && <Badge tone="amber">Inactive</Badge>}
+                <Badge tone={company.is_internal ? "blue" : "slate"}>{company.is_internal ? t("Internal") : t("External")}</Badge>
+                {!company.is_active && <Badge tone="amber">{t("Inactive")}</Badge>}
               </div>
               {(company.phone || company.notes) && (
                 <p className="mt-0.5 text-xs text-slate-500">{[company.phone, company.notes].filter(Boolean).join(" · ")}</p>
@@ -271,7 +275,7 @@ function CompanyBlock({ company, isAdmin }: { company: TransferCompany; isAdmin:
             </div>
             <div className="flex shrink-0 items-center gap-3 text-xs font-medium">
               <button type="button" onClick={() => setEditing(true)} className="text-teal-600 hover:underline">
-                Edit
+                {t("Edit")}
               </button>
               {!company.is_internal && (
                 <button
@@ -280,12 +284,12 @@ function CompanyBlock({ company, isAdmin }: { company: TransferCompany; isAdmin:
                   onClick={() =>
                     run(
                       () => setTransferCompanyActive(company.id, !company.is_active),
-                      company.is_active ? "Company deactivated" : "Company reactivated"
+                      company.is_active ? t("Company deactivated") : t("Company reactivated")
                     )
                   }
                   className="text-slate-500 hover:underline"
                 >
-                  {company.is_active ? "Deactivate" : "Reactivate"}
+                  {company.is_active ? t("Deactivate") : t("Reactivate")}
                 </button>
               )}
               {isAdmin && !company.is_internal && (
@@ -293,12 +297,12 @@ function CompanyBlock({ company, isAdmin }: { company: TransferCompany; isAdmin:
                   type="button"
                   disabled={pending}
                   onClick={() => {
-                    if (!confirm(`Delete ${company.name} and its drivers? Deactivating keeps them for past transfers.`)) return;
-                    run(() => deleteTransferCompany(company.id), "Company deleted");
+                    if (!confirm(t("Delete {name} and its drivers? Deactivating keeps them for past transfers.", { name: company.name }))) return;
+                    run(() => deleteTransferCompany(company.id), t("Company deleted"));
                   }}
                   className="text-red-600 hover:underline"
                 >
-                  Delete
+                  {t("Delete")}
                 </button>
               )}
             </div>
@@ -308,7 +312,7 @@ function CompanyBlock({ company, isAdmin }: { company: TransferCompany; isAdmin:
 
       <div className="px-4 py-2">
         {company.drivers.length === 0 && !addingDriver && (
-          <p className="py-2 text-sm text-slate-400">No drivers yet.</p>
+          <p className="py-2 text-sm text-slate-400">{t("No drivers yet.")}</p>
         )}
         <ul className="divide-y divide-slate-100">
           {company.drivers.map((d) => (
@@ -325,7 +329,7 @@ function CompanyBlock({ company, isAdmin }: { company: TransferCompany; isAdmin:
             onClick={() => setAddingDriver(true)}
             className="my-1 text-sm font-medium text-teal-600 hover:text-teal-700"
           >
-            + Add driver
+            + {t("Add driver")}
           </button>
         )}
       </div>
@@ -334,36 +338,36 @@ function CompanyBlock({ company, isAdmin }: { company: TransferCompany; isAdmin:
 }
 
 function DriverForm({ driver, companyId, onDone }: { driver?: Driver; companyId: string; onDone: () => void }) {
-  const { pending, run } = useAction();
+  const { pending, run, t } = useAction();
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    run(() => saveDriver(driver?.id ?? null, companyId, formData), driver ? "Driver saved ✓" : "Driver added ✓", onDone);
+    run(() => saveDriver(driver?.id ?? null, companyId, formData), driver ? t("Driver saved ✓") : t("Driver added ✓"), onDone);
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
-          <Label>Name</Label>
+          <Label>{t("Name")}</Label>
           <Input name="name" required defaultValue={driver?.name} placeholder="Ahmet Yılmaz" autoFocus />
         </div>
         <div>
-          <Label>Phone (WhatsApp)</Label>
+          <Label>{t("Phone (WhatsApp)")}</Label>
           <Input name="phone" type="tel" defaultValue={driver?.phone ?? ""} placeholder="+90 5xx xxx xx xx" />
         </div>
         <div>
-          <Label>Vehicle</Label>
+          <Label>{t("Vehicle")}</Label>
           <Input name="vehicle" defaultValue={driver?.vehicle ?? ""} placeholder="Vito · 07 ABC 123" />
         </div>
       </div>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" size="sm" onClick={onDone}>
-          Cancel
+          {t("Cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "Saving…" : driver ? "Save" : "Add driver"}
+          {pending ? t("Saving…") : driver ? t("Save") : t("Add driver")}
         </Button>
       </div>
     </form>
@@ -372,7 +376,7 @@ function DriverForm({ driver, companyId, onDone }: { driver?: Driver; companyId:
 
 function DriverRow({ driver, companyId, isAdmin }: { driver: Driver; companyId: string; isAdmin: boolean }) {
   const [editing, setEditing] = useState(false);
-  const { pending, run } = useAction();
+  const { pending, run, t } = useAction();
 
   if (editing) {
     return (
@@ -388,36 +392,36 @@ function DriverRow({ driver, companyId, isAdmin }: { driver: Driver; companyId: 
     <li className={`flex flex-wrap items-center justify-between gap-2 py-2 text-sm ${driver.is_active ? "" : "opacity-60"}`}>
       <div className="min-w-0">
         <span className="font-medium text-slate-700">{driver.name}</span>
-        {!driver.is_active && <span className="ml-2 text-xs text-amber-700">inactive</span>}
+        {!driver.is_active && <span className="ml-2 text-xs text-amber-700">{t("inactive")}</span>}
         <span className="ml-2 text-xs text-slate-500">
-          {[driver.phone || "no phone", driver.vehicle].filter(Boolean).join(" · ")}
+          {[driver.phone || t("no phone"), driver.vehicle].filter(Boolean).join(" · ")}
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-3 text-xs font-medium">
         <button type="button" onClick={() => setEditing(true)} className="text-teal-600 hover:underline">
-          Edit
+          {t("Edit")}
         </button>
         <button
           type="button"
           disabled={pending}
           onClick={() =>
-            run(() => setDriverActive(driver.id, !driver.is_active), driver.is_active ? "Driver deactivated" : "Driver reactivated")
+            run(() => setDriverActive(driver.id, !driver.is_active), driver.is_active ? t("Driver deactivated") : t("Driver reactivated"))
           }
           className="text-slate-500 hover:underline"
         >
-          {driver.is_active ? "Deactivate" : "Reactivate"}
+          {driver.is_active ? t("Deactivate") : t("Reactivate")}
         </button>
         {isAdmin && (
           <button
             type="button"
             disabled={pending}
             onClick={() => {
-              if (!confirm(`Delete driver ${driver.name}? Deactivating keeps them for past transfers.`)) return;
-              run(() => deleteDriver(driver.id), "Driver deleted");
+              if (!confirm(t("Delete driver {name}? Deactivating keeps them for past transfers.", { name: driver.name }))) return;
+              run(() => deleteDriver(driver.id), t("Driver deleted"));
             }}
             className="text-red-600 hover:underline"
           >
-            Delete
+            {t("Delete")}
           </button>
         )}
       </div>

@@ -8,6 +8,8 @@ import { isOffForModules, PERMISSION_GROUPS } from "@/lib/permission-catalog";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { deleteRole, resetRole, saveRole } from "./role-actions";
+import { useT } from "@/i18n/client";
+import { rich } from "@/i18n/rich";
 
 /** Settings → Roles: every role's permissions side by side, and (with roles.edit /
  * roles.delete) creating, changing, resetting and deleting roles. The database enforces the
@@ -26,6 +28,7 @@ export function RolesCard({
   canDelete: boolean;
 }) {
   const router = useRouter();
+  const t = useT();
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   /** The role being edited: its key, or "new". */
@@ -39,7 +42,7 @@ export function RolesCard({
         after?.();
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : t("Something went wrong"), "error");
       }
     });
   }
@@ -50,15 +53,14 @@ export function RolesCard({
     <Card className="p-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="mb-1 text-base font-semibold text-slate-900">Roles</h2>
+          <h2 className="mb-1 text-base font-semibold text-slate-900">{t("Roles")}</h2>
           <p className="text-sm text-slate-500">
-            What each role can do. Someone with several roles can do everything any of them allows. Admin always has
-            everything.
+            {t("What each role can do. Someone with several roles can do everything any of them allows. Admin always has everything.")}
           </p>
         </div>
         {canEdit && editing === null && (
           <Button type="button" size="sm" onClick={() => setEditing("new")}>
-            + New role
+            + {t("New role")}
           </Button>
         )}
       </div>
@@ -73,7 +75,7 @@ export function RolesCard({
           onSave={(name, permissions) =>
             run(
               () => saveRole(editingRole?.key ?? null, name, permissions),
-              editingRole ? "Role saved ✓" : "Role created ✓",
+              editingRole ? t("Role saved ✓") : t("Role created ✓"),
               () => setEditing(null)
             )
           }
@@ -85,23 +87,23 @@ export function RolesCard({
           <thead>
             <tr>
               <th className="sticky left-0 z-10 min-w-[200px] bg-white pb-3 pr-3 text-left align-bottom text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Permission
+                {t("Permission")}
               </th>
               {roles.map((r) => (
                 <th key={r.key} className="min-w-[104px] px-2 pb-3 text-center align-bottom font-normal">
-                  <div className="font-semibold text-slate-900">{r.name}</div>
+                  <div className="font-semibold text-slate-900">{t(r.name)}</div>
                   <div className="text-xs text-slate-500">
-                    {memberCounts[r.key] ?? 0} {(memberCounts[r.key] ?? 0) === 1 ? "member" : "members"}
+                    {(memberCounts[r.key] ?? 0) === 1 ? t("1 member") : t("{n} members", { n: memberCounts[r.key] ?? 0 })}
                   </div>
                   <div className="mt-1 flex flex-wrap justify-center gap-1">
-                    {!r.builtin && <Badge tone="blue">Custom</Badge>}
-                    {r.customised && <Badge tone="amber">Changed</Badge>}
+                    {!r.builtin && <Badge tone="blue">{t("Custom")}</Badge>}
+                    {r.customised && <Badge tone="amber">{t("Changed")}</Badge>}
                   </div>
                   {r.key !== "admin" && (canEdit || (canDelete && !r.builtin)) && (
                     <div className="mt-1.5 flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-xs">
                       {canEdit && (
                         <button type="button" className="font-semibold text-teal-700 hover:underline" disabled={pending} onClick={() => setEditing(r.key)}>
-                          Edit
+                          {t("Edit")}
                         </button>
                       )}
                       {canEdit && r.customised && (
@@ -110,10 +112,10 @@ export function RolesCard({
                           className="font-semibold text-slate-600 hover:underline"
                           disabled={pending}
                           onClick={() => {
-                            if (confirm(`Put ${r.name} back to the default permissions?`)) run(() => resetRole(r.key), `${r.name} reset ✓`);
+                            if (confirm(t("Put {role} back to the default permissions?", { role: t(r.name) }))) run(() => resetRole(r.key), t("{role} reset ✓", { role: t(r.name) }));
                           }}
                         >
-                          Reset
+                          {t("Reset")}
                         </button>
                       )}
                       {canDelete && !r.builtin && (
@@ -122,10 +124,10 @@ export function RolesCard({
                           className="font-semibold text-red-600 hover:underline"
                           disabled={pending}
                           onClick={() => {
-                            if (confirm(`Delete the role ${r.name}?`)) run(() => deleteRole(r.key), "Role deleted");
+                            if (confirm(t("Delete the role {role}?", { role: t(r.name) }))) run(() => deleteRole(r.key), t("Role deleted"));
                           }}
                         >
-                          Delete
+                          {t("Delete")}
                         </button>
                       )}
                     </div>
@@ -154,6 +156,7 @@ function PermissionRows({
   roles: ClinicRole[];
   modules: ClinicModule[];
 }) {
+  const t = useT();
   return (
     <>
       <tr>
@@ -161,7 +164,7 @@ function PermissionRows({
           colSpan={roles.length + 1}
           className="sticky left-0 border-t border-slate-100 bg-white pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
         >
-          {group.label}
+          {t(group.label)}
         </td>
       </tr>
       {group.permissions.map((p) => {
@@ -169,19 +172,19 @@ function PermissionRows({
         return (
           <tr key={p.key} className={off ? "text-slate-400" : "text-slate-700"}>
             <td className="sticky left-0 min-w-[200px] bg-white py-1.5 pr-3">
-              {p.label}
-              {off && <span className="ml-1 text-xs">(module off)</span>}
+              {t(p.label)}
+              {off && <span className="ml-1 text-xs">({t("module off")})</span>}
             </td>
             {roles.map((r) => {
               const on = r.permissions.includes(p.key);
               return (
                 <td key={r.key} className="px-2 py-1.5 text-center">
                   {on ? (
-                    <span className={off ? "text-slate-300" : "font-semibold text-teal-600"} aria-label="Yes">
+                    <span className={off ? "text-slate-300" : "font-semibold text-teal-600"} aria-label={t("Yes")}>
                       ✓
                     </span>
                   ) : (
-                    <span className="text-slate-300" aria-label="No">
+                    <span className="text-slate-300" aria-label={t("No")}>
                       –
                     </span>
                   )}
@@ -208,6 +211,7 @@ function RoleEditor({
   onCancel: () => void;
   onSave: (name: string, permissions: string[]) => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(role?.name ?? "");
   const [picked, setPicked] = useState<Set<string>>(new Set(role?.permissions ?? []));
   const builtin = !!role?.builtin;
@@ -229,24 +233,26 @@ function RoleEditor({
   return (
     <form onSubmit={submit} className="mb-6 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
       <h3 className="mb-3 text-sm font-semibold text-slate-900">
-        {role ? `Edit ${role.name}` : "New role"}
+        {role ? t("Edit {role}", { role: t(role.name) }) : t("New role")}
       </h3>
       {!builtin && (
         <div className="mb-4 max-w-xs">
-          <Label>Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required placeholder="e.g. Receptionist" autoFocus />
+          <Label>{t("Name")}</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required placeholder={t("e.g. Receptionist")} autoFocus />
         </div>
       )}
       {builtin && (
         <p className="mb-4 text-xs text-slate-500">
-          Changes apply to this clinic only. <span className="font-semibold">default</span> marks what {role?.name} has out of the box;
-          Reset in the table takes it back.
+          {rich(t("Changes apply to this clinic only. {default} marks what {role} has out of the box; Reset in the table takes it back."), {
+            default: <span className="font-semibold">{t("default")}</span>,
+            role: t(role?.name ?? ""),
+          })}
         </p>
       )}
       <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
         {PERMISSION_GROUPS.map((g) => (
           <fieldset key={g.label}>
-            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{g.label}</legend>
+            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{t(g.label)}</legend>
             {g.permissions.map((p) => {
               const off = isOffForModules(p, modules);
               return (
@@ -258,10 +264,10 @@ function RoleEditor({
                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
                   />
                   <span>
-                    {p.label}
-                    {off && <span className="ml-1 text-xs">(module off)</span>}
+                    {t(p.label)}
+                    {off && <span className="ml-1 text-xs">({t("module off")})</span>}
                     {builtin && role?.defaults?.includes(p.key) && (
-                      <span className="ml-1 text-xs font-semibold text-slate-400">default</span>
+                      <span className="ml-1 text-xs font-semibold text-slate-400">{t("default")}</span>
                     )}
                   </span>
                 </label>
@@ -272,10 +278,10 @@ function RoleEditor({
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={onCancel} disabled={pending}>
-          Cancel
+          {t("Cancel")}
         </Button>
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : role ? "Save role" : "Create role"}
+          {pending ? t("Saving…") : role ? t("Save role") : t("Create role")}
         </Button>
       </div>
     </form>

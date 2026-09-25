@@ -9,6 +9,7 @@ import { CURRENCY_NAMES, SUPPORTED_CURRENCIES, currencySymbol, rateLabel } from 
 import { sellerLabel } from "@/lib/sellers";
 import { formatDate } from "@/lib/format";
 import { saveCurrencySettings, saveSellerCurrency } from "./currency-actions";
+import { useT } from "@/i18n/client";
 
 /** Clinic settings → Money → Currencies. A clinic that only works in its main currency ticks
  * nothing here and never sees a currency picker anywhere. */
@@ -28,6 +29,7 @@ export function CurrenciesCard({
   canSetSellers: boolean;
 }) {
   const router = useRouter();
+  const t = useT();
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -45,10 +47,10 @@ export function CurrenciesCard({
     startTransition(async () => {
       try {
         await saveCurrencySettings(formData);
-        showToast("Currencies saved ✓");
+        showToast(t("Currencies saved ✓"));
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Something went wrong");
+        setError(e instanceof Error ? e.message : t("Something went wrong"));
       }
     });
   }
@@ -58,10 +60,10 @@ export function CurrenciesCard({
     startTransition(async () => {
       try {
         await saveSellerCurrency(sellerId, currency || null);
-        showToast("Usual currency saved ✓");
+        showToast(t("Usual currency saved ✓"));
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Something went wrong");
+        setError(e instanceof Error ? e.message : t("Something went wrong"));
       }
     });
   }
@@ -71,16 +73,14 @@ export function CurrenciesCard({
 
   return (
     <Card className="p-6">
-      <h2 className="mb-1 text-base font-semibold text-slate-900">Currencies</h2>
+      <h2 className="mb-1 text-base font-semibold text-slate-900">{t("Currencies")}</h2>
       <p className="mb-5 text-sm text-slate-500">
-        The main currency is what the clinic reports in — commission, tiers, Accounting and every total. If sellers
-        agree prices in other currencies too, tick them: each patient then has a deal currency, and amounts are
-        converted into the main currency at the rate on the day the price is agreed (payments: the day they come in).
+        {t("The main currency is what the clinic reports in — commission, tiers, Accounting and every total. If sellers agree prices in other currencies too, tick them: each patient then has a deal currency, and amounts are converted into the main currency at the rate on the day the price is agreed (payments: the day they come in).")}
       </p>
 
       <form action={submit} className="space-y-5">
         <div className="max-w-xs">
-          <Label>Main currency</Label>
+          <Label>{t("Main currency")}</Label>
           {hasPatients ? (
             <>
               <input type="hidden" name="main_currency" value={config.mainCurrency} />
@@ -88,8 +88,7 @@ export function CurrenciesCard({
                 {config.mainCurrency} — {CURRENCY_NAMES[config.mainCurrency as keyof typeof CURRENCY_NAMES] ?? ""}
               </p>
               <p className="text-xs text-slate-400">
-                Fixed now that the clinic has patients — changing it means converting every amount, which DentalSeller
-                support can do for you.
+                {t("Fixed now that the clinic has patients — changing it means converting every amount, which DentalSeller support can do for you.")}
               </p>
             </>
           ) : (
@@ -108,15 +107,15 @@ export function CurrenciesCard({
                   </option>
                 ))}
               </Select>
-              {mainChanged && <p className="mt-1 text-xs text-slate-400">Market rates below update after saving.</p>}
+              {mainChanged && <p className="mt-1 text-xs text-slate-400">{t("Market rates below update after saving.")}</p>}
             </>
           )}
         </div>
 
         <div>
-          <Label>Other currencies the clinic deals in</Label>
+          <Label>{t("Other currencies the clinic deals in")}</Label>
           <p className="mb-2 text-xs text-slate-400">
-            None ticked = everything in {main}, with no currency choices anywhere in the app.
+            {t("None ticked = everything in {main}, with no currency choices anywhere in the app.", { main })}
           </p>
           <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
             {others.map((c) => {
@@ -145,7 +144,7 @@ export function CurrenciesCard({
                           checked={!own[c]}
                           onChange={() => setOwn((o) => ({ ...o, [c]: false }))}
                         />
-                        Market rate
+                        {t("Market rate")}
                         {marketRate && (
                           <span className="text-xs text-slate-400">
                             ({rateLabel(c, main, marketRate)}
@@ -161,7 +160,7 @@ export function CurrenciesCard({
                           checked={!!own[c]}
                           onChange={() => setOwn((o) => ({ ...o, [c]: true }))}
                         />
-                        Our own rate
+                        {t("Our own rate")}
                       </label>
                       {own[c] && (
                         <span className="flex items-center gap-1.5">
@@ -185,8 +184,7 @@ export function CurrenciesCard({
             })}
           </div>
           <p className="mt-2 text-xs text-slate-400">
-            Market rates are the European Central Bank&apos;s, updated once a day. Changing a rate here only affects prices
-            agreed and payments recorded from now on — what&apos;s already recorded keeps its own rate.
+            {t("Market rates are the European Central Bank's, updated once a day. Changing a rate here only affects prices agreed and payments recorded from now on — what's already recorded keeps its own rate.")}
           </p>
         </div>
 
@@ -194,16 +192,16 @@ export function CurrenciesCard({
 
         <div className="flex justify-end">
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Save currencies"}
+            {pending ? t("Saving…") : t("Save currencies")}
           </Button>
         </div>
       </form>
 
       {config.dealCurrencies.length > 0 && activeSellers.length > 0 && (
         <div className="mt-6 border-t border-slate-100 pt-5">
-          <h3 className="text-sm font-semibold text-slate-900">Usual currency per seller</h3>
+          <h3 className="text-sm font-semibold text-slate-900">{t("Usual currency per seller")}</h3>
           <p className="mb-3 text-xs text-slate-500">
-            A seller&apos;s new patients and quotes start in this currency — it can still be changed per patient.
+            {t("A seller's new patients and quotes start in this currency — it can still be changed per patient.")}
           </p>
           <ul className="divide-y divide-slate-100">
             {activeSellers.map((s) => (
@@ -214,9 +212,9 @@ export function CurrenciesCard({
                   onChange={(e) => setSellerCurrency(s.id, e.target.value)}
                   disabled={!canSetSellers || pending}
                   className="w-auto"
-                  aria-label={`Usual currency for ${sellerLabel(s)}`}
+                  aria-label={t("Usual currency for {name}", { name: sellerLabel(s) })}
                 >
-                  <option value="">{config.mainCurrency} (main)</option>
+                  <option value="">{config.mainCurrency} ({t("main")})</option>
                   {config.dealCurrencies.map((c) => (
                     <option key={c} value={c}>
                       {c}

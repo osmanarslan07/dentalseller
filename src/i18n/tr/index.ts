@@ -8,6 +8,7 @@ import { money } from "./money";
 import { ops } from "./ops";
 import { sales } from "./sales";
 import { settings } from "./settings";
+import { settings2 } from "./settings2";
 
 /**
  * Turkish dictionary: English text → Turkish. One file per area of the app; later files win on
@@ -25,4 +26,5 @@ export const TR: Record<string, string> = {
   ...ops,
   ...sales,
   ...settings,
+  ...settings2,
 };

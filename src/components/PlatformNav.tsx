@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/platform/clinics/new", label: "New clinic" },
   { href: "/platform/people", label: "People" },
   { href: "/platform/announcements", label: "Announcements" },
+  { href: "/platform/roles", label: "Roles" },
   { href: "/platform/superadmins", label: "Superadmins" },
   { href: "/platform/audit", label: "Audit log" },
   { href: "/platform/status", label: "Status" },

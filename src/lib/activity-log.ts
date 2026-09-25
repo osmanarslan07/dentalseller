@@ -84,6 +84,14 @@ export function describeActivity(
       return `${actor} changed ${target}'s roles${entry.detail ? ` (${entry.detail})` : ""}`;
     case "seller_deleted":
       return `${actor} deleted seller (${entry.detail ?? "unknown email"})`;
+    case "role_created":
+      return `${actor} created the role ${entry.detail ?? ""}`.trim();
+    case "role_changed":
+      return `${actor} changed the role ${entry.detail ?? ""}`.trim();
+    case "role_reset":
+      return `${actor} reset the role ${entry.detail ?? ""}`.trim();
+    case "role_deleted":
+      return `${actor} deleted the role ${entry.detail ?? ""}`.trim();
     case "password_reset":
       return `${actor} reset ${target}'s password`;
     case "seller_record_added":

@@ -13,6 +13,7 @@ const ACTION_TONES: Record<string, "slate" | "green" | "amber" | "blue" | "red">
   password_reset: "amber",
   superadmin_added: "blue",
   clinic_billing_updated: "blue",
+  role_template_updated: "blue",
   announcement_created: "blue",
   announcement_deleted: "red",
 };

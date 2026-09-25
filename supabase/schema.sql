@@ -2767,9 +2767,9 @@ where roles is null;
 
 alter table public.profiles alter column roles set default array['sales'];
 alter table public.profiles alter column roles set not null;
+-- (step G: roles are the four built-ins or the clinic's own custom roles — checked by the
+-- profiles_validate_roles trigger in the ROLES PAGE section, since a check can't look them up)
 alter table public.profiles drop constraint if exists profiles_roles_check;
-alter table public.profiles add constraint profiles_roles_check
-  check (roles <@ array['admin', 'sales', 'coordinator', 'accountant']);
 
 -- roles ↔ role, whichever one a change came through. A change to roles wins; a change to the
 -- old role column (code that predates roles) promotes/demotes within roles.
@@ -2830,41 +2830,10 @@ create policy "permissions_select_all" on public.permissions for select using (a
 drop policy if exists "role_permissions_select_all" on public.role_permissions;
 create policy "role_permissions_select_all" on public.role_permissions for select using (auth.uid() is not null);
 
--- This file is the source of truth: re-running it resets the catalog to exactly this.
-insert into public.permissions (key, module, description) values
-  ('patients.view',    null,         'See patients, visits and the calendar'),
-  ('patients.edit',    null,         'Add and edit patients and visits'),
-  ('patients.delete',  null,         'Delete any patient (the responsible seller can always delete their own)'),
-  ('sellers.assign',   null,         'Record a patient for any seller, type a new seller, reassign any patient'),
-  ('sellers.manage',   null,         'Manage the seller list and sellers'' commission rates'),
-  ('payments.record',  null,         'Record, edit and delete payments'),
-  ('money.edit',       null,         'Change prices, extras and discounts'),
-  ('transfers.manage', 'operations', 'Book transfers and hotels; add and edit drivers'),
-  ('drivers.manage',   'operations', 'Delete drivers and companies, transfer defaults'),
-  ('messaging.manage', 'operations', 'Driver messages: WhatsApp app / Business API / off, API details and templates'),
-  ('quotes.use',       'sales',      'Make and send quotes'),
-  ('earnings.own',     'sales',      'See your own commission'),
-  ('earnings.all',     'sales',      'See every seller''s earnings (Team page)'),
-  ('accounting.view',  'accounting', 'Accounting page'),
-  ('files.manage',     null,         'Upload, rename and delete patient files'),
-  ('tasks.use',        null,         'Tasks'),
-  ('team.manage',      null,         'Add, remove and change team members'' roles'),
-  ('settings.clinic',  null,         'Clinic settings: branding, Telegram group, money rules'),
-  ('activity.view',    null,         'Activity log')
-on conflict (key) do update set module = excluded.module, description = excluded.description;
-
-delete from public.role_permissions;
-insert into public.role_permissions (role, permission)
-select 'admin', key from public.permissions
-union all
--- exactly what a seller could do before roles existed
-select 'sales', unnest(array['patients.view', 'patients.edit', 'payments.record', 'money.edit', 'transfers.manage',
-                             'quotes.use', 'earnings.own', 'accounting.view', 'files.manage', 'tasks.use'])
-union all
-select 'coordinator', unnest(array['patients.view', 'patients.edit', 'sellers.assign', 'payments.record', 'money.edit',
-                                   'transfers.manage', 'drivers.manage', 'accounting.view', 'files.manage', 'tasks.use'])
-union all
-select 'accountant', unnest(array['patients.view', 'payments.record', 'accounting.view', 'earnings.all', 'tasks.use']);
+-- The catalog and the built-in roles' defaults are seeded in the ROLES PAGE section (step G)
+-- below. Since step G a re-run no longer resets them: role_permissions holds the platform's
+-- default templates (a superadmin can change them in /platform), so only permissions that
+-- are new to the catalog get their defaults.
 
 -- ---------- has_permission ----------
 -- The roles that count for `uid`: their own, or — for a superadmin in support mode — those of
@@ -3114,13 +3083,16 @@ create policy "patient_visits_delete_active_sellers" on public.patient_visits
   for delete using (public.has_permission(auth.uid(), 'patients.edit') and clinic_id = public.my_clinic_id());
 
 -- ---------- extras, payments, transfers: see with patients.view, write with their own permission ----------
+-- (payments: payments.record adds one, payments.edit changes or deletes one — step G)
 do $$
 declare
   t text;
   perm text;
+  perm_change text;
 begin
   foreach t in array array['patient_extras', 'patient_payments', 'transfers'] loop
     perm := case t when 'patient_extras' then 'money.edit' when 'patient_payments' then 'payments.record' else 'transfers.manage' end;
+    perm_change := case t when 'patient_payments' then 'payments.edit' else perm end;
     execute format('drop policy if exists %I on public.%I', t || '_select_active', t);
     execute format('create policy %I on public.%I for select using (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
                    t || '_select_active', t, 'patients.view');
@@ -3129,10 +3101,10 @@ begin
                    t || '_insert_active', t, perm);
     execute format('drop policy if exists %I on public.%I', t || '_update_active', t);
     execute format('create policy %I on public.%I for update using (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id()) with check (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
-                   t || '_update_active', t, perm, perm);
+                   t || '_update_active', t, perm_change, perm_change);
     execute format('drop policy if exists %I on public.%I', t || '_delete_active', t);
     execute format('create policy %I on public.%I for delete using (public.has_permission(auth.uid(), %L) and clinic_id = public.my_clinic_id())',
-                   t || '_delete_active', t, perm);
+                   t || '_delete_active', t, perm_change);
   end loop;
 end $$;
 
@@ -3218,23 +3190,32 @@ create policy "activity_log_select_admin" on public.activity_log
   for select using (public.has_permission(auth.uid(), 'activity.view') and clinic_id = public.my_clinic_id());
 
 -- ---------- clinic settings ----------
--- settings.clinic writes the clinic's settings; drivers.manage writes just the transfer
--- defaults and messaging.manage just the driver-message (WhatsApp) columns (checked column
--- by column below).
+-- Each section of the clinic's settings has its own permission (step G): settings.branding,
+-- settings.telegram, settings.money, drivers.manage (transfer defaults), messaging.manage
+-- (driver messages / WhatsApp) — checked column by column below. settings.clinic is the old
+-- all-sections key (Admin only), kept for code that predates step G.
+create or replace function public.can_write_clinic_config(uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from unnest(array['settings.clinic', 'settings.branding', 'settings.telegram', 'settings.money',
+                               'drivers.manage', 'messaging.manage']) perm
+    where public.has_permission(uid, perm)
+  );
+$$;
+revoke execute on function public.can_write_clinic_config(uuid) from public, anon;
+grant execute on function public.can_write_clinic_config(uuid) to authenticated, service_role;
+
 drop policy if exists "clinic_config_insert_admin" on public.clinic_config;
 create policy "clinic_config_insert_admin" on public.clinic_config
-  for insert with check (
-    (public.has_permission(auth.uid(), 'settings.clinic') or public.has_permission(auth.uid(), 'drivers.manage')
-      or public.has_permission(auth.uid(), 'messaging.manage'))
-    and clinic_id = public.my_clinic_id()
-  );
+  for insert with check (public.can_write_clinic_config(auth.uid()) and clinic_id = public.my_clinic_id());
 drop policy if exists "clinic_config_update_admin" on public.clinic_config;
 create policy "clinic_config_update_admin" on public.clinic_config
-  for update using (
-    (public.has_permission(auth.uid(), 'settings.clinic') or public.has_permission(auth.uid(), 'drivers.manage')
-      or public.has_permission(auth.uid(), 'messaging.manage'))
-    and clinic_id = public.my_clinic_id()
-  );
+  for update using (public.can_write_clinic_config(auth.uid()) and clinic_id = public.my_clinic_id());
 
 create or replace function public.guard_clinic_config_change()
 returns trigger
@@ -3243,6 +3224,10 @@ security definer
 set search_path = public
 as $$
 declare
+  branding_cols text[] := array['clinic_name', 'clinic_short_name', 'clinic_address', 'clinic_phone', 'clinic_email',
+    'clinic_logo_url'];
+  telegram_cols text[] := array['telegram_group_chat_id'];
+  money_cols text[] := array['deduct_costs_from_commission', 'card_surcharge_rate'];
   driver_cols text[] := array['default_airport_company_id', 'default_airport_driver_id', 'default_local_company_id',
     'default_local_driver_id'];
   message_cols text[] := array['driver_messages_mode', 'whatsapp_phone_number_id', 'whatsapp_business_account_id',
@@ -3253,6 +3238,15 @@ begin
   if auth.uid() is null or public.has_permission(auth.uid(), 'settings.clinic') then
     return new;
   end if;
+  if public.has_permission(auth.uid(), 'settings.branding') then
+    allowed := allowed || branding_cols;
+  end if;
+  if public.has_permission(auth.uid(), 'settings.telegram') then
+    allowed := allowed || telegram_cols;
+  end if;
+  if public.has_permission(auth.uid(), 'settings.money') then
+    allowed := allowed || money_cols;
+  end if;
   if public.has_permission(auth.uid(), 'drivers.manage') then
     allowed := allowed || driver_cols;
   end if;
@@ -3261,7 +3255,7 @@ begin
   end if;
   -- (a clinic's row exists from its first settings save; a first insert isn't checked)
   if tg_op = 'UPDATE' and (to_jsonb(new) - allowed) is distinct from (to_jsonb(old) - allowed) then
-    raise exception 'Only an admin can change the clinic''s settings';
+    raise exception 'You don''t have permission to change that setting';
   end if;
   return new;
 end;
@@ -3506,7 +3500,7 @@ alter table public.patient_files enable row level security;
 
 drop policy if exists "patient_files_select" on public.patient_files;
 create policy "patient_files_select" on public.patient_files
-  for select using (public.has_permission(auth.uid(), 'patients.view') and clinic_id = public.my_clinic_id());
+  for select using (public.has_permission(auth.uid(), 'files.view') and clinic_id = public.my_clinic_id());
 
 drop policy if exists "patient_files_insert" on public.patient_files;
 create policy "patient_files_insert" on public.patient_files
@@ -3514,20 +3508,25 @@ create policy "patient_files_insert" on public.patient_files
     public.has_permission(auth.uid(), 'files.manage') and clinic_id = public.my_clinic_id() and uploaded_by = auth.uid()
   );
 
--- rename / delete: whoever uploaded it, or an admin (patients.delete)
+-- rename / delete: whoever uploaded it (files.manage), or anyone's with files.delete (step G)
 drop policy if exists "patient_files_update" on public.patient_files;
 create policy "patient_files_update" on public.patient_files
   for update using (
-    public.has_permission(auth.uid(), 'files.manage') and clinic_id = public.my_clinic_id()
-    and (uploaded_by = auth.uid() or public.has_permission(auth.uid(), 'patients.delete'))
+    clinic_id = public.my_clinic_id()
+    and ((public.has_permission(auth.uid(), 'files.manage') and uploaded_by = auth.uid())
+         or public.has_permission(auth.uid(), 'files.delete'))
   )
-  with check (public.has_permission(auth.uid(), 'files.manage') and clinic_id = public.my_clinic_id());
+  with check (
+    clinic_id = public.my_clinic_id()
+    and (public.has_permission(auth.uid(), 'files.manage') or public.has_permission(auth.uid(), 'files.delete'))
+  );
 
 drop policy if exists "patient_files_delete" on public.patient_files;
 create policy "patient_files_delete" on public.patient_files
   for delete using (
-    public.has_permission(auth.uid(), 'files.manage') and clinic_id = public.my_clinic_id()
-    and (uploaded_by = auth.uid() or public.has_permission(auth.uid(), 'patients.delete'))
+    clinic_id = public.my_clinic_id()
+    and ((public.has_permission(auth.uid(), 'files.manage') and uploaded_by = auth.uid())
+         or public.has_permission(auth.uid(), 'files.delete'))
   );
 
 drop policy if exists "patient_files_support_readonly_insert" on public.patient_files;
@@ -3547,7 +3546,7 @@ create policy "patient_files_objects_select" on storage.objects
   for select to authenticated using (
     bucket_id = 'patient-files'
     and (storage.foldername(name))[1] = public.my_clinic_id()::text
-    and public.has_permission(auth.uid(), 'patients.view')
+    and public.has_permission(auth.uid(), 'files.view')
   );
 drop policy if exists "patient_files_objects_insert" on storage.objects;
 create policy "patient_files_objects_insert" on storage.objects
@@ -3562,7 +3561,7 @@ create policy "patient_files_objects_delete" on storage.objects
   for delete to authenticated using (
     bucket_id = 'patient-files'
     and (storage.foldername(name))[1] = public.my_clinic_id()::text
-    and public.has_permission(auth.uid(), 'files.manage')
+    and (public.has_permission(auth.uid(), 'files.manage') or public.has_permission(auth.uid(), 'files.delete'))
     and (not public.is_superadmin(auth.uid()) or public.support_can_write())
   );
 
@@ -3573,6 +3572,372 @@ alter table public.support_access_log add constraint support_access_log_event_ch
   'editing_unlocked', 'editing_locked', 'view_as_changed',
   'page_viewed', 'record_history_viewed', 'record_file_opened', 'change_made'
 ));
+
+-- =====================================================================
+-- ROLES PAGE (roadmap step G). Idempotent/safe to re-run.
+-- =====================================================================
+-- Finer permissions (view / edit / delete where they mean something), and roles a clinic can
+-- shape itself:
+--   * role_permissions      — the platform's default templates for the built-in roles
+--                             (Sales, Coordinator, Accountant); a superadmin edits them in /platform.
+--   * clinic_roles          — a clinic's own custom roles, plus a row for each built-in role the
+--                             clinic has customised (is_builtin). No row = the default template.
+--   * clinic_role_permissions — what those roles may do.
+-- Admin always has every permission and can't be edited. A permission new to the catalog gets
+-- its defaults — in the templates and in clinics' customised built-in roles; custom roles
+-- never gain anything by themselves.
+
+alter table public.permissions add column if not exists legacy boolean not null default false;
+
+create table if not exists public.clinic_roles (
+  clinic_id uuid not null references public.clinics(id) on delete cascade,
+  key text not null,
+  name text,
+  is_builtin boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (clinic_id, key),
+  check (key ~ '^[a-z][a-z0-9_]{1,40}$'),
+  check ((is_builtin and key in ('sales', 'coordinator', 'accountant') and name is null)
+         or (not is_builtin and key like 'custom\_%' and length(trim(name)) between 1 and 40))
+);
+
+create table if not exists public.clinic_role_permissions (
+  clinic_id uuid not null,
+  role text not null,
+  permission text not null references public.permissions(key) on delete cascade,
+  primary key (clinic_id, role, permission),
+  foreign key (clinic_id, role) references public.clinic_roles(clinic_id, key) on delete cascade
+);
+
+alter table public.clinic_roles enable row level security;
+alter table public.clinic_role_permissions enable row level security;
+-- Everyone in the clinic can read them (role names on the Team card, "what can I do"). They
+-- are written only through the functions below, which check roles.edit / roles.delete.
+drop policy if exists "clinic_roles_select_clinic" on public.clinic_roles;
+create policy "clinic_roles_select_clinic" on public.clinic_roles
+  for select using (clinic_id = public.my_clinic_id());
+drop policy if exists "clinic_role_permissions_select_clinic" on public.clinic_role_permissions;
+create policy "clinic_role_permissions_select_clinic" on public.clinic_role_permissions
+  for select using (clinic_id = public.my_clinic_id());
+
+-- ---------- the catalog ----------
+drop table if exists pg_temp.perm_catalog;
+create temp table perm_catalog (key text primary key, module text, description text, legacy boolean);
+insert into perm_catalog (key, module, description, legacy) values
+  ('patients.view',     null,         'See patients, visits and the calendar', false),
+  ('patients.edit',     null,         'Add and edit patients, visits and travel', false),
+  ('patients.delete',   null,         'Delete any patient (a seller can always delete their own)', false),
+  ('patients.export',   null,         'Export patients to a CSV file', false),
+  ('sellers.assign',    null,         'Record a patient for any seller, type a new seller, reassign any patient', false),
+  ('sellers.manage',    null,         'Manage the seller list and sellers'' commission rates', false),
+  ('money.edit',        null,         'Change prices, extras and discounts', false),
+  ('payments.record',   null,         'Record new payments', false),
+  ('payments.edit',     null,         'Edit and delete payments', false),
+  ('files.view',        null,         'See and open patient files', false),
+  ('files.manage',      null,         'Upload patient files; rename and delete your own', false),
+  ('files.delete',      null,         'Rename and delete anyone''s patient files', false),
+  ('transfers.manage',  'operations', 'Transfers page; book transfers and hotels; add and edit drivers', false),
+  ('drivers.manage',    'operations', 'Delete drivers and companies; default drivers for new transfers', false),
+  ('messaging.manage',  'operations', 'Driver messages: WhatsApp app / Business API / off, API details and templates', false),
+  ('quotes.use',        'sales',      'Make and send quotes', false),
+  ('earnings.own',      'sales',      'See your own commission', false),
+  ('earnings.all',      'sales',      'See every seller''s earnings (Team page)', false),
+  ('accounting.view',   'accounting', 'Accounting page', false),
+  ('tasks.use',         null,         'Tasks', false),
+  ('team.view',         null,         'See the team list in Settings, with emails', false),
+  ('team.manage',       null,         'Add team members, change their roles, deactivate, reset passwords', false),
+  ('team.delete',       null,         'Delete team members'' accounts', false),
+  ('roles.view',        null,         'See what every role can do', false),
+  ('roles.edit',        null,         'Create roles and change what roles can do', false),
+  ('roles.delete',      null,         'Delete custom roles', false),
+  ('activity.view',     null,         'Activity log', false),
+  ('settings.branding', null,         'Clinic branding on confirmation letters and quotes', false),
+  ('settings.telegram', null,         'Team Telegram group', false),
+  ('settings.money',    null,         'Money rules: costs before commission, card surcharge', false),
+  ('settings.clinic',   null,         'All clinic settings (before step G; Admin only)', true);
+
+-- The built-in roles' defaults. Admin is everything (it isn't listed: role_has_permission()
+-- answers yes for it).
+drop table if exists pg_temp.perm_defaults;
+create temp table perm_defaults (role text, permission text, primary key (role, permission));
+insert into perm_defaults (role, permission)
+select 'sales', unnest(array['patients.view', 'patients.edit', 'patients.export', 'money.edit', 'payments.record',
+                             'payments.edit', 'files.view', 'files.manage', 'transfers.manage', 'quotes.use',
+                             'earnings.own', 'accounting.view', 'tasks.use'])
+union all
+select 'coordinator', unnest(array['patients.view', 'patients.edit', 'patients.export', 'sellers.assign', 'money.edit',
+                                   'payments.record', 'payments.edit', 'files.view', 'files.manage', 'transfers.manage',
+                                   'drivers.manage', 'accounting.view', 'tasks.use'])
+union all
+select 'accountant', unnest(array['patients.view', 'patients.export', 'payments.record', 'payments.edit', 'files.view',
+                                  'earnings.all', 'accounting.view', 'tasks.use'])
+union all
+select 'admin', key from perm_catalog;
+
+update public.permissions p
+set module = c.module, description = c.description, legacy = c.legacy
+from perm_catalog c
+where p.key = c.key and (p.module, p.description, p.legacy) is distinct from (c.module, c.description, c.legacy);
+
+-- Only permissions new to the catalog get their defaults — a re-run never undoes a
+-- superadmin's template edits or a clinic's own choices.
+with new_perms as (
+  insert into public.permissions (key, module, description, legacy)
+  select key, module, description, legacy from perm_catalog
+  on conflict (key) do nothing
+  returning key
+),
+templates as (
+  insert into public.role_permissions (role, permission)
+  select d.role, d.permission from perm_defaults d join new_perms n on n.key = d.permission
+  on conflict do nothing
+  returning 1
+)
+insert into public.clinic_role_permissions (clinic_id, role, permission)
+select cr.clinic_id, cr.key, d.permission
+from public.clinic_roles cr
+join perm_defaults d on d.role = cr.key
+join new_perms n on n.key = d.permission
+where cr.is_builtin
+on conflict do nothing;
+
+drop table pg_temp.perm_defaults;
+drop table pg_temp.perm_catalog;
+
+-- ---------- who has what ----------
+-- The clinic whose roles count for `uid` — for a superadmin in support mode, the supported one.
+create or replace function public.member_clinic_id(uid uuid)
+returns uuid
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select case
+    when uid = auth.uid() and public.is_superadmin(uid) then public.support_clinic_id()
+    else (select p.clinic_id from public.profiles p where p.id = uid)
+  end;
+$$;
+
+-- Whether role `r` of clinic `cid` has `perm`: Admin always; a custom or customised role from
+-- the clinic's own list; otherwise the platform's default template.
+create or replace function public.role_has_permission(cid uuid, r text, perm text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select case
+    when r = 'admin' then true
+    when exists (select 1 from public.clinic_roles cr where cr.clinic_id = cid and cr.key = r) then
+      exists (select 1 from public.clinic_role_permissions crp
+              where crp.clinic_id = cid and crp.role = r and crp.permission = perm)
+    else exists (select 1 from public.role_permissions rp where rp.role = r and rp.permission = perm)
+  end;
+$$;
+
+create or replace function public.has_permission(uid uuid, perm text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select uid is not null
+    and public.is_active_profile(uid)
+    and exists (
+      select 1 from public.permissions p
+      where p.key = perm
+        and (p.module is null or p.module = any(public.member_modules(uid)))
+        and exists (
+          select 1 from unnest(public.member_roles(uid)) r
+          where public.role_has_permission(public.member_clinic_id(uid), r, perm)
+        )
+    );
+$$;
+
+create or replace function public.my_permissions()
+returns text[]
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(array_agg(p.key order by p.key), array[]::text[])
+  from public.permissions p
+  where public.is_active_profile(auth.uid())
+    and (p.module is null or p.module = any(public.member_modules(auth.uid())))
+    and exists (
+      select 1 from unnest(public.member_roles(auth.uid())) r
+      where public.role_has_permission(public.member_clinic_id(auth.uid()), r, p.key)
+    );
+$$;
+
+revoke execute on function public.member_clinic_id(uuid) from public, anon;
+revoke execute on function public.role_has_permission(uuid, text, text) from public, anon;
+grant execute on function public.member_clinic_id(uuid) to authenticated, service_role;
+grant execute on function public.role_has_permission(uuid, text, text) to authenticated, service_role;
+revoke execute on function public.has_permission(uuid, text) from public, anon;
+revoke execute on function public.my_permissions() from public, anon;
+grant execute on function public.has_permission(uuid, text) to authenticated, service_role;
+grant execute on function public.my_permissions() to authenticated;
+
+-- ---------- a member's roles must exist ----------
+-- The built-ins, or one of the clinic's own custom roles. Named to run after
+-- profiles_sync_roles, so it checks the final list.
+create or replace function public.validate_profile_roles()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.role = 'superadmin' then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and new.roles is not distinct from old.roles and new.clinic_id is not distinct from old.clinic_id then
+    return new;
+  end if;
+  if exists (
+    select 1 from unnest(new.roles) r
+    where r not in ('admin', 'sales', 'coordinator', 'accountant')
+      and not exists (select 1 from public.clinic_roles cr where cr.clinic_id = new.clinic_id and cr.key = r and not cr.is_builtin)
+  ) then
+    raise exception 'Unknown role';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_validate_roles on public.profiles;
+create trigger profiles_validate_roles
+  before insert or update on public.profiles
+  for each row execute function public.validate_profile_roles();
+
+-- ---------- changing roles ----------
+-- Only through these. roles.edit may change any role but Admin (including roles they hold
+-- themselves — the clinic's admin decides who gets roles.edit); roles.delete removes custom
+-- roles nobody holds. Support is read-only until editing is unlocked (security definer skips
+-- the RLS rule that normally enforces that).
+create or replace function public.assert_can_change_roles(perm text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  cid uuid := public.member_clinic_id(auth.uid());
+begin
+  if cid is null or not public.has_permission(auth.uid(), perm) then
+    raise exception 'You don''t have permission to change roles';
+  end if;
+  if public.is_superadmin(auth.uid()) and not public.support_can_write() then
+    raise exception 'Support is read-only until editing is unlocked';
+  end if;
+  return cid;
+end;
+$$;
+
+-- Create (p_key null) or change a role; returns its key. Built-in roles keep their names.
+create or replace function public.save_clinic_role(p_key text, p_name text, p_permissions text[])
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cid uuid := public.assert_can_change_roles('roles.edit');
+  k text := nullif(trim(coalesce(p_key, '')), '');
+  n text := nullif(trim(coalesce(p_name, '')), '');
+  builtin boolean;
+begin
+  if k = 'admin' then
+    raise exception 'The Admin role always has every permission';
+  end if;
+  builtin := coalesce(k in ('sales', 'coordinator', 'accountant'), false);
+  if k is null then
+    k := 'custom_' || substr(md5(gen_random_uuid()::text), 1, 10);
+  elsif not builtin and not exists (select 1 from public.clinic_roles where clinic_id = cid and key = k and not is_builtin) then
+    raise exception 'Role not found';
+  end if;
+  if not builtin then
+    if n is null then
+      raise exception 'Give the role a name';
+    end if;
+    if length(n) > 40 then
+      raise exception 'Keep the role name under 40 characters';
+    end if;
+    if lower(n) in ('admin', 'sales', 'coordinator', 'accountant')
+       or exists (select 1 from public.clinic_roles where clinic_id = cid and key <> k and not is_builtin and lower(name) = lower(n)) then
+      raise exception 'There''s already a role called %', n;
+    end if;
+  end if;
+  if exists (
+    select 1 from unnest(coalesce(p_permissions, array[]::text[])) x
+    where not exists (select 1 from public.permissions p where p.key = x and not p.legacy)
+  ) then
+    raise exception 'Unknown permission';
+  end if;
+
+  insert into public.clinic_roles (clinic_id, key, name, is_builtin)
+  values (cid, k, case when builtin then null else n end, builtin)
+  on conflict (clinic_id, key) do update set name = excluded.name, updated_at = now();
+
+  delete from public.clinic_role_permissions where clinic_id = cid and role = k;
+  insert into public.clinic_role_permissions (clinic_id, role, permission)
+  select distinct cid, k, x from unnest(coalesce(p_permissions, array[]::text[])) x;
+  return k;
+end;
+$$;
+
+-- A built-in role back to the platform's default template.
+create or replace function public.reset_clinic_role(p_key text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cid uuid := public.assert_can_change_roles('roles.edit');
+begin
+  if p_key not in ('sales', 'coordinator', 'accountant') then
+    raise exception 'Only a built-in role can be reset';
+  end if;
+  delete from public.clinic_roles where clinic_id = cid and key = p_key and is_builtin;
+end;
+$$;
+
+create or replace function public.delete_clinic_role(p_key text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cid uuid := public.assert_can_change_roles('roles.delete');
+  holders int;
+begin
+  if not exists (select 1 from public.clinic_roles where clinic_id = cid and key = p_key and not is_builtin) then
+    raise exception 'Only a custom role can be deleted';
+  end if;
+  select count(*) into holders from public.profiles where clinic_id = cid and p_key = any(roles);
+  if holders > 0 then
+    raise exception 'Take this role off its % member(s) first', holders;
+  end if;
+  delete from public.clinic_roles where clinic_id = cid and key = p_key;
+end;
+$$;
+
+revoke execute on function public.assert_can_change_roles(text) from public, anon, authenticated;
+revoke execute on function public.save_clinic_role(text, text, text[]) from public, anon;
+revoke execute on function public.reset_clinic_role(text) from public, anon;
+revoke execute on function public.delete_clinic_role(text) from public, anon;
+grant execute on function public.save_clinic_role(text, text, text[]) to authenticated;
+grant execute on function public.reset_clinic_role(text) to authenticated;
+grant execute on function public.delete_clinic_role(text) to authenticated;
 
 -- =====================================================================
 -- ONE-TIME MANUAL STEP — not part of the idempotent migration above.

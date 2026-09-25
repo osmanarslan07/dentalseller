@@ -1,7 +1,9 @@
 "use client";
 
 import { ChangeEvent, useState, useTransition } from "react";
-import { ClinicConfig, CommissionSettings, Patient, Permission, Seller, TransferCompany } from "@/types";
+import { ClinicConfig, ClinicModule, CommissionSettings, Patient, Permission, Seller, TransferCompany } from "@/types";
+import type { ClinicRole } from "@/lib/roles";
+import { PermissionSummary } from "@/components/PermissionSummary";
 import { usePermissions } from "@/components/permissions";
 import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { downloadCsv, patientsToCsv } from "@/lib/csv";
@@ -13,6 +15,7 @@ import { ExchangeRatePoint, TeamMember } from "@/lib/data";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
 import { AccountCard } from "./AccountCard";
 import { TeamCard } from "./TeamCard";
+import { RolesCard } from "./RolesCard";
 import { SellerRecordRow, SellersCard } from "./SellersCard";
 import { TelegramCard } from "./TelegramCard";
 import { TelegramGroupCard } from "./TelegramGroupCard";
@@ -23,7 +26,7 @@ import { saveClinicBranding, saveDashboardCards, saveSettings } from "./actions"
 
 const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
 
-type TabId = "account" | "commission" | "cards" | "transfers" | "clinic" | "system" | "data";
+type TabId = "account" | "commission" | "cards" | "transfers" | "clinic" | "roles" | "system" | "data";
 
 /** Each tab with what it takes to see it (null: everyone). */
 const TABS: { id: TabId; label: string; needs: Permission[] | null }[] = [
@@ -31,9 +34,10 @@ const TABS: { id: TabId; label: string; needs: Permission[] | null }[] = [
   { id: "commission", label: "Commission", needs: ["earnings.own"] },
   { id: "cards", label: "Cards", needs: ["earnings.own"] },
   { id: "transfers", label: "Transfers", needs: ["transfers.manage", "drivers.manage"] },
-  { id: "clinic", label: "Team & clinic", needs: ["team.manage", "sellers.manage", "settings.clinic"] },
-  { id: "system", label: "System", needs: ["settings.clinic"] },
-  { id: "data", label: "Data", needs: ["patients.view"] },
+  { id: "clinic", label: "Team & clinic", needs: ["team.view", "team.manage", "sellers.manage", "settings.branding", "settings.telegram"] },
+  { id: "roles", label: "Roles", needs: ["roles.view", "roles.edit", "roles.delete"] },
+  { id: "system", label: "System", needs: ["settings.money"] },
+  { id: "data", label: "Data", needs: ["patients.export"] },
 ];
 
 export function SettingsClient({
@@ -52,6 +56,10 @@ export function SettingsClient({
   initialTab,
   whatsappSecrets,
   webhookUrl,
+  roles,
+  memberCounts,
+  myRoles,
+  modules,
 }: {
   settings: CommissionSettings;
   patients: Patient[];
@@ -71,6 +79,13 @@ export function SettingsClient({
   /** Admins only: which WhatsApp secrets are saved (never the secrets). */
   whatsappSecrets: WhatsAppSecretsStatus | null;
   webhookUrl: string;
+  /** The clinic's roles with what each can do (Roles tab, Team card, "What I can do"). */
+  roles: ClinicRole[];
+  /** Members per role key, for the Roles tab. */
+  memberCounts: Record<string, number>;
+  /** The viewer's own roles. */
+  myRoles: string[];
+  modules: ClinicModule[];
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -199,6 +214,17 @@ export function SettingsClient({
       {activeTab === "account" && (
         <div className="space-y-6">
           <AccountCard email={currentUserEmail} displayName={currentDisplayName} />
+
+          <Card className="p-6">
+            <h2 className="mb-1 text-base font-semibold text-slate-900">What I can do</h2>
+            <p className="mb-4 text-sm text-slate-500">
+              {myRoles.length > 0
+                ? `Your roles: ${myRoles.map((key) => roles.find((r) => r.key === key)?.name ?? "Custom role").join(", ")}.`
+                : "You have no roles in this clinic."}{" "}
+              Ask an admin if you need something that isn&apos;t here.
+            </p>
+            <PermissionSummary permissions={permissions} modules={modules} />
+          </Card>
 
           <TelegramCard connected={telegramConnected} />
 
@@ -416,13 +442,22 @@ export function SettingsClient({
 
       {activeTab === "clinic" && tabs.some((t) => t.id === "clinic") && (
         <div className="space-y-6">
-          {has("team.manage") && <TeamCard members={teamMembers} currentUserId={currentUserId} canManage />}
+          {(has("team.view") || has("team.manage")) && (
+            <TeamCard
+              members={teamMembers}
+              currentUserId={currentUserId}
+              canManage={has("team.manage")}
+              canDelete={has("team.delete")}
+              roles={roles}
+              modules={modules}
+            />
+          )}
 
           {has("sellers.manage") && <SellersCard rows={sellerRecords} allSellers={allSellers} currentUserId={currentUserId} />}
 
-          {has("settings.clinic") && <TelegramGroupCard groupChatId={clinicConfig.telegramGroupChatId} />}
+          {has("settings.telegram") && <TelegramGroupCard groupChatId={clinicConfig.telegramGroupChatId} />}
 
-          {has("settings.clinic") && (
+          {has("settings.branding") && (
           <Card className="p-6">
             <h2 className="mb-1 text-base font-semibold text-slate-900">Confirmation letter branding</h2>
             <p className="mb-5 text-sm text-slate-500">
@@ -503,13 +538,23 @@ export function SettingsClient({
         </div>
       )}
 
-      {activeTab === "system" && has("settings.clinic") && (
+      {activeTab === "roles" && tabs.some((t) => t.id === "roles") && (
+        <RolesCard
+          roles={roles}
+          memberCounts={memberCounts}
+          modules={modules}
+          canEdit={has("roles.edit")}
+          canDelete={has("roles.delete")}
+        />
+      )}
+
+      {activeTab === "system" && has("settings.money") && (
         <div className="space-y-6">
           <SystemSettingsCard clinicConfig={clinicConfig} />
         </div>
       )}
 
-      {activeTab === "data" && (
+      {activeTab === "data" && has("patients.export") && (
         <div className="space-y-6">
           <Card className="p-6">
             <h2 className="mb-1 text-base font-semibold text-slate-900">Data export</h2>

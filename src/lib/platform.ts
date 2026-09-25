@@ -501,6 +501,7 @@ export const PLATFORM_ACTION_LABELS: Record<string, string> = {
   announcement_created: "Posted announcement",
   announcement_ended: "Ended announcement",
   announcement_deleted: "Deleted announcement",
+  role_template_updated: "Changed role template",
 };
 
 export const AUDIT_LOG_LIMIT = 200;
@@ -572,6 +573,8 @@ export async function getPlatformAuditLog(): Promise<{
       targetLabel = email ?? nameOf(r.target_id);
     } else if (r.target_type === "announcement") {
       targetLabel = "Announcement";
+    } else if (r.target_type === "platform") {
+      targetLabel = "Every clinic";
     }
     return {
       id: r.id,

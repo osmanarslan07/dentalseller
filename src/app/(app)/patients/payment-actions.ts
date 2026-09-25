@@ -102,7 +102,7 @@ export async function addPayment(
 
 export async function updatePayment(id: string, formData: FormData) {
   const supabase = await createClient();
-  const user = await requirePermission("payments.record");
+  const user = await requirePermission("payments.edit");
 
   const input = await parsePayment(formData);
   const { data: existing } = await supabase.from("patient_payments").select("method, surcharge_rate").eq("id", id).maybeSingle();
@@ -121,7 +121,7 @@ export async function updatePayment(id: string, formData: FormData) {
 
 export async function deletePayment(id: string) {
   const supabase = await createClient();
-  const user = await requirePermission("payments.record");
+  const user = await requirePermission("payments.edit");
 
   const { data, error } = await supabase
     .from("patient_payments")

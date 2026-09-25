@@ -70,6 +70,7 @@ export function PatientDetail({
   const router = useRouter();
   const canEdit = useCan("patients.edit");
   const canDelete = useCan("patients.delete");
+  const canExport = useCan("patients.export");
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [addingExtra, setAddingExtra] = useState(false);
@@ -282,10 +283,10 @@ export function PatientDetail({
                     setTimeout(() => document.getElementById("reassign")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
                   },
                 }] : []),
-                {
+                ...(canExport ? [{
                   label: "Export to CSV",
                   onSelect: () => downloadCsv(`${patient.name.replace(/[^\w\- ]+/g, "").trim() || "patient"}.csv`, patientsToCsv([patient])),
-                },
+                }] : []),
                 ...(canDelete || (canEdit && patient.responsible_seller_id === currentUserId)
                   ? [{ label: "Delete patient…", hint: "asks to confirm", danger: true, divider: true, disabled: pending, onSelect: handleDelete }]
                   : []),

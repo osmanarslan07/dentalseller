@@ -10,18 +10,31 @@ export type SellerRole = "seller" | "admin";
  * a clinic's own team — only in the /platform area. */
 export type ProfileRole = SellerRole | "superadmin";
 
-/** A clinic member can hold several. What each may do lives in the database
- * (role_permissions); see src/lib/permissions.ts. */
-export type MemberRole = "admin" | "sales" | "coordinator" | "accountant";
+/** The four roles every clinic has. What each may do lives in the database (role_permissions,
+ * or the clinic's own changes in clinic_role_permissions); see src/lib/roles.ts. */
+export type BuiltinRole = "admin" | "sales" | "coordinator" | "accountant";
 
-export const MEMBER_ROLES: MemberRole[] = ["admin", "sales", "coordinator", "accountant"];
+/** A clinic member can hold several: built-in roles, or the clinic's own custom roles
+ * ("custom_…" keys, named in clinic_roles). */
+export type MemberRole = BuiltinRole | `custom_${string}`;
 
-export const ROLE_LABELS: Record<MemberRole, string> = {
+export const MEMBER_ROLES: BuiltinRole[] = ["admin", "sales", "coordinator", "accountant"];
+
+export const ROLE_LABELS: Record<BuiltinRole, string> = {
   admin: "Admin",
   sales: "Sales",
   coordinator: "Coordinator",
   accountant: "Accountant",
 };
+
+export function isBuiltinRole(role: string): role is BuiltinRole {
+  return (MEMBER_ROLES as string[]).includes(role);
+}
+
+/** A role's display name: the built-in label, or the custom role's name from `customNames`. */
+export function roleLabel(role: string, customNames?: Record<string, string>): string {
+  return isBuiltinRole(role) ? ROLE_LABELS[role] : customNames?.[role] ?? "Custom role";
+}
 
 /** Parts of the product a clinic can have switched on (clinics.modules). Core — patients,
  * payments, tasks, files, team, settings — is always on. "inbox" is reserved. */
@@ -35,14 +48,21 @@ export const MODULE_LABELS: Record<ClinicModule, string> = {
   accounting: "Accounting",
 };
 
+/** Mirrors the catalog in supabase/schema.sql (permissions). Labels and grouping for the
+ * Roles page are in src/lib/permission-catalog.ts. */
 export type Permission =
   | "patients.view"
   | "patients.edit"
   | "patients.delete"
+  | "patients.export"
   | "sellers.assign"
   | "sellers.manage"
-  | "payments.record"
   | "money.edit"
+  | "payments.record"
+  | "payments.edit"
+  | "files.view"
+  | "files.manage"
+  | "files.delete"
   | "transfers.manage"
   | "drivers.manage"
   | "messaging.manage"
@@ -50,11 +70,19 @@ export type Permission =
   | "earnings.own"
   | "earnings.all"
   | "accounting.view"
-  | "files.manage"
   | "tasks.use"
+  | "team.view"
   | "team.manage"
-  | "settings.clinic"
-  | "activity.view";
+  | "team.delete"
+  | "roles.view"
+  | "roles.edit"
+  | "roles.delete"
+  | "activity.view"
+  | "settings.branding"
+  | "settings.telegram"
+  | "settings.money"
+  /** Before step G: every clinic setting. Admin only; nothing new checks it. */
+  | "settings.clinic";
 
 /** Returned by a handful of server actions alongside their normal result, so the client can
  * react to a genuinely good moment (a sale, a payment, a tier jump) with confetti/a toast

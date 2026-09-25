@@ -245,88 +245,112 @@ Patient files (F)
 
 ## NEXT (after A–F are tested and merged)
 
-### Step G — Roles page: see, then customise, what each role can do ☐ (agreed 2026-09-25)
+### Step G — Roles page: see, then customise, what each role can do ◐ (built 2026-09-25 on branch `feature/roles-page`, SQL applied — waiting for your test)
 
-Today the four roles (Admin, Sales, Coordinator, Accountant) and their permissions are the
-same for every clinic, and no screen shows which role can do what. The groundwork is there:
-permissions are data (`role_permissions`) and the app checks permissions, never role names.
+Built on its own branch, stacked on `feature/roles-modules`: merge A–F first, then this.
 
-**G0 — Finer permissions and perfect default roles (do first: G1/G2 build on it)**
-- Every area gets the **levels that mean something there** — view / edit / delete (or record,
-  upload, …) — not all three by default. Sketch, to finalise when building:
+**Decisions (2026-09-25, from the user's answers)**
+- Branch `feature/roles-page`; SQL applied to production as it was built (old keys stay valid,
+  so master and the A–F preview keep working).
+- **No money-view level**: whoever sees a patient sees their amounts.
+- **Roles only** — no per-person extra or removed permissions.
+- The Roles page has its own levels **`roles.view` / `roles.edit` / `roles.delete`**. Whoever the
+  admin gives `roles.edit` may change roles **however they want** (including roles they hold) —
+  no "only grant what you hold" rule. Kept only the lock-out guards: **Admin always has
+  everything and can't be edited**; a clinic can't lose its last admin; a role in use can't be
+  deleted.
+- Being a seller (seller picker, commission) stays tied to the **Sales** role.
+- Everyone sees **"What I can do"** (Settings → Account); the full grid needs a `roles.*` permission.
+- **Superadmin can do everything**: edits the default templates in **/platform → Roles**; in
+  support mode acts as the clinic's admin (view as nobody) — MFA, "Unlock editing" and the
+  support log stay.
+- A permission added to the catalog later reaches clinics' **customised built-in roles** with
+  its default; custom roles never gain anything by themselves.
 
-  | Area | Levels |
-  |---|---|
-  | Patients | view · edit · delete |
-  | Visits & travel | view · edit |
-  | Money (prices, extras, discounts) | view · edit |
-  | Payments | view · record · edit/delete |
-  | Transfers & hotels | view · book/edit |
-  | Drivers & companies | edit · delete |
-  | Files | view · upload · delete |
-  | Quotes | view · make/send |
-  | Earnings | own · everyone's |
-  | Accounting | view |
-  | Tasks | use |
-  | Team | view · manage members · manage roles |
-  | Activity log | view |
-  | Clinic settings — one per section | branding · Telegram group · commission rules · money rules · transfer defaults · **driver messages / WhatsApp** · modules-facing settings |
+**G0 — finer permissions (31 keys; access unchanged on migration day)**
 
-- **Audit every screen and setting against the four roles** (like the two found on
-  2026-09-25: coordinators could change WhatsApp settings; everyone saw the "hide
-  commissions" Privacy card). Rule: if a role can't use a feature, it doesn't see its
-  settings either.
-- Existing keys map onto the new ones (e.g. `patients.edit` → `patients.edit` +
-  `visits.edit`) so nobody's access changes on migration day — snapshot `my_permissions()`
-  per member before/after.
+| Area | Permissions |
+|---|---|
+| Patients | `patients.view` · `patients.edit` · `patients.delete` · **`patients.export`** (CSV: Data tab + single patient) |
+| Sellers | `sellers.assign` · `sellers.manage` |
+| Money | `money.edit` (prices, extras, discounts) · `payments.record` (add) · **`payments.edit`** (edit/delete) |
+| Files | **`files.view`** · `files.manage` (upload; rename/delete own) · **`files.delete`** (anyone's — was tied to `patients.delete`) |
+| Transfers | `transfers.manage` · `drivers.manage` · `messaging.manage` |
+| Sales | `quotes.use` · `earnings.own` · `earnings.all` |
+| Accounting / Tasks | `accounting.view` · `tasks.use` |
+| Team | **`team.view`** (list + emails, read-only) · `team.manage` · **`team.delete`** · `activity.view` |
+| Roles | **`roles.view`** · **`roles.edit`** · **`roles.delete`** |
+| Clinic settings | **`settings.branding`** · **`settings.telegram`** · **`settings.money`** (System tab) |
 
-**G1 — Read-only view (build first; useful even if no clinic ever customises)**
-- Settings → **Roles** tab (admins): a grid with permissions down the side, grouped
-  (Patients, Money, Transfers, Team, …) and one column per role, ticked where the role has it.
-- Plain-English line per permission (e.g. "Money: change prices, extras and discounts"),
-  never raw keys like `money.edit`.
-- Permissions of a module the clinic doesn't have are greyed out with "module off".
-- Team card: "what can they do?" link per member → their combined permissions across roles.
-- Reads from the same data the checks use (`role_permissions`, modules), so it can't drift.
+`settings.clinic` is kept as a hidden **legacy** key (Admin only) until A–F and G are both on
+master; nothing on this branch checks it. Defaults: the three split-off keys (`patients.export`,
+`payments.edit`, `files.view`) went to every role that could already do those things; every
+other new key is Admin only. Verified: every member's `my_permissions()` = before + those.
 
-**G2 — Customise roles**
-- Built-ins stay as templates: a clinic may change Sales / Coordinator / Accountant ticks,
-  with "Reset to default". **Admin is always everything and not editable** (no lock-out).
-- Custom roles per clinic (e.g. "Receptionist"): a name + permission tick-boxes; offered in
-  the Team card's role tick-buttons next to the built-ins.
-- Every change logged in Activity ("changed Coordinator: + payments.record").
-- Kept outside the tick-boxes on purpose:
-  - **Being a seller** (in the seller picker, earns commission) stays tied to the Sales role,
-    so a wrong tick can't start paying someone commission.
-  - Sales' own-patient rules (reassign/delete their own) stay fixed; the full
-    `sellers.assign` / `patients.delete` can still be given to any role.
-- Editing roles is its own permission, **`roles.manage`**, separate from `team.manage`. The
-  admin can give it to any role (even Sales), with these **anti-escalation rules** enforced
-  in the database, not just the UI:
-  - you can only tick permissions **you have yourself** (a seller with `roles.manage` can't
-    give Sales `team.manage` or `settings.*` and so make themselves an admin);
-  - you can't edit a role **you hold**, and can't change your own roles (exists);
-  - nobody but the Admin role touches the Admin role, which is always everything.
-- Guards: last admin can't be removed (exists); a role can't be deleted while members have
-  it.
+**G1 — seeing it**: Settings → **Roles** tab (grid: permissions grouped, one column per role,
+member counts, "module off" greyed); Settings → Account → **What I can do**; Team card →
+**What can they do?** per member (union of their roles).
+
+**G2 — changing it**
+- Tables: `clinic_roles` (custom roles + a row per customised built-in) and
+  `clinic_role_permissions`; `role_permissions` = the platform's default templates.
+  `role_has_permission()` → Admin: all; clinic row: the clinic's list; else: the template.
+  `has_permission()` / `my_permissions()` use it; `member_clinic_id()` handles support mode.
+- Writes only through `save_clinic_role` / `reset_clinic_role` / `delete_clinic_role`
+  (security definer; permission + support read-only checks inside). `profiles.roles` is checked
+  by the `profiles_validate_roles` trigger (built-ins or the clinic's own custom roles).
+- The migration **no longer wipes** `role_permissions`: only keys new to the catalog get
+  their defaults (templates + customised built-ins).
+- UI: + New role, Edit (name for custom roles; ticks with "default" markers on built-ins),
+  Reset (customised built-in), Delete (custom, unused). Team card tick-buttons include custom
+  roles. Activity: "created / changed / reset / deleted the role …" with + / − keys.
+- /platform → **Roles**: edit the Sales / Coordinator / Accountant templates; shows how many
+  clinics customised each; logged in the platform audit log ("Changed role template").
+
+Tested on production in rolled-back transactions: create; duplicate name, Admin role, legacy key
+and unknown member role refused; a held role can't be deleted; customised Coordinator shrinks and
+Reset restores it; a seller without `roles.edit` is refused; a seller with `roles.edit` edits
+Accountant but not Admin; a new catalog key reaches a customised built-in but not a custom role;
+settings sections (coordinator: driver defaults yes, branding and money no). Commission
+attribution identical. UI: created and deleted a "TEST Receptionist" role as admin (the delete
+went through the same database function directly — the browser tool couldn't click through the
+confirm box). The /platform Roles page was type-checked but not opened (needs the superadmin
+login with two-factor).
 
 To do:
-- ☐ G0: finalise the level list; new keys + mapping from old keys (access unchanged);
-      split `settings.clinic` per section; audit every page, card and action per role.
-- ☐ G1: permission labels + groups (shared by grid and member view); Roles tab (read-only);
-      "what can they do?" on the Team card; module-off greying.
-- ☐ G2 SQL: `clinic_roles` (clinic_id, key, name, is_builtin); `role_permissions` gets
-      `clinic_id` (null = default); drop the fixed four-name check on `profiles.roles`
-      (validate against the clinic's roles instead); `has_permission()` / `my_permissions()`
-      read the clinic's version, falling back to defaults.
-- ☐ G2 SQL: **stop the migration wiping `role_permissions`** — today it deletes and
-      re-inserts the catalog on every run; change to insert missing defaults only, so
-      clinic edits survive re-runs.
-- ☐ G2 SQL: `roles.manage` + anti-escalation checks (grant only what you hold, not your own
-      role, Admin role locked) in the database.
-- ☐ G2 UI: edit ticks on built-ins + reset; create/rename/delete custom roles; activity log.
-- ☐ Snapshot `my_permissions()` for every member before/after — must be identical.
-- ☐ Type-check + lint; test checklist for the user.
+- ☑ G0 keys, mapping, settings split, file/payment/export/team checks
+- ☑ G1 Roles tab, What I can do, What can they do?
+- ☑ G2 tables, functions, trigger, no-wipe seeding, UI, activity log, /platform templates
+- ☑ Snapshot `my_permissions()` before/after; type-check + lint (only the two old errors)
+- ☐ Your test — checklist below
+- ☐ Merge after A–F: `feature/roles-page` into master
+- ☐ After both are on master: drop the legacy `settings.clinic` key
+
+#### Test checklist (step G)
+27. Settings → Account → **What I can do** lists your permissions in plain words; as the
+    Coordinator it shows only theirs (no Quotes/Earnings, no settings).
+28. Settings → **Roles**: grid shows Admin / Sales / Coordinator / Accountant with ticks and
+    member counts. On Starter (Operations only) the Sales/Accounting rows are greyed "module off".
+29. **+ New role** "TEST Receptionist": patients view + tasks → appears as a column and as a
+    tick-button on each Team card. Give it to the Coordinator TEST account → their "What can
+    they do?" now includes both roles' permissions.
+30. Try deleting TEST Receptionist while someone has it → refused ("Take this role off …").
+    Untick it on the member, delete → gone. Activity shows created / deleted.
+31. **Edit Coordinator**: untick "Transfers page …" → Save → the column shows "Changed"; as the
+    Coordinator: no Transfers page. **Reset** → back to default, Transfers returns.
+32. Give **Sales** "Create roles and change what roles can do" → a Sales account sees the Roles
+    tab and can edit Accountant, but Admin has no Edit. Take it away again.
+33. Coordinator: Settings → Team & clinic shows no branding / Telegram cards; System tab hidden.
+    Give Coordinator "Team Telegram group" → only that card appears and saving it works. Reset.
+34. Payments: untick "Edit and delete payments" on Accountant → the Accountant can still
+    + Record payment, but the payment row menu is gone. Reset afterwards.
+35. Files: as Sales, a file you (admin) uploaded has no Rename/Delete; give Sales "Rename and
+    delete anyone's files" → it appears. Reset afterwards.
+36. Export: untick "Export patients to a CSV file" on a role → the Data tab and the patient's
+    "Export to CSV" menu item disappear for that role.
+37. /platform → **Roles**: change the Accountant template (e.g. untick Tasks) → a clinic that
+    hasn't customised Accountant follows it at once; the audit log shows "Changed role
+    template". Put it back.
 
 ---
 

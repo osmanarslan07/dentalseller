@@ -107,7 +107,7 @@ export async function recordPatientFiles(
 
 /** A link that opens the file for an hour. */
 export async function getPatientFileLink(fileId: string, download = false): Promise<string> {
-  const { viewer } = await requirePermission("patients.view", { forRead: true });
+  const { viewer } = await requirePermission("files.view", { forRead: true });
   const supabase = await createClient();
   const { data: file } = await supabase.from("patient_files").select("path, name, patient_id").eq("id", fileId).maybeSingle();
   if (!file) throw new Error("File not found");
@@ -131,7 +131,7 @@ export async function getPatientFileLink(fileId: string, download = false): Prom
 }
 
 export async function renamePatientFile(fileId: string, rawName: string): Promise<void> {
-  const user = await requirePermission("files.manage");
+  const user = await requirePermission(["files.manage", "files.delete"]);
   const name = rawName.trim().slice(0, 200);
   if (!name) throw new Error("Give the file a name");
   const supabase = await createClient();
@@ -140,20 +140,20 @@ export async function renamePatientFile(fileId: string, rawName: string): Promis
   if (!before) throw new Error("File not found");
   const { data, error } = await supabase.from("patient_files").update({ name }).eq("id", fileId).select("id");
   if (error) throw new Error(error.message);
-  if (!data?.length) throw new Error("Only whoever uploaded it or an admin can rename this file");
+  if (!data?.length) throw new Error("Only whoever uploaded it, or someone who can delete anyone's files, can rename this file");
 
   await logActivity(supabase, user.actorId, "file_renamed", "patient", before.patient_id, `${before.name} → ${name}`);
   revalidatePath(`/patients/${before.patient_id}`);
 }
 
 export async function deletePatientFile(fileId: string): Promise<void> {
-  const user = await requirePermission("files.manage");
+  const user = await requirePermission(["files.manage", "files.delete"]);
   const supabase = await createClient();
 
   const { data, error } = await supabase.from("patient_files").delete().eq("id", fileId).select("name, path, patient_id");
   if (error) throw new Error(error.message);
   const file = data?.[0];
-  if (!file) throw new Error("Only whoever uploaded it or an admin can delete this file");
+  if (!file) throw new Error("Only whoever uploaded it, or someone who can delete anyone's files, can delete this file");
 
   const { error: removeError } = await createAdminClient().storage.from(PATIENT_FILE_BUCKET).remove([file.path]);
   if (removeError) console.error("Patient file removal failed:", removeError.message);

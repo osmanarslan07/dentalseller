@@ -72,12 +72,12 @@ export async function saveSettings(formData: FormData) {
   revalidatePath("/earnings");
 }
 
-/** settings.clinic — enforced both here and by the clinic_config RLS policy + guard trigger. Clinic-
+/** settings.branding — enforced both here and by the clinic_config RLS policy + guard trigger. Clinic-
  * wide (see saveTelegramGroupChat above): every seller's confirmation letters and quote
  * offers use this one shared identity, not whatever their own `settings` row had. */
 export async function saveClinicBranding(formData: FormData) {
   const supabase = await createClient();
-  const user = await requirePermission("settings.clinic");
+  const user = await requirePermission("settings.branding");
 
   const myProfile = { clinic_id: user.viewer.clinicId };
   // the logo upload below uses the service role, which the DB's read-only rule can't see
@@ -143,12 +143,12 @@ export async function saveClinicBranding(formData: FormData) {
   revalidatePath("/quotes/[id]/offer", "page");
 }
 
-/** settings.clinic — enforced both here and by the clinic_config RLS policy + guard trigger. Clinic-
+/** settings.telegram — enforced both here and by the clinic_config RLS policy + guard trigger. Clinic-
  * wide, unlike the commission/dashboard-cards settings below, so it lives in its own
  * singleton table rather than a per-seller `settings` row. */
 export async function saveTelegramGroupChat(formData: FormData) {
   const supabase = await createClient();
-  const user = await requirePermission("settings.clinic");
+  const user = await requirePermission("settings.telegram");
 
   const myProfile = { clinic_id: user.viewer.clinicId };
 
@@ -176,12 +176,12 @@ export async function saveTelegramGroupChat(formData: FormData) {
   revalidatePath("/settings");
 }
 
-/** settings.clinic — enforced both here and by the clinic_config RLS policy + guard trigger.
+/** settings.money — enforced both here and by the clinic_config RLS policy + guard trigger.
  * Clinic-wide rules for how money is counted: whether hotel/transfer costs come off before
  * commission, and the optional card surcharge rate. */
 export async function saveSystemSettings(formData: FormData) {
   const supabase = await createClient();
-  const user = await requirePermission("settings.clinic");
+  const user = await requirePermission("settings.money");
 
   const myProfile = { clinic_id: user.viewer.clinicId };
 

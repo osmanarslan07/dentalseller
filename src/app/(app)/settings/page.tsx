@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getPatients, getProfiles, getRateHistory, getSellers, getSettings, getTeamMembers, getTransferCompanies } from "@/lib/data";
 import { SettingsClient } from "./SettingsClient";
 import { getViewer } from "@/lib/viewer";
-import { can } from "@/lib/permissions";
+import { can, canAny } from "@/lib/permissions";
+import { getClinicRoles } from "@/lib/roles";
 import { getSecretsStatus } from "@/lib/whatsapp";
 import { headers } from "next/headers";
 
@@ -25,7 +26,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       ? await getRateHistory(supabase, settings.currency)
       : [];
   const myProfile = profiles.find((p) => p.id === user?.id) ?? null;
-  const teamMembers = await getTeamMembers(profiles, can(viewer, "team.manage"));
+  const teamMembers = await getTeamMembers(profiles, canAny(viewer, ["team.view", "team.manage"]));
+  const roles = viewer ? await getClinicRoles(supabase, viewer.clinicId) : [];
+  const memberCounts: Record<string, number> = {};
+  for (const p of profiles) for (const r of p.roles ?? []) memberCounts[r] = (memberCounts[r] ?? 0) + 1;
   const sellerRecords = can(viewer, "sellers.manage")
     ? await Promise.all(
         sellers
@@ -60,6 +64,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       initialTab={tab}
       whatsappSecrets={whatsappSecrets}
       webhookUrl={webhookUrl}
+      roles={roles}
+      memberCounts={memberCounts}
+      myRoles={viewer?.roles ?? []}
+      modules={viewer?.modules ?? []}
     />
   );
 }

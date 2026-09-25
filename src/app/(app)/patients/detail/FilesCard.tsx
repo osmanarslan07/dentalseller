@@ -28,8 +28,9 @@ export function FilesCard({
 }) {
   const router = useRouter();
   const { showToast } = useToast();
+  const canView = useCan("files.view");
   const canManage = useCan("files.manage");
-  const isAdmin = useCan("patients.delete");
+  const canChangeAny = useCan("files.delete");
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -101,6 +102,8 @@ export function FilesCard({
     });
   }
 
+  if (!canView) return null;
+
   return (
     <Section
       title="Files"
@@ -156,7 +159,7 @@ export function FilesCard({
                   items={[
                     { label: "Open", onSelect: () => open(f) },
                     { label: "Download", onSelect: () => open(f, true) },
-                    ...(canManage && (f.uploaded_by === currentUserId || isAdmin)
+                    ...((canManage && f.uploaded_by === currentUserId) || canChangeAny
                       ? [
                           { label: "Rename", onSelect: () => setRenaming(f.id) },
                           {

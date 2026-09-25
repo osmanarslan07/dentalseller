@@ -13,6 +13,8 @@ import {
   AnnouncementLevel,
 } from "@/lib/announcements";
 import { CLINIC_MODULES } from "@/types";
+import { grantablePermissions } from "@/lib/permission-catalog";
+import { getRoleTemplates } from "@/lib/roles";
 
 function generateTempPassword(): string {
   return randomBytes(12).toString("base64url");
@@ -344,4 +346,35 @@ export async function deleteAnnouncement(id: string): Promise<void> {
   await logActivity(createAdminClient(), user.id, "announcement_deleted", "announcement", id, `"${excerpt(data.message)}"`);
 
   revalidatePath("/platform/announcements");
+}
+
+/** The default permissions of a built-in role (Admin always has everything). Every clinic
+ * that hasn't changed that role follows it at once; clinics that have keep their own version,
+ * though a permission added to the catalog later still reaches them with its default. */
+export async function updateRoleTemplate(role: string, permissions: string[]): Promise<void> {
+  const { user } = await assertSuperadmin();
+  if (!["sales", "coordinator", "accountant"].includes(role)) throw new Error("Only Sales, Coordinator and Accountant have templates");
+  const perms = grantablePermissions(permissions);
+
+  const admin = createAdminClient();
+  const before = (await getRoleTemplates(admin))[role as "sales" | "coordinator" | "accountant"];
+  if (perms.length > 0) {
+    const { error } = await admin
+      .from("role_permissions")
+      .upsert(perms.map((permission) => ({ role, permission })), { onConflict: "role,permission", ignoreDuplicates: true });
+    if (error) throw new Error(error.message);
+  }
+  const removed = before.filter((p) => !perms.includes(p));
+  if (removed.length > 0) {
+    const { error } = await admin.from("role_permissions").delete().eq("role", role).in("permission", removed);
+    if (error) throw new Error(error.message);
+  }
+
+  const added = perms.filter((p) => !before.includes(p));
+  const detail = [added.length ? `+ ${added.join(", ")}` : null, removed.length ? `− ${removed.join(", ")}` : null]
+    .filter(Boolean)
+    .join(" · ");
+  if (detail) await logActivity(admin, user.id, "role_template_updated", "platform", null, `${role}: ${detail}`);
+
+  revalidatePath("/platform/roles");
 }

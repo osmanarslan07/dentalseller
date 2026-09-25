@@ -4,7 +4,9 @@ import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { TeamMember } from "@/lib/data";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
-import { MEMBER_ROLES, MemberRole, ROLE_LABELS } from "@/types";
+import { ClinicModule, MemberRole, Permission } from "@/types";
+import type { ClinicRole } from "@/lib/roles";
+import { PermissionSummary } from "@/components/PermissionSummary";
 import { useToast } from "@/components/Toast";
 import {
   addSeller,
@@ -23,11 +25,24 @@ export function TeamCard({
   members,
   currentUserId,
   canManage,
+  canDelete,
+  roles,
+  modules,
 }: {
   members: TeamMember[];
   currentUserId: string;
   canManage: boolean;
+  canDelete: boolean;
+  /** The clinic's roles (built-in and custom), with what each can do. */
+  roles: ClinicRole[];
+  modules: ClinicModule[];
 }) {
+  const roleName = (key: string) => roles.find((r) => r.key === key)?.name ?? "Custom role";
+  /** Everything a member can do: the union of their roles. */
+  const permissionsOf = (member: TeamMember): Permission[] => [
+    ...new Set(member.roles.flatMap((key) => roles.find((r) => r.key === key)?.permissions ?? [])),
+  ];
+  const [showingPermsOf, setShowingPermsOf] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [newRoles, setNewRoles] = useState<MemberRole[]>(["sales"]);
@@ -137,7 +152,8 @@ export function TeamCard({
       <h2 className="mb-1 text-base font-semibold text-slate-900">Team</h2>
       <p className="mb-5 text-sm text-slate-500">
         Sales see every patient and the calendar, but only their own commission. Coordinators run patients,
-        visits, transfers and payments; accountants see the money. Someone can have several roles.
+        visits, transfers and payments; accountants see the money. Someone can have several roles — see exactly
+        what each role can do under Settings → Roles.
       </p>
 
       <ul className="mb-5 divide-y divide-slate-100">
@@ -156,7 +172,7 @@ export function TeamCard({
                 {(!canManage || isSelf) &&
                   m.roles.map((role) => (
                     <Badge key={role} tone={role === "admin" ? "blue" : "slate"}>
-                      {ROLE_LABELS[role]}
+                      {roleName(role)}
                     </Badge>
                   ))}
                 {!m.isActive && <Badge tone="amber">Inactive</Badge>}
@@ -181,21 +197,36 @@ export function TeamCard({
                     >
                       {m.isActive ? "Deactivate" : "Reactivate"}
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="danger"
-                      disabled={rowBusy}
-                      onClick={() => handleDelete(m)}
-                    >
-                      Delete
-                    </Button>
+                    {canDelete && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        disabled={rowBusy}
+                        onClick={() => handleDelete(m)}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
               </div>
               {canManage && !isSelf && (
-                <RoleChips roles={m.roles} disabled={rowBusy} onToggle={(role) => handleToggleRole(m, role)} />
+                <RoleChips roles={m.roles} options={roles} disabled={rowBusy} onToggle={(role) => handleToggleRole(m, role)} />
+              )}
+              <button
+                type="button"
+                className="self-start text-xs font-semibold text-teal-700 hover:underline"
+                aria-expanded={showingPermsOf === m.id}
+                onClick={() => setShowingPermsOf((id) => (id === m.id ? null : m.id))}
+              >
+                {showingPermsOf === m.id ? "Hide what they can do" : "What can they do?"}
+              </button>
+              {showingPermsOf === m.id && (
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <PermissionSummary permissions={permissionsOf(m)} modules={modules} empty="Nothing — they have no roles." />
+                </div>
               )}
             </li>
           );
@@ -223,6 +254,7 @@ export function TeamCard({
         </div>
         <RoleChips
           roles={newRoles}
+          options={roles}
           disabled={pending}
           onToggle={(role) => setNewRoles((rs) => (rs.includes(role) ? rs.filter((x) => x !== role) : [...rs, role]))}
         />
@@ -254,20 +286,23 @@ export function TeamCard({
   );
 }
 
-/** One tick-button per role; the member holds every role that's on. */
+/** One tick-button per role (built-in and the clinic's own); the member holds every role that's on. */
 function RoleChips({
   roles,
+  options,
   disabled,
   onToggle,
 }: {
   roles: MemberRole[];
+  options: ClinicRole[];
   disabled?: boolean;
   onToggle: (role: MemberRole) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Roles">
       <span className="text-xs text-slate-500">Roles:</span>
-      {MEMBER_ROLES.map((role) => {
+      {options.map(({ key, name }) => {
+        const role = key as MemberRole;
         const on = roles.includes(role);
         return (
           <button
@@ -281,7 +316,7 @@ function RoleChips({
             }`}
           >
             {on ? "✓ " : ""}
-            {ROLE_LABELS[role]}
+            {name}
           </button>
         );
       })}

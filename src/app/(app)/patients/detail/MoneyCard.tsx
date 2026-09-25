@@ -78,6 +78,7 @@ export function MoneyCard({
   const canEditVisit = useCan("patients.edit");
   const canPrice = canExtras && canEditVisit;
   const canPay = useCan("payments.record");
+  const canEditPayments = useCan("payments.edit");
   const [pending, startTransition] = useTransition();
 
   const extrasTotal = round(extras.reduce((s, e) => s + e.total, 0));
@@ -322,7 +323,7 @@ export function MoneyCard({
                   .join(" · ")}
               </span>
               <Amount>− {gbp(p.amount)}</Amount>
-              {canPay && <RowMenu
+              {canEditPayments && <RowMenu
                 label="Payment actions"
                 items={[
                   { label: "Edit", onSelect: () => setEditing({ type: "payment", id: p.id }) },

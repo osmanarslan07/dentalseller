@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity } from "@/lib/activity-log";
 import { assertSeatAvailable } from "@/lib/seats";
 import { assertViewerCanWrite } from "@/lib/viewer";
-import { MEMBER_ROLES, MemberRole, ROLE_LABELS } from "@/types";
+import { MEMBER_ROLES, MemberRole, roleLabel } from "@/types";
 import { requirePermission } from "@/lib/permissions";
 
 function generateTempPassword(): string {
@@ -20,15 +20,23 @@ export interface AddSellerResult {
   tempPassword: string;
 }
 
-/** At least one known role, each once — anything else from the client is refused. */
-function cleanRoles(roles: MemberRole[]): MemberRole[] {
-  const clean = MEMBER_ROLES.filter((r) => roles.includes(r));
+/** The clinic's custom roles, key → name (RLS keeps it to the caller's clinic). */
+async function customRoleNames(supabase: SupabaseClient): Promise<Record<string, string>> {
+  const { data } = await supabase.from("clinic_roles").select("key, name").eq("is_builtin", false);
+  return Object.fromEntries((data ?? []).map((r) => [r.key as string, r.name as string]));
+}
+
+/** At least one known role — a built-in or one of the clinic's own — each once. Anything else
+ * from the client is refused (the database checks it again). */
+function cleanRoles(roles: MemberRole[], custom: Record<string, string>): MemberRole[] {
+  const known = [...MEMBER_ROLES, ...Object.keys(custom)] as MemberRole[];
+  if (roles.some((r) => !known.includes(r))) throw new Error("Unknown role");
+  const clean = known.filter((r) => roles.includes(r));
   if (clean.length === 0) throw new Error("Pick at least one role");
-  if (roles.some((r) => !MEMBER_ROLES.includes(r))) throw new Error("Unknown role");
   return clean;
 }
 
-const rolesText = (roles: MemberRole[]) => roles.map((r) => ROLE_LABELS[r]).join(", ");
+const rolesText = (roles: string[], custom: Record<string, string>) => roles.map((r) => roleLabel(r, custom)).join(", ");
 
 /** team.manage. New members get the roles chosen here (Sales if none are passed). */
 export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sales"]): Promise<AddSellerResult> {
@@ -36,10 +44,11 @@ export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sal
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error("Enter a valid email address");
   }
-  const roles = cleanRoles(rawRoles);
 
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
+  const custom = await customRoleNames(supabase);
+  const roles = cleanRoles(rawRoles, custom);
 
   const { data: myProfile, error: profileError } = await supabase
     .from("profiles")
@@ -76,7 +85,7 @@ export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sal
     .eq("id", data.user.id);
   if (clinicIdError) throw new Error(clinicIdError.message);
 
-  await logActivity(supabase, user.actorId, "seller_added", "profile", null, `${email} (${rolesText(roles)})`);
+  await logActivity(supabase, user.actorId, "seller_added", "profile", null, `${email} (${rolesText(roles, custom)})`);
 
   revalidatePath("/settings");
   revalidatePath("/team");
@@ -110,7 +119,8 @@ export async function setMemberRoles(memberId: string, rawRoles: MemberRole[]): 
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
   if (memberId === user.id) throw new Error("You can't change your own roles");
-  const roles = cleanRoles(rawRoles);
+  const custom = await customRoleNames(supabase);
+  const roles = cleanRoles(rawRoles, custom);
 
   const { data: before } = await supabase.from("profiles").select("roles").eq("id", memberId).maybeSingle();
   if (!before) throw new Error("Team member not found");
@@ -124,7 +134,7 @@ export async function setMemberRoles(memberId: string, rawRoles: MemberRole[]): 
     "member_roles_changed",
     "profile",
     memberId,
-    `${rolesText((before.roles ?? []) as MemberRole[]) || "none"} → ${rolesText(roles)}`
+    `${rolesText(before.roles ?? [], custom) || "none"} → ${rolesText(roles, custom)}`
   );
 
   revalidatePath("/settings");
@@ -132,7 +142,7 @@ export async function setMemberRoles(memberId: string, rawRoles: MemberRole[]): 
 }
 
 /** For the two actions below that use the service-role client, which bypasses RLS (the caller's
- * team.manage is checked by requirePermission first): this JS
+ * team.manage / team.delete is checked by requirePermission first): this JS
  * check is the only thing keeping a clinic admin to their own clinic's accounts. The target
  * must share the caller's clinic; any mismatch (another clinic, a superadmin, no such id)
  * reads as "not found", so ids from other clinics can't even be probed for existence. */
@@ -172,7 +182,7 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
   return { email: targetUser.email, tempPassword };
 }
 
-/** Admin-only. Permanently deletes the auth user (and, via FK cascade, their profile row).
+/** team.delete. Permanently deletes the auth user (and, via FK cascade, their profile row).
  * Their patients stay theirs: patients point at the seller record, which just loses its login
  * and carries on as a seller without an account (commission history intact). Quotes, tasks and
  * the extra visits they created FK-cascade straight off `auth.users`, so those are handed to
@@ -180,7 +190,7 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
  * strictly own-row-only, with no admin carve-out, so the RLS-scoped client can't do this). */
 export async function deleteSeller(sellerId: string): Promise<void> {
   const supabase = await createClient();
-  const user = await requirePermission("team.manage");
+  const user = await requirePermission("team.delete");
   if (sellerId === user.id) throw new Error("You can't delete your own account");
 
   await assertAdminOfSameClinic(supabase, user.id, sellerId);

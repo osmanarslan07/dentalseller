@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import { FormEvent, ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, Label, Textarea } from "@/components/ui";
@@ -327,7 +328,7 @@ function VisitDetailsModal({ open, onClose, patientId, visit }: { open: boolean;
         )}
         <div>
           <Label>Treatment day</Label>
-          <Input type="date" name="date" defaultValue={visit.date ?? ""} autoFocus />
+          <DateInput name="date" defaultValue={visit.date ?? ""} autoFocus />
           {visit.kind === "main" && <p className="mt-1 text-xs text-slate-400">The treatment itself is on the Patient info tab.</p>}
         </div>
         {visit.kind === "extra" && (
@@ -604,7 +605,7 @@ function TravelForm({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
         <div className="col-span-2 sm:col-span-1">
           <Label>Arrival date</Label>
-          <Input type="date" name="arrival_date" defaultValue={draft.arrival_date} autoFocus />
+          <DateInput name="arrival_date" defaultValue={draft.arrival_date} autoFocus />
         </div>
         <div>
           <Label>Time</Label>
@@ -616,7 +617,7 @@ function TravelForm({
         </div>
         <div className="col-span-2 sm:col-span-1">
           <Label>Departure date</Label>
-          <Input type="date" name="departure_date" defaultValue={draft.departure_date} />
+          <DateInput name="departure_date" defaultValue={draft.departure_date} />
         </div>
         <div>
           <Label>Time</Label>

@@ -39,7 +39,7 @@ export function diffFields<B, A>(before: B, after: A, fields: { key: keyof B & k
  * local time. An audit trail exists so a change can be pinned down later; a decaying
  * "3 days ago" label defeats that once the entry is more than a few hours old. */
 export function formatActivityTime(iso: string): string {
-  return format(new Date(iso), "HH:mm dd.MM.yyyy");
+  return format(new Date(iso), "HH:mm dd/MM/yyyy");
 }
 
 export interface ActivityLogRow {

@@ -1,3 +1,4 @@
+import { DateInput } from "@/components/DateInput";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getClinicWithStats, getMaskedClinicActivity } from "@/lib/platform";
@@ -77,8 +78,8 @@ export default async function ClinicActivityPage({
               </option>
             ))}
           </select>
-          <input type="date" name="from" defaultValue={from} aria-label="From" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-          <input type="date" name="to" defaultValue={to} aria-label="To" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+          <DateInput name="from" defaultValue={from} aria-label="From" className="w-40" />
+          <DateInput name="to" defaultValue={to} aria-label="To" className="w-40" />
           <div className="flex gap-2">
             <button type="submit" className="flex-1 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
               Filter

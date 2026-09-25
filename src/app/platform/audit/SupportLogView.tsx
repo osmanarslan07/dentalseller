@@ -1,3 +1,4 @@
+import { DateInput } from "@/components/DateInput";
 import Link from "next/link";
 import { getSupportLog, SUPPORT_LOG_LIMIT } from "@/lib/platform";
 import { formatActivityTime } from "@/lib/activity-log";
@@ -54,8 +55,8 @@ export async function SupportLogView({ clinic, from, to }: { clinic?: string; fr
               </option>
             ))}
           </select>
-          <input type="date" name="from" defaultValue={f.from ?? ""} aria-label="From" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-          <input type="date" name="to" defaultValue={f.to ?? ""} aria-label="To" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+          <DateInput name="from" defaultValue={f.from ?? ""} aria-label="From" className="w-40" />
+          <DateInput name="to" defaultValue={f.to ?? ""} aria-label="To" className="w-40" />
           <button type="submit" className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
             Filter
           </button>

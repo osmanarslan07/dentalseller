@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import type { CoordinatorOption } from "@/lib/coordinators";
 import { FormEvent, ReactNode, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
@@ -464,7 +465,7 @@ function SaleCard({
             </div>
             <div>
               <Label>Confirmation date</Label>
-              <Input type="date" name="confirmation_date" defaultValue={patient.confirmation_date ?? ""} />
+              <DateInput name="confirmation_date" defaultValue={patient.confirmation_date ?? ""} />
             </div>
             <div>
               <Label>Komo reference</Label>

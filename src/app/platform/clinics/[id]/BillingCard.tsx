@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BILLING_CURRENCIES, ClinicBilling, Plan, PLAN_LABELS, PLAN_MODULES, PLANS } from "@/lib/clinic-billing";
@@ -113,7 +114,7 @@ export function BillingCard({
         {plan === "trial" && (
           <div>
             <Label>Trial ends</Label>
-            <Input name="trial_ends_at" type="date" defaultValue={billing?.trialEndsAt ?? ""} />
+            <DateInput name="trial_ends_at" defaultValue={billing?.trialEndsAt ?? ""} />
           </div>
         )}
 

@@ -124,16 +124,13 @@ export function transfersWithoutDriver(transfers: Transfer[]): Transfer[] {
   return transfers.filter((t) => !t.driver_id && t.status !== "done");
 }
 
-/** "Thu 25 Sep" (+ " 2026" when asked) — from a local YYYY-MM-DD, never shifted by timezone. */
+/** "Thu 25/09" (+ "/2026" when asked) — from a local YYYY-MM-DD, never shifted by timezone. */
 export function shortDate(iso: string | null, withYear = false): string {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    ...(withYear ? { year: "numeric" } : {}),
-  });
+  const weekday = new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "short" });
+  const dm = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+  return `${weekday} ${dm}${withYear ? `/${y}` : ""}`;
 }
 
 /** Whole nights between two local dates, or null. */

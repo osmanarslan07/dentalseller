@@ -6,14 +6,14 @@ export function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
+/** dd/mm/yyyy. A plain YYYY-MM-DD is read as-is (never shifted by timezone); timestamps use local time. */
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (plain) return `${plain[3]}/${plain[2]}/${plain[1]}`;
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
 export function formatPercent(rate: number): string {

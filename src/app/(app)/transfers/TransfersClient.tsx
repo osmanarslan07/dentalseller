@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -191,13 +192,7 @@ export function TransfersClient({
             >
               Today
             </Link>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => e.target.value && router.push(href(e.target.value))}
-              className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-700"
-              aria-label="Start date"
-            />
+            <DateInput value={from} onChange={(iso) => iso && router.push(href(iso))} className="w-40" aria-label="Start date" />
             <Link href={href(nextDate)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-200" aria-label="Later">
               ›
             </Link>

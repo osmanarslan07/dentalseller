@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import { FormEvent, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -146,7 +147,7 @@ export function NewPatientForm({
           </div>
           <div>
             <Label>Confirmation date</Label>
-            <Input type="date" name="confirmation_date" defaultValue={todayIsoLocal()} />
+            <DateInput name="confirmation_date" defaultValue={todayIsoLocal()} />
           </div>
           <div>
             <Label>Komo reference</Label>
@@ -190,11 +191,11 @@ export function NewPatientForm({
 
         <div className="flex flex-col gap-3">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Visits</span>
-          <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)]">
             <span className="col-span-2 pb-2 text-sm font-semibold sm:col-span-1">Visit 1</span>
             <div>
               <Label>Date</Label>
-              <Input type="date" name="visit1_date" aria-label="Visit 1 date" defaultValue={src?.visit1_date ?? ""} />
+              <DateInput name="visit1_date" aria-label="Visit 1 date" defaultValue={src?.visit1_date ?? ""} />
             </div>
             <div>
               <Label>Price ({sym})</Label>

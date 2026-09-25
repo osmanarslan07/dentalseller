@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import { useState, useTransition } from "react";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
@@ -59,7 +60,7 @@ export function TaskFormModal({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <Label>Due date</Label>
-            <Input type="date" name="due_date" required defaultValue={task?.due_date ?? ""} />
+            <DateInput name="due_date" required defaultValue={task?.due_date ?? ""} />
           </div>
           <div>
             <Label>Due time (optional)</Label>

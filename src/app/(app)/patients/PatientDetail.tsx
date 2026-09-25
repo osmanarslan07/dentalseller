@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import type { CoordinatorOption } from "@/lib/coordinators";
 import { FormEvent, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
@@ -432,7 +433,7 @@ function AddExtraVisitModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Date</Label>
-            <Input type="date" name="visit_date" />
+            <DateInput name="visit_date" />
           </div>
           <div>
             <Label>Price ({currencySymbol(currency)})</Label>

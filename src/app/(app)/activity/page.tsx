@@ -1,3 +1,4 @@
+import { DateInput } from "@/components/DateInput";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPatients, getProfiles, getSellers } from "@/lib/data";
@@ -90,8 +91,8 @@ export default async function ActivityHistoryPage({ searchParams }: { searchPara
                 </option>
               ))}
           </select>
-          <input type="date" name="from" defaultValue={from} aria-label="From" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-          <input type="date" name="to" defaultValue={to} aria-label="To" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+          <DateInput name="from" defaultValue={from} aria-label="From" className="w-40" />
+          <DateInput name="to" defaultValue={to} aria-label="To" className="w-40" />
           <input
             type="search"
             name="q"

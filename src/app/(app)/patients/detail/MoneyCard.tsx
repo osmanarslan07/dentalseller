@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import { FormEvent, ReactNode, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, Label, Select } from "@/components/ui";
@@ -777,7 +778,7 @@ function PaymentForm({
         </div>
         <div>
           <Label>Date</Label>
-          <Input type="date" name="paid_on" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} required />
+          <DateInput name="paid_on" value={paidOn} onChange={setPaidOn} required />
         </div>
         <div>
           <Label>Received by</Label>

@@ -1,5 +1,6 @@
 "use client";
 
+import { DateInput } from "@/components/DateInput";
 import { FormEvent, ReactNode, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, Label, Select } from "@/components/ui";
@@ -495,7 +496,7 @@ function TransferForm({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
           <Label>Date</Label>
-          <Input type="date" name="transfer_date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput name="transfer_date" value={date} onChange={setDate} />
         </div>
         <div>
           <Label>Pickup (24h)</Label>

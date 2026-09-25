@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 export interface MenuItem {
@@ -33,7 +33,9 @@ export function ChevronIcon() {
   );
 }
 
-/** A dropdown that closes on any click outside it, on Escape, or once an item is picked. */
+/** A dropdown that closes on any click outside it, on Escape, or once an item is picked. It opens
+ * upward when there isn't room for it below the button (e.g. the last row near the bottom of the
+ * page), so no item ever sits below the end of the page. */
 export function Menu({
   trigger,
   ariaLabel,
@@ -52,7 +54,19 @@ export function Menu({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [upward, setUpward] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Measured before paint, so the menu never flashes in the wrong place.
+  useLayoutEffect(() => {
+    if (!open || !ref.current || !menuRef.current) return;
+    const button = ref.current.getBoundingClientRect();
+    const height = menuRef.current.offsetHeight + 6;
+    const below = window.innerHeight - button.bottom;
+    const above = button.top;
+    setUpward(below < height && above > below);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -90,10 +104,11 @@ export function Menu({
       </button>
       {open && (
         <div
+          ref={menuRef}
           role="menu"
-          className={`absolute z-30 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ${
+          className={`absolute z-30 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg ${
             align === "right" ? "right-0" : "left-0"
-          }`}
+          } ${upward ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}
         >
           {heading && (
             <p className="px-2.5 pb-1 pt-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{heading}</p>

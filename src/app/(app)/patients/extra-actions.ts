@@ -1,7 +1,6 @@
 "use server";
 
 import { msg } from "@/i18n";
-import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getPatient } from "@/lib/data";

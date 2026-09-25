@@ -7,11 +7,13 @@ import { ALL_FILTER } from "@/lib/people-filter";
 import { DashboardClient } from "./DashboardClient";
 import { getViewer } from "@/lib/viewer";
 import { can } from "@/lib/permissions";
+import { getT } from "@/i18n/server";
 
 type CountCardId = "patients_sold" | "confirmed_this_month" | "new_patients_delta";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
+  const t = await getT();
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const viewer = await getViewer();
   const userId = viewer?.userId ?? "";
@@ -56,22 +58,22 @@ export default async function DashboardPage() {
     <div className="space-y-8">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
-          <span className="flex items-center gap-1.5" title="Live data">
+          <h1 className="text-2xl font-semibold text-slate-900">{t("Dashboard")}</h1>
+          <span className="flex items-center gap-1.5" title={t("Live data")}>
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
-            <span className="text-xs font-medium text-emerald-600">Live</span>
+            <span className="text-xs font-medium text-emerald-600">{t("Live")}</span>
           </span>
         </div>
-        <p className="mt-1 text-sm text-slate-500">Today&apos;s visits, follow-ups and logistics for the whole team.</p>
+        <p className="mt-1 text-sm text-slate-500">{t("Today's visits, follow-ups and logistics for the whole team.")}</p>
         {booksTransfers && (
         <Link
           href="/transfers"
           className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-teal-50 px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-100"
         >
-          🚗 Today&apos;s &amp; tomorrow&apos;s transfers →
+          🚗 {t("Today's & tomorrow's transfers")} →
         </Link>
         )}
       </div>

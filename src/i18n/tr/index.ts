@@ -1,5 +1,6 @@
 import { common } from "./common";
 import { nav } from "./nav";
+import { dashboard } from "./dashboard";
 
 /**
  * Turkish dictionary: English text → Turkish. One file per area of the app; later files win on
@@ -9,4 +10,5 @@ import { nav } from "./nav";
 export const TR: Record<string, string> = {
   ...common,
   ...nav,
+  ...dashboard,
 };

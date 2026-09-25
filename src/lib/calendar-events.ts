@@ -1,4 +1,5 @@
 import { Patient } from "@/types";
+import { msg } from "@/i18n";
 
 export type CalendarEventKind =
   | "visit1_arrival"
@@ -26,13 +27,13 @@ export interface CalendarEvent {
 }
 
 const KIND_LABELS: Record<CalendarEventKind, string> = {
-  visit1_arrival: "Arrival (V1)",
-  visit1_departure: "Departure (V1)",
-  visit2_arrival: "Arrival (V2)",
-  visit2_departure: "Departure (V2)",
-  visit1_self: "Visit (V1)",
-  visit2_self: "Visit (V2)",
-  extra_visit: "Extra visit",
+  visit1_arrival: msg("Arrival (V1)"),
+  visit1_departure: msg("Departure (V1)"),
+  visit2_arrival: msg("Arrival (V2)"),
+  visit2_departure: msg("Departure (V2)"),
+  visit1_self: msg("Visit (V1)"),
+  visit2_self: msg("Visit (V2)"),
+  extra_visit: msg("Extra visit"),
 };
 
 export function eventLabel(kind: CalendarEventKind): string {

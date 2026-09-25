@@ -5,6 +5,7 @@ import { MultiSelectFilter } from "@/components/MultiSelectFilter";
 import { useToast } from "@/components/Toast";
 import { ALL_FILTER, FilterPage, PeopleFilter, isAllFilter, sameFilter } from "@/lib/people-filter";
 import { saveMyDefaultFilter } from "@/lib/people-filter-actions";
+import { useT } from "@/i18n/client";
 
 export interface PersonOption {
   id: string;
@@ -38,15 +39,16 @@ export function PeopleFilterBar({
   const [saved, setSaved] = useState(savedDefault);
   const [pending, startTransition] = useTransition();
   const { showToast } = useToast();
+  const t = useT();
 
   function save(next: PeopleFilter | null) {
     startTransition(async () => {
       try {
         await saveMyDefaultFilter(page, next);
         setSaved(next ?? ALL_FILTER);
-        showToast(next ? "Saved as your default ✓" : "Default reset to All ✓");
+        showToast(next ? t("Saved as your default ✓") : t("Default reset to All ✓"));
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Couldn't save the default", "error");
+        showToast(e instanceof Error ? e.message : t("Couldn't save the default"), "error");
       }
     });
   }
@@ -57,16 +59,16 @@ export function PeopleFilterBar({
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       <MultiSelectFilter
-        title="Seller"
-        allLabel="All sellers"
-        choices={[{ value: "me", label: "Me" }, ...others(sellers)]}
+        title={t("Seller")}
+        allLabel={t("All sellers")}
+        choices={[{ value: "me", label: t("Me") }, ...others(sellers)]}
         selected={value.sellers}
         onChange={(sellersChosen) => onChange({ ...value, sellers: sellersChosen })}
       />
       <MultiSelectFilter
-        title="Coordinator"
-        allLabel="All coordinators"
-        choices={[{ value: "me", label: "Me" }, { value: "none", label: "No coordinator" }, ...others(coordinators)]}
+        title={t("Coordinator")}
+        allLabel={t("All coordinators")}
+        choices={[{ value: "me", label: t("Me") }, { value: "none", label: t("No coordinator") }, ...others(coordinators)]}
         selected={value.coordinators}
         onChange={(coordinatorsChosen) => onChange({ ...value, coordinators: coordinatorsChosen })}
       />
@@ -77,7 +79,7 @@ export function PeopleFilterBar({
           onClick={() => save(isAllFilter(value) ? null : value)}
           className="rounded-lg px-2 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-50 disabled:opacity-50"
         >
-          Save as my default
+          {t("Save as my default")}
         </button>
       )}
       {!isAllFilter(value) && (
@@ -86,7 +88,7 @@ export function PeopleFilterBar({
           onClick={() => onChange(ALL_FILTER)}
           className="rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
         >
-          Reset to All
+          {t("Reset to All")}
         </button>
       )}
     </div>

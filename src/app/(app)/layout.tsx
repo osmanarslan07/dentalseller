@@ -23,6 +23,7 @@ import { SupportBar } from "@/components/SupportBar";
 import { PermissionsProvider } from "@/components/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { signedAvatarUrls } from "@/lib/avatars";
+import { getT } from "@/i18n/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -142,15 +143,16 @@ async function getMyAvatarUrl(supabase: Awaited<ReturnType<typeof createClient>>
 
 /** A member switched off by their admin. Their sign-in is blocked too; this is what an
  * already-open session shows until it runs out. */
-function AccountDeactivated() {
+async function AccountDeactivated() {
+  const t = await getT();
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-teal-50 via-slate-50 to-blue-50 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-900/5">
-        <h1 className="text-lg font-semibold text-slate-900">Your account has been deactivated</h1>
-        <p className="mt-2 text-sm text-slate-500">Ask your clinic admin if you think this is a mistake.</p>
+        <h1 className="text-lg font-semibold text-slate-900">{t("Your account has been deactivated")}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Ask your clinic admin if you think this is a mistake.")}</p>
         <form action={logout} className="mt-5">
           <Button type="submit" variant="secondary">
-            Sign out
+            {t("Sign out")}
           </Button>
         </form>
       </div>
@@ -158,15 +160,16 @@ function AccountDeactivated() {
   );
 }
 
-function AccountNotReady() {
+async function AccountNotReady() {
+  const t = await getT();
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-teal-50 via-slate-50 to-blue-50 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-900/5">
-        <h1 className="text-lg font-semibold text-slate-900">Your account isn&apos;t linked to a clinic yet</h1>
-        <p className="mt-2 text-sm text-slate-500">Ask your clinic admin to add you again, or contact DentalSeller support.</p>
+        <h1 className="text-lg font-semibold text-slate-900">{t("Your account isn't linked to a clinic yet")}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Ask your clinic admin to add you again, or contact DentalSeller support.")}</p>
         <form action={logout} className="mt-5">
           <Button type="submit" variant="secondary">
-            Sign out
+            {t("Sign out")}
           </Button>
         </form>
       </div>
@@ -174,19 +177,20 @@ function AccountNotReady() {
   );
 }
 
-function ClinicSuspended() {
+async function ClinicSuspended() {
+  const t = await getT();
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-teal-50 via-slate-50 to-blue-50 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-900/5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.svg" alt="DentalSeller" className="mx-auto mb-4 h-14 w-14" />
-        <h1 className="text-lg font-semibold text-slate-900">This clinic&apos;s account is suspended</h1>
+        <h1 className="text-lg font-semibold text-slate-900">{t("This clinic's account is suspended")}</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Your data is safe, but access is paused. Contact DentalSeller support to reactivate it.
+          {t("Your data is safe, but access is paused. Contact DentalSeller support to reactivate it.")}
         </p>
         <form action={logout} className="mt-5">
           <Button type="submit" variant="secondary">
-            Sign out
+            {t("Sign out")}
           </Button>
         </form>
       </div>

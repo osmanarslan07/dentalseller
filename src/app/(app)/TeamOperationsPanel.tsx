@@ -18,6 +18,8 @@ import { sellerLabel } from "@/lib/sellers";
 import { isMismatch, visitBalances } from "@/lib/balance";
 import { visitExpectedTotal } from "@/lib/commission";
 import { useModule } from "@/components/permissions";
+import { useT } from "@/i18n/client";
+
 
 const EVENT_ICONS: Record<CalendarEventKind, string> = {
   visit1_arrival: "🛬",
@@ -99,6 +101,7 @@ export function TeamOperationsPanel({
   const [busyTargetKey, setBusyTargetKey] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const { showToast } = useToast();
+  const t = useT();
 
   function handleToggleLogistics(target: LogisticsTarget, value: boolean) {
     const key = logisticsTargetKey(target);
@@ -108,7 +111,7 @@ export function TeamOperationsPanel({
         if (target.scope === "patient") await setPatientLogisticsFlag(target.id, target.field, value);
         else await setExtraVisitLogisticsFlag(target.id, target.field, value);
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to update", "error");
+        showToast(e instanceof Error ? e.message : t("Failed to update"), "error");
       } finally {
         setBusyTargetKey(null);
       }
@@ -117,8 +120,8 @@ export function TeamOperationsPanel({
 
   const sellerName = useMemo(() => {
     const map = new Map(sellers.map((s) => [s.id, sellerLabel(s)]));
-    return (id: string) => map.get(id) ?? "Unknown";
-  }, [sellers]);
+    return (id: string) => map.get(id) ?? t("Unknown");
+  }, [sellers, t]);
 
   const patientMap = useMemo(() => new Map(patients.map((p) => [p.id, p])), [patients]);
 
@@ -231,58 +234,60 @@ export function TeamOperationsPanel({
       field,
     });
     for (const p of patients) {
-      push(p.id, p.name, p.responsible_seller_id, "Visit 1 · arrival", p.visit1_arrival_date, [
-        { label: "Arrival transfer", ok: p.visit1_arrival_transfer_arranged, target: null },
-        { label: "Hotel", ok: p.visit1_hotel_arranged, target: patientField(p.id, "visit1_hotel_arranged") },
+      push(p.id, p.name, p.responsible_seller_id, `${t("Visit 1")} · ${t("arrival")}`, p.visit1_arrival_date, [
+        { label: t("Arrival transfer"), ok: p.visit1_arrival_transfer_arranged, target: null },
+        { label: t("Hotel"), ok: p.visit1_hotel_arranged, target: patientField(p.id, "visit1_hotel_arranged") },
       ]);
-      push(p.id, p.name, p.responsible_seller_id, "Visit 1 · departure", p.visit1_departure_date, [
-        { label: "Departure transfer", ok: p.visit1_departure_transfer_arranged, target: null },
+      push(p.id, p.name, p.responsible_seller_id, `${t("Visit 1")} · ${t("departure")}`, p.visit1_departure_date, [
+        { label: t("Departure transfer"), ok: p.visit1_departure_transfer_arranged, target: null },
       ]);
       if (p.needs_visit2) {
-        push(p.id, p.name, p.responsible_seller_id, "Visit 2 · arrival", p.visit2_arrival_date, [
-          { label: "Arrival transfer", ok: p.visit2_arrival_transfer_arranged, target: null },
-          { label: "Hotel", ok: p.visit2_hotel_arranged, target: patientField(p.id, "visit2_hotel_arranged") },
+        push(p.id, p.name, p.responsible_seller_id, `${t("Visit 2")} · ${t("arrival")}`, p.visit2_arrival_date, [
+          { label: t("Arrival transfer"), ok: p.visit2_arrival_transfer_arranged, target: null },
+          { label: t("Hotel"), ok: p.visit2_hotel_arranged, target: patientField(p.id, "visit2_hotel_arranged") },
         ]);
-        push(p.id, p.name, p.responsible_seller_id, "Visit 2 · departure", p.visit2_departure_date, [
-          { label: "Departure transfer", ok: p.visit2_departure_transfer_arranged, target: null },
+        push(p.id, p.name, p.responsible_seller_id, `${t("Visit 2")} · ${t("departure")}`, p.visit2_departure_date, [
+          { label: t("Departure transfer"), ok: p.visit2_departure_transfer_arranged, target: null },
         ]);
       }
       for (const v of p.extra_visits) {
-        push(p.id, p.name, p.responsible_seller_id, `${v.label} · arrival`, v.arrival_date, [
-          { label: "Arrival transfer", ok: v.arrival_transfer_arranged, target: null },
-          { label: "Hotel", ok: v.hotel_arranged, target: extraField(v.id, "hotel_arranged") },
+        push(p.id, p.name, p.responsible_seller_id, `${t(v.label)} · ${t("arrival")}`, v.arrival_date, [
+          { label: t("Arrival transfer"), ok: v.arrival_transfer_arranged, target: null },
+          { label: t("Hotel"), ok: v.hotel_arranged, target: extraField(v.id, "hotel_arranged") },
         ]);
-        push(p.id, p.name, p.responsible_seller_id, `${v.label} · departure`, v.departure_date, [
-          { label: "Departure transfer", ok: v.departure_transfer_arranged, target: null },
+        push(p.id, p.name, p.responsible_seller_id, `${t(v.label)} · ${t("departure")}`, v.departure_date, [
+          { label: t("Departure transfer"), ok: v.departure_transfer_arranged, target: null },
         ]);
       }
     }
     list.sort((a, b) => a.date.localeCompare(b.date));
     return list;
-  }, [patients, todayIso]);
+  }, [patients, todayIso, t]);
 
   const dayHeaderLabel = (daysLeft: number, date: string) =>
-    daysLeft === 0 ? "Today" : daysLeft === 1 ? "Tomorrow" : `${formatDate(date)} · in ${daysLeft} days`;
+    daysLeft === 0 ? t("Today") : daysLeft === 1 ? t("Tomorrow") : t("{date} · in {n} days", { date: formatDate(date), n: daysLeft });
+  const ago = (days: number) => (days === 0 ? t("Today") : days === 1 ? t("1 day ago") : t("{n} days ago", { n: days }));
+  const responsible = (id: string) => t("Responsible: {name}", { name: sellerName(id) });
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">Team operations</h2>
-          <p className="text-xs text-slate-500">Arrivals, follow-ups, logistics and payments — applies to every card below.</p>
+          <h2 className="text-base font-semibold text-slate-900">{t("Team operations")}</h2>
+          <p className="text-xs text-slate-500">{t("Arrivals, follow-ups, logistics and payments — applies to every card below.")}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-900">Upcoming events this month</h2>
+            <h2 className="text-base font-semibold text-slate-900">{t("Upcoming events this month")}</h2>
             <Link href="/calendar" className="shrink-0 text-sm font-medium text-teal-600 hover:text-teal-700">
-              View calendar →
+              {t("View calendar")} →
             </Link>
           </div>
           {dayGroups.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No events scheduled this month.</p>
+            <p className="py-8 text-center text-sm text-slate-400">{t("No events scheduled this month.")}</p>
           ) : (
             <div className="space-y-4">
               {(() => {
@@ -312,13 +317,13 @@ export function TeamOperationsPanel({
                               <div>
                                 <p className="text-sm font-medium text-slate-800">{v.patientName}</p>
                                 <p className="text-xs text-slate-500">
-                                  {v.label}
+                                  {t(v.label)}
                                   {v.time ? ` · ${v.time}` : ""}
                                   {v.flightNo ? ` · ${v.flightNo}` : ""}
                                   {v.treatment ? ` · ${v.treatment}` : ""}
                                 </p>
                                 {showResponsible && (
-                                  <p className="text-xs text-slate-400">Responsible: {sellerName(v.responsibleSellerId)}</p>
+                                  <p className="text-xs text-slate-400">{responsible(v.responsibleSellerId)}</p>
                                 )}
                               </div>
                             </div>
@@ -341,8 +346,8 @@ export function TeamOperationsPanel({
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Needs follow-up</h2>
-              <p className="text-xs text-slate-500">Visit 1 done, visit 2 not booked yet</p>
+              <h2 className="text-base font-semibold text-slate-900">{t("Needs follow-up")}</h2>
+              <p className="text-xs text-slate-500">{t("Visit 1 done, visit 2 not booked yet")}</p>
             </div>
             {needsFollowUp.length > 0 && (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
@@ -351,7 +356,7 @@ export function TeamOperationsPanel({
             )}
           </div>
           {needsFollowUp.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">Nothing needs follow-up ✓</p>
+            <p className="py-8 text-center text-sm text-slate-400">{t("Nothing needs follow-up ✓")}</p>
           ) : (
             <ul className="space-y-1">
               {needsFollowUp.map(({ patient: p, daysSince }, i) => (
@@ -363,10 +368,10 @@ export function TeamOperationsPanel({
                     <div>
                       <p className="text-sm font-medium text-slate-800">{p.name}</p>
                       <p className="text-xs text-slate-500">
-                        {p.treatment ? `${p.treatment} · ` : ""}Visit 1 completed {formatDate(p.visit1_date)}
+                        {p.treatment ? `${p.treatment} · ` : ""}{t("Visit 1 completed {date}", { date: formatDate(p.visit1_date) })}
                       </p>
                       {showResponsible && (
-                        <p className="text-xs text-slate-400">Responsible: {sellerName(p.responsible_seller_id)}</p>
+                        <p className="text-xs text-slate-400">{responsible(p.responsible_seller_id)}</p>
                       )}
                     </div>
                     <span
@@ -378,13 +383,7 @@ export function TeamOperationsPanel({
                           : "text-slate-400"
                       }`}
                     >
-                      {daysSince == null
-                        ? "—"
-                        : daysSince === 0
-                        ? "Today"
-                        : daysSince === 1
-                        ? "1 day ago"
-                        : `${daysSince} days ago`}
+                      {daysSince == null ? "—" : ago(daysSince)}
                     </span>
                   </Link>
                 </li>
@@ -398,8 +397,8 @@ export function TeamOperationsPanel({
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Payments don&apos;t match</h2>
-              <p className="text-xs text-slate-500">Paid into, completed or past its date — and still short (price + extras), or overpaid</p>
+              <h2 className="text-base font-semibold text-slate-900">{t("Payments don't match")}</h2>
+              <p className="text-xs text-slate-500">{t("Paid into, completed or past its date — and still short (price + extras), or overpaid")}</p>
             </div>
             {paymentMismatches.length > 0 && (
               <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-600">
@@ -408,7 +407,7 @@ export function TeamOperationsPanel({
             )}
           </div>
           {paymentMismatches.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">Every visit is paid in full ✓</p>
+            <p className="py-8 text-center text-sm text-slate-400">{t("Every visit is paid in full ✓")}</p>
           ) : (
             <ul className="space-y-1">
               {paymentMismatches.map((m, i) => (
@@ -424,18 +423,20 @@ export function TeamOperationsPanel({
                     <div>
                       <p className="text-sm font-medium text-slate-800">{m.patient.name}</p>
                       <p className="text-xs text-slate-500">
-                        {m.visitLabel}
+                        {t(m.visitLabel)}
                         {m.visitDate ? ` · ${formatDate(m.visitDate)}` : ""}
                       </p>
                       {showResponsible && (
                         <p className="text-xs text-slate-400">
-                          Responsible: {sellerName(m.patient.responsible_seller_id)}
+                          {responsible(m.patient.responsible_seller_id)}
                         </p>
                       )}
                     </div>
                     <div className="text-right">
                       <span className={`block text-sm font-medium ${m.due > 0 ? "text-slate-700" : "text-blue-700"}`}>
-                        {m.due > 0 ? `${formatCurrency(m.due, m.patient.currency)} due` : `Overpaid ${formatCurrency(-m.due, m.patient.currency)}`}
+                        {m.due > 0
+                          ? t("{amount} due", { amount: formatCurrency(m.due, m.patient.currency) })
+                          : t("Overpaid {amount}", { amount: formatCurrency(-m.due, m.patient.currency) })}
                       </span>
                       {m.daysSince != null && (
                         <span
@@ -443,7 +444,7 @@ export function TeamOperationsPanel({
                             m.daysSince >= 30 ? "text-red-500" : m.daysSince >= 14 ? "text-amber-600" : "text-slate-400"
                           }`}
                         >
-                          {m.daysSince === 0 ? "Today" : m.daysSince === 1 ? "1 day ago" : `${m.daysSince} days ago`}
+                          {ago(m.daysSince)}
                         </span>
                       )}
                     </div>
@@ -458,8 +459,8 @@ export function TeamOperationsPanel({
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Logistics not arranged</h2>
-              <p className="text-xs text-slate-500">Upcoming arrivals missing a transfer or hotel booking</p>
+              <h2 className="text-base font-semibold text-slate-900">{t("Logistics not arranged")}</h2>
+              <p className="text-xs text-slate-500">{t("Upcoming arrivals missing a transfer or hotel booking")}</p>
             </div>
             {logisticsNotArranged.length > 0 && (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
@@ -468,7 +469,7 @@ export function TeamOperationsPanel({
             )}
           </div>
           {logisticsNotArranged.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">Nothing outstanding ✓</p>
+            <p className="py-8 text-center text-sm text-slate-400">{t("Nothing outstanding ✓")}</p>
           ) : (
             <ul className="space-y-1">
               {logisticsNotArranged.map((item, i) => (
@@ -486,7 +487,7 @@ export function TeamOperationsPanel({
                       {item.label} · {formatDate(item.date)}
                     </p>
                     {showResponsible && (
-                      <p className="text-xs text-slate-400">Responsible: {sellerName(item.responsibleSellerId)}</p>
+                      <p className="text-xs text-slate-400">{responsible(item.responsibleSellerId)}</p>
                     )}
                   </Link>
                   <div className="flex shrink-0 items-center gap-3">
@@ -496,7 +497,7 @@ export function TeamOperationsPanel({
                           <Link
                             key={b.label}
                             href={`/patients/${item.patientId}`}
-                            title={b.ok ? "Transfer has a driver" : "Add the transfer and pick a driver"}
+                            title={b.ok ? t("Transfer has a driver") : t("Add the transfer and pick a driver")}
                             className={`rounded-md px-1 py-0.5 text-xs font-medium hover:bg-slate-100 ${
                               b.ok ? "text-emerald-700" : "text-amber-700"
                             }`}
@@ -511,7 +512,7 @@ export function TeamOperationsPanel({
                       return (
                         <label
                           key={b.label}
-                          title={`Mark ${b.label.toLowerCase()} as ${b.ok ? "not arranged" : "arranged"}`}
+                          title={b.ok ? t("Mark {what} as not arranged", { what: b.label }) : t("Mark {what} as arranged", { what: b.label })}
                           className={`flex select-none items-center gap-1.5 rounded-md px-1 py-0.5 text-xs font-medium ${
                             busy ? "cursor-wait opacity-50" : "cursor-pointer hover:bg-slate-100"
                           }`}
@@ -538,21 +539,21 @@ export function TeamOperationsPanel({
 
       <Card className="p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Recent patients</h2>
+          <h2 className="text-base font-semibold text-slate-900">{t("Recent patients")}</h2>
           <Link href="/patients" className="text-sm font-medium text-teal-600 hover:text-teal-700">
-            View all →
+            {t("View all")} →
           </Link>
         </div>
         <div className="hidden overflow-x-auto sm:block">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                <th className="py-3 pl-4 font-medium">Name</th>
-                <th className="py-3 font-medium">Treatment</th>
-                <th className="py-3 font-medium">Confirmed</th>
-                <th className="py-3 font-medium">First visit</th>
-                <th className="py-3 font-medium">Visit 2</th>
-                {showResponsible && <th className="py-3 font-medium">Responsible</th>}
+                <th className="py-3 pl-4 font-medium">{t("Name")}</th>
+                <th className="py-3 font-medium">{t("Treatment")}</th>
+                <th className="py-3 font-medium">{t("Confirmed")}</th>
+                <th className="py-3 font-medium">{t("First visit")}</th>
+                <th className="py-3 font-medium">{t("Visit 2")}</th>
+                {showResponsible && <th className="py-3 font-medium">{t("Responsible")}</th>}
                 <th className="py-3 font-medium">Komo</th>
               </tr>
             </thead>
@@ -580,7 +581,7 @@ export function TeamOperationsPanel({
                         rel="noopener noreferrer"
                         className="text-xs font-medium text-teal-600 hover:underline"
                       >
-                        Open ↗
+                        {t("Open")} ↗
                       </a>
                     ) : (
                       <span className="text-slate-300">—</span>
@@ -591,9 +592,9 @@ export function TeamOperationsPanel({
               {patients.length === 0 && (
                 <tr>
                   <td colSpan={showResponsible ? 7 : 6} className="py-8 text-center text-slate-400">
-                    No patients yet.{" "}
+                    {t("No patients yet.")}{" "}
                     <Link href="/patients" className="text-teal-600 hover:underline">
-                      Add your first patient
+                      {t("Add your first patient")}
                     </Link>
                     .
                   </td>
@@ -611,7 +612,7 @@ export function TeamOperationsPanel({
                   <p className="text-sm font-medium text-slate-800">{p.name}</p>
                   <p className="text-xs text-slate-500">{p.treatment || "—"}</p>
                   {showResponsible && (
-                    <p className="text-xs text-slate-400">Responsible: {sellerName(p.responsible_seller_id)}</p>
+                    <p className="text-xs text-slate-400">{responsible(p.responsible_seller_id)}</p>
                   )}
                 </div>
                 {p.komo_reference && /^https?:\/\//i.test(p.komo_reference) && (
@@ -626,7 +627,7 @@ export function TeamOperationsPanel({
                 )}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
-                <span>Confirmed {formatDate(p.confirmation_date)}</span>
+                <span>{t("Confirmed {date}", { date: formatDate(p.confirmation_date) })}</span>
                 <span className="flex items-center gap-1.5">
                   V1 {formatDate(p.visit1_date)} <StatusBadge status={p.visit1_status} />
                 </span>
@@ -638,9 +639,9 @@ export function TeamOperationsPanel({
           ))}
           {patients.length === 0 && (
             <li className="py-8 text-center text-slate-400">
-              No patients yet.{" "}
+              {t("No patients yet.")}{" "}
               <Link href="/patients" className="text-teal-600 hover:underline">
-                Add your first patient
+                {t("Add your first patient")}
               </Link>
               .
             </li>

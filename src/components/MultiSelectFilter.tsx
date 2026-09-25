@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useT } from "@/i18n/client";
 
 export interface FilterChoice {
   value: string;
@@ -45,6 +46,7 @@ export function MultiSelectFilter({
     };
   }, [open]);
 
+  const t = useT();
   const labelOf = (v: string) => choices.find((c) => c.value === v)?.label ?? v;
   const summary =
     selected.length === 0
@@ -88,8 +90,8 @@ export function MultiSelectFilter({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-              aria-label={`Search ${title.toLowerCase()}s`}
+              placeholder={t("Search…")}
+              aria-label={t("Search")}
               autoFocus
               className="mb-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-teal-500"
             />
@@ -106,7 +108,7 @@ export function MultiSelectFilter({
           <div className="my-1 border-t border-slate-100" />
           <div className="max-h-64 overflow-y-auto">
             {shown.length === 0 ? (
-              <p className="px-2.5 py-2 text-sm text-slate-400">No match.</p>
+              <p className="px-2.5 py-2 text-sm text-slate-400">{t("No match.")}</p>
             ) : (
               shown.map((c) => (
                 <label key={c.value} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-slate-50">

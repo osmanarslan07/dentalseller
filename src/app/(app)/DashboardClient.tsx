@@ -9,6 +9,7 @@ import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 import { addMonths, currentMonthKey } from "@/lib/commission";
 import { PeopleFilter, matchesPeopleFilter, onlyMine, sellerFilterOptions } from "@/lib/people-filter";
 import { TeamOperationsPanel } from "./TeamOperationsPanel";
+import { useT } from "@/i18n/client";
 
 type CountCardId = "patients_sold" | "confirmed_this_month" | "new_patients_delta";
 
@@ -37,6 +38,7 @@ export function DashboardClient({
   todayIso: string;
   monthAheadIso: string;
 }) {
+  const t = useT();
   const [filter, setFilter] = useState(initialFilter);
   const patients = useMemo(
     () => allPatients.filter((p) => matchesPeopleFilter(p, filter, currentUserId)),
@@ -56,25 +58,25 @@ export function DashboardClient({
   const cards: Record<CountCardId, ReactNode> = {
     patients_sold: (
       <StatCard
-        label="Total patients sold"
+        label={t("Total patients sold")}
         value={<CountUp value={counts.total} />}
-        sublabel={`${counts.thisMonth} confirmed this month`}
+        sublabel={t("{n} confirmed this month", { n: counts.thisMonth })}
         icon={<PeopleIcon className="h-4 w-4" />}
       />
     ),
     confirmed_this_month: (
       <StatCard
-        label="Patients sold this month"
+        label={t("Patients sold this month")}
         value={<CountUp value={counts.thisMonth} />}
-        sublabel={`vs ${counts.lastMonth} last month`}
+        sublabel={t("vs {n} last month", { n: counts.lastMonth })}
         icon={<CheckCircleIcon className="h-4 w-4" />}
       />
     ),
     new_patients_delta: (
       <StatCard
-        label="New patients vs last month"
+        label={t("New patients vs last month")}
         value={<CountUp value={delta} signed />}
-        sublabel={`${counts.thisMonth} this month, ${counts.lastMonth} last month`}
+        sublabel={t("{a} this month, {b} last month", { a: counts.thisMonth, b: counts.lastMonth })}
         icon={<UserPlusIcon className="h-4 w-4" />}
       />
     ),

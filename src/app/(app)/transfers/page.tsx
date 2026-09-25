@@ -3,16 +3,11 @@ import { getClinicConfig, getProfiles, getSavedFilters, getSellers, getTransferC
 import { sellerLabel } from "@/lib/sellers";
 import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
 import { ALL_FILTER } from "@/lib/people-filter";
+import { clinicTodayIso } from "@/lib/balance";
 import { TransfersClient } from "./TransfersClient";
 import { can, requirePagePermission } from "@/lib/permissions";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** "Today" where the clinics are — the server runs in UTC, which is still yesterday for
- * Antalya's first three hours. */
-function istanbulToday(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul" }).format(new Date());
-}
 
 function addDays(iso: string, n: number): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -27,7 +22,7 @@ export default async function TransfersPage({
 }) {
   const viewer = await requirePagePermission("transfers.manage");
   const params = await searchParams;
-  const today = istanbulToday();
+  const today = clinicTodayIso();
   const from = params.date && ISO_DATE.test(params.date) ? params.date : today;
   const days = [1, 2, 7].includes(Number(params.days)) ? Number(params.days) : 2;
   const to = addDays(from, days - 1);
@@ -46,7 +41,8 @@ export default async function TransfersPage({
     {},
     saved.transfers,
     new Set(sellers.map((s) => s.id)),
-    new Set(coordinators.map((c) => c.id))
+    new Set(coordinators.map((c) => c.id)),
+    viewer.userId
   );
 
   return (

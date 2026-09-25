@@ -19,7 +19,7 @@ import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
 import { deletePatient, sendPatientTelegramMessage } from "./actions";
 import { patientDueNow, todayIsoLocal } from "@/lib/balance";
-import { PeopleFilter, matchesPeopleFilter } from "@/lib/people-filter";
+import { PeopleFilter, hasVisitToCome, matchesPeopleFilter } from "@/lib/people-filter";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 
 /** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. */
@@ -328,6 +328,7 @@ export function PatientsClient({
   sellers,
   coordinators,
   initialFilter,
+  initialOnlyToCome = false,
   savedFilter,
   currentUserId,
 }: {
@@ -339,6 +340,8 @@ export function PatientsClient({
   coordinators: PersonOption[];
   /** From the link (?seller= / ?coordinator=) or else the viewer's saved default. */
   initialFilter: PeopleFilter;
+  /** From ?active=1 (the workload card): only patients with a visit still to come. */
+  initialOnlyToCome?: boolean;
   savedFilter: PeopleFilter;
   currentUserId: string;
 }) {
@@ -357,6 +360,7 @@ export function PatientsClient({
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [treatmentFilter, setTreatmentFilter] = useState<string>("all");
   const [people, setPeople] = useState<PeopleFilter>(initialFilter);
+  const [onlyToCome, setOnlyToCome] = useState(initialOnlyToCome);
   const [sortKey, setSortKey] = useState<SortKey>("confirmation_date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [, startTransition] = useTransition();
@@ -441,6 +445,7 @@ export function PatientsClient({
       list = list.filter((r) => r.patient.treatment === treatmentFilter);
     }
     list = list.filter((r) => matchesPeopleFilter(r.patient, people, currentUserId));
+    if (onlyToCome) list = list.filter((r) => hasVisitToCome(r.patient));
 
     list.sort((a, b) => {
       let cmp = 0;
@@ -456,7 +461,7 @@ export function PatientsClient({
     });
 
     return list;
-  }, [patients, search, stageFilter, monthFilter, treatmentFilter, people, sortKey, sortDir, ratesMap, currentUserId]);
+  }, [patients, search, stageFilter, monthFilter, treatmentFilter, people, onlyToCome, sortKey, sortDir, ratesMap, currentUserId]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -567,6 +572,16 @@ export function PatientsClient({
           currentUserId={currentUserId}
           className="mt-3"
         />
+        {onlyToCome && (
+          <button
+            type="button"
+            onClick={() => setOnlyToCome(false)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-3 py-1 text-xs font-medium text-teal-800 hover:bg-teal-100"
+          >
+            Only patients with a visit still to come <span aria-hidden>✕</span>
+            <span className="sr-only">(remove)</span>
+          </button>
+        )}
       </Card>
 
       {view === "kanban" && (

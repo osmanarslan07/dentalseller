@@ -80,6 +80,12 @@ export function todayIsoLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** "Today" where the clinics are, for server code — the server runs in UTC, which is still
+ * yesterday for Antalya's first three hours. (In the browser, todayIsoLocal is already local.) */
+export function clinicTodayIso(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul" }).format(new Date());
+}
+
 /** Extras sold on one visit ("visit1" | "visit2" | an extra visit's id), oldest first. */
 export function extrasFor(p: Patient, visitKey: string): PatientExtra[] {
   return p.extras.filter((e) => (e.extra_visit_id ?? `visit${e.visit_number}`) === visitKey);

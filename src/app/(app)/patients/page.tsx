@@ -9,7 +9,7 @@ import { ALL_FILTER } from "@/lib/people-filter";
 export default async function PatientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; open?: string; seller?: string; coordinator?: string }>;
+  searchParams: Promise<{ q?: string; open?: string; seller?: string; coordinator?: string; active?: string }>;
 }) {
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const viewer = await requirePagePermission("patients.view");
@@ -31,17 +31,19 @@ export default async function PatientsPage({
     params,
     saved.patients,
     new Set(sellers.map((s) => s.id)),
-    new Set(coordinators.map((c) => c.id))
+    new Set(coordinators.map((c) => c.id)),
+    currentUserId
   );
   return (
     <PatientsClient
-      key={`${params.q ?? ""}|${params.seller ?? ""}|${params.coordinator ?? ""}`}
+      key={`${params.q ?? ""}|${params.seller ?? ""}|${params.coordinator ?? ""}|${params.active ?? ""}`}
       patients={patients}
       settings={settings}
       initialQuery={params.q ?? ""}
       sellers={sellers}
       coordinators={coordinators}
       initialFilter={initialFilter}
+      initialOnlyToCome={params.active === "1"}
       savedFilter={saved.patients ?? ALL_FILTER}
       currentUserId={currentUserId}
     />

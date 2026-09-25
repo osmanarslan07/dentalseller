@@ -70,7 +70,22 @@ export function matchesPeopleFilter(
   return true;
 }
 
-/** The patients list link for one coordinator (the workload card uses it). */
+/** Still has a visit to come: an active patient for whoever follows them up. */
+export function hasVisitToCome(p: {
+  visit1_status: string;
+  visit2_status: string;
+  needs_visit2: boolean;
+  extra_visits?: { status: string }[] | null;
+}): boolean {
+  return (
+    p.visit1_status === "upcoming" ||
+    (p.needs_visit2 && p.visit2_status === "upcoming") ||
+    (p.extra_visits ?? []).some((v) => v.status === "upcoming")
+  );
+}
+
+/** The patients list, filtered to one coordinator's patients with a visit still to come —
+ * exactly what the workload card's "Active patients" number counts. */
 export function patientsHrefForCoordinator(id: string): string {
-  return `/patients?coordinator=${id}`;
+  return `/patients?coordinator=${id}&active=1`;
 }

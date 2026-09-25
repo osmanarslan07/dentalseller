@@ -2,7 +2,9 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { Patient, Profile } from "@/types";
 import { getClinicRoles } from "@/lib/roles";
 import { flattenCalendarEvents } from "@/lib/calendar-events";
-import { PeopleFilter, cleanPeopleFilter, resolveFilter } from "@/lib/people-filter";
+import { PeopleFilter, cleanPeopleFilter, hasVisitToCome, resolveFilter } from "@/lib/people-filter";
+
+export { hasVisitToCome };
 
 export interface CoordinatorOption {
   id: string;
@@ -42,26 +44,17 @@ export function initialPeopleFilter(
   params: { seller?: string; coordinator?: string },
   saved: PeopleFilter | undefined,
   sellerIds: Set<string>,
-  coordinatorIds: Set<string>
+  coordinatorIds: Set<string>,
+  currentUserId: string
 ): PeopleFilter {
-  if (params.seller || params.coordinator) {
-    return resolveFilter(cleanPeopleFilter(params), sellerIds, coordinatorIds);
-  }
-  return resolveFilter(saved, sellerIds, coordinatorIds);
-}
-
-/** Still has a visit to come: an active patient for whoever follows them up. */
-export function hasVisitToCome(p: {
-  visit1_status: string;
-  visit2_status: string;
-  needs_visit2: boolean;
-  extra_visits?: { status: string }[] | null;
-}): boolean {
-  return (
-    p.visit1_status === "upcoming" ||
-    (p.needs_visit2 && p.visit2_status === "upcoming") ||
-    (p.extra_visits ?? []).some((v) => v.status === "upcoming")
-  );
+  const f =
+    params.seller || params.coordinator
+      ? resolveFilter(cleanPeopleFilter(params), sellerIds, coordinatorIds)
+      : resolveFilter(saved, sellerIds, coordinatorIds);
+  // the dropdowns offer the viewer as "me", never by id — so an id of theirs (e.g. their own
+  // row on the workload card) must read as "me" for the dropdown to show it
+  const asMe = (v: string) => (v === currentUserId ? "me" : v);
+  return { seller: asMe(f.seller), coordinator: asMe(f.coordinator) };
 }
 
 const ARRIVAL_KINDS = new Set(["visit1_arrival", "visit2_arrival", "visit1_self", "visit2_self", "extra_visit"]);

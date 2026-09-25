@@ -32,7 +32,8 @@ export default async function DashboardPage() {
     {},
     saved.dashboard,
     new Set(sellers.map((s) => s.id)),
-    new Set(coordinators.map((c) => c.id))
+    new Set(coordinators.map((c) => c.id)),
+    userId
   );
 
   const today = new Date();

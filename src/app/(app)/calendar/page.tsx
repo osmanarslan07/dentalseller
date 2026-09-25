@@ -20,7 +20,8 @@ export default async function CalendarPage() {
     {},
     saved.calendar,
     new Set(sellers.map((s) => s.id)),
-    new Set(coordinators.map((c) => c.id))
+    new Set(coordinators.map((c) => c.id)),
+    viewer.userId
   );
 
   return (

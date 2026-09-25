@@ -17,7 +17,7 @@ import { StatusBadge, lastActiveText } from "../status";
 import { UserActions } from "./UserActions";
 import { HandoverForm } from "./HandoverForm";
 import { WORKLOAD_DAYS, coordinatorWorkload, getCoordinatorOptions } from "@/lib/coordinators";
-import { todayIsoLocal } from "@/lib/balance";
+import { clinicTodayIso } from "@/lib/balance";
 import { ReactNode } from "react";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,7 +63,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   // who could take over their patients: members who can coordinate (patients.edit), not them
   const coordinatorOptions = await getCoordinatorOptions(supabase, viewer.clinicId, profiles, patients);
   const heirs = coordinatorOptions.filter((c) => c.pickable && c.id !== id).map((c) => ({ id: c.id, name: c.name }));
-  const workload = coordinatorWorkload(asCoordinator, todayIsoLocal()).get(id) ?? { active: 0, arriving: 0 };
+  const workload = coordinatorWorkload(asCoordinator, clinicTodayIso()).get(id) ?? { active: 0, arriving: 0 };
   const canHandover = can(viewer, "team.manage") && can(viewer, "patients.edit");
 
   return (

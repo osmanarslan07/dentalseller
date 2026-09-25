@@ -11,7 +11,7 @@ import { SellersCard } from "./SellersCard";
 import { STATUS_LABELS, StatusBadge, lastActiveText, parseStatus } from "./status";
 import { WORKLOAD_DAYS, coordinatorWorkload, getCoordinatorOptions } from "@/lib/coordinators";
 import { patientsHrefForCoordinator } from "@/lib/people-filter";
-import { todayIsoLocal } from "@/lib/balance";
+import { clinicTodayIso } from "@/lib/balance";
 
 type Search = { tab?: string; q?: string; role?: string; status?: string };
 
@@ -229,7 +229,7 @@ async function WorkloadCard({
 }) {
   const patients = await getPatients(supabase);
   const coordinators = await getCoordinatorOptions(supabase, clinicId, profiles, patients);
-  const workload = coordinatorWorkload(patients, todayIsoLocal());
+  const workload = coordinatorWorkload(patients, clinicTodayIso());
   const unassigned = patients.filter((p) => !p.coordinator_id).length;
 
   return (

@@ -9,6 +9,7 @@ import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { LastSeen } from "@/components/LastSeen";
 import { CredentialResult, resetClinicUserPassword } from "../actions";
 import { CredentialNotice } from "@/components/CredentialNotice";
+import { useT } from "@/i18n/client";
 
 type RoleFilter = "all" | "admin" | "seller" | "superadmin";
 type StatusFilter = "all" | "active" | "deactivated" | "never";
@@ -26,6 +27,7 @@ export function PeopleClient({ people, initialQuery }: { people: PlatformPerson[
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [credential, setCredential] = useState<CredentialResult | null>(null);
+  const t = useT();
 
   const rows = useMemo(
     () =>
@@ -40,14 +42,14 @@ export function PeopleClient({ people, initialQuery }: { people: PlatformPerson[
   );
 
   async function handleReset(person: PlatformPerson) {
-    if (!confirm(`Reset the password for ${person.displayName || person.email}? Their current password stops working.`)) return;
+    if (!confirm(t("Reset {name}'s password? Their current password stops working.", { name: person.displayName || person.email || "" }))) return;
     setError(null);
     setCredential(null);
     setPendingId(person.id);
     try {
       setCredential(await resetClinicUserPassword(person.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reset password");
+      setError(err instanceof Error ? err.message : t("Failed to reset password"));
     } finally {
       setPendingId(null);
     }
@@ -59,23 +61,23 @@ export function PeopleClient({ people, initialQuery }: { people: PlatformPerson[
         <Input
           autoFocus
           type="search"
-          placeholder="Search name, email or clinic…"
+          placeholder={t("Search name, email or clinic…")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="sm:max-w-sm"
-          aria-label="Search people"
+          aria-label={t("Search people")}
         />
         <Select value={role} onChange={(e) => setRole(e.target.value as RoleFilter)} className="sm:max-w-[160px]">
-          <option value="all">All roles</option>
-          <option value="admin">Admins</option>
-          <option value="seller">Sellers</option>
-          <option value="superadmin">Superadmins</option>
+          <option value="all">{t("All roles")}</option>
+          <option value="admin">{t("Admins")}</option>
+          <option value="seller">{t("Sellers")}</option>
+          <option value="superadmin">{t("Superadmins")}</option>
         </Select>
         <Select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className="sm:max-w-[190px]">
-          <option value="all">Any status</option>
-          <option value="active">Active</option>
-          <option value="deactivated">Deactivated</option>
-          <option value="never">Never signed in</option>
+          <option value="all">{t("Any status")}</option>
+          <option value="active">{t("Active")}</option>
+          <option value="deactivated">{t("Deactivated")}</option>
+          <option value="never">{t("Never signed in")}</option>
         </Select>
         <p className="text-xs text-slate-400 sm:ml-auto">
           {rows.length} of {people.length}
@@ -86,7 +88,7 @@ export function PeopleClient({ people, initialQuery }: { people: PlatformPerson[
         <div className="border-b border-slate-100 p-4">
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
           {credential && (
-            <CredentialNotice title="Password reset for" email={credential.email} tempPassword={credential.tempPassword} />
+            <CredentialNotice title={t("Password reset for")} email={credential.email} tempPassword={credential.tempPassword} />
           )}
         </div>
       )}
@@ -99,16 +101,16 @@ export function PeopleClient({ people, initialQuery }: { people: PlatformPerson[
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-slate-900">
-                    {p.displayName || (p.lastSignInAt ? "No name set" : "Not signed in yet")}
+                    {p.displayName || (p.lastSignInAt ? t("No name set") : t("Not signed in yet"))}
                   </span>
-                  <Badge tone={badge.tone}>{badge.label}</Badge>
-                  {!p.isActive && <Badge tone="amber">Deactivated</Badge>}
+                  <Badge tone={badge.tone}>{t(badge.label)}</Badge>
+                  {!p.isActive && <Badge tone="amber">{t("Deactivated")}</Badge>}
                   <LastSeen lastSeenAt={p.lastSeenAt} lastSignInAt={p.lastSignInAt} />
                 </div>
                 <p className="truncate text-xs text-slate-500">
-                  {p.email ?? "—"} · {p.clinicName ?? (p.role === "superadmin" ? "Platform" : "No clinic")}
-                  {p.clinicId && !p.clinicActive && <span className="text-amber-700"> (suspended)</span>} · joined{" "}
-                  {formatDate(p.createdAt.slice(0, 10))}
+                  {p.email ?? "—"} · {p.clinicName ?? (p.role === "superadmin" ? t("Platform") : t("No clinic"))}
+                  {p.clinicId && !p.clinicActive && <span className="text-amber-700"> ({t("suspended")})</span>} ·{" "}
+                  {t("joined {date}", { date: formatDate(p.createdAt.slice(0, 10)) })}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -117,7 +119,7 @@ export function PeopleClient({ people, initialQuery }: { people: PlatformPerson[
                     href={`/platform/clinics/${p.clinicId}`}
                     className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
                   >
-                    Open clinic
+                    {t("Open clinic")}
                   </Link>
                 )}
                 {p.clinicId && (
@@ -128,7 +130,7 @@ export function PeopleClient({ people, initialQuery }: { people: PlatformPerson[
                     disabled={pendingId === p.id}
                     onClick={() => handleReset(p)}
                   >
-                    {pendingId === p.id ? "Resetting…" : "Reset password"}
+                    {pendingId === p.id ? t("Resetting…") : t("Reset password")}
                   </Button>
                 )}
               </div>
@@ -137,7 +139,7 @@ export function PeopleClient({ people, initialQuery }: { people: PlatformPerson[
         })}
         {rows.length === 0 && (
           <li className="px-5 py-12 text-center text-sm text-slate-400">
-            No one matches{query.trim() ? ` "${query.trim()}"` : " these filters"}.
+            {query.trim() ? t("No one matches “{q}”.", { q: query.trim() }) : t("Nobody matches these filters.")}
           </li>
         )}
       </ul>

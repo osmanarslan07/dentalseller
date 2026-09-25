@@ -1,6 +1,7 @@
 import { getAnnouncements, getClinicNames } from "@/lib/platform";
 import { announcementStatus } from "@/lib/announcements";
 import { AnnouncementsClient } from "./AnnouncementsClient";
+import { getT } from "@/i18n/server";
 
 export default async function PlatformAnnouncementsPage() {
   const [all, clinics] = await Promise.all([getAnnouncements(), getClinicNames()]);
@@ -10,10 +11,9 @@ export default async function PlatformAnnouncementsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Announcements</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{(await getT())("Announcements")}</h1>
         <p className="mt-1 text-sm text-slate-500">
-          A banner at the top of the app for every clinic, or just the ones you pick. Critical banners can&apos;t be
-          dismissed.
+          {(await getT())("A banner at the top of the app for every clinic, or just the ones you pick. Critical banners can’t be dismissed.")}
         </p>
       </div>
       <AnnouncementsClient announcements={announcements} clinics={clinics} />

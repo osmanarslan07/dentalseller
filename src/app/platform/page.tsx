@@ -2,7 +2,6 @@ import Link from "next/link";
 import { countSystemProblems, getClinicsWithStats, getMonthlyUsage, getSystemStatus } from "@/lib/platform";
 import { monthLabel, currentMonthKey } from "@/lib/commission";
 import { StatCard } from "@/components/ui";
-import { pluralize } from "@/lib/format";
 import { CheckCircleIcon, LayersIcon, PeopleIcon, TagIcon } from "@/components/StatIcons";
 import { ClinicsTable } from "./ClinicsTable";
 import { NeedsAttentionPanel } from "./HealthFlags";

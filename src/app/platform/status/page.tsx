@@ -2,6 +2,7 @@ import { getSystemStatus, JobStatus, TelegramStatus } from "@/lib/platform";
 import { JobHealth } from "@/lib/jobs";
 import { formatActivityTime } from "@/lib/activity-log";
 import { Badge, Card } from "@/components/ui";
+import { getT } from "@/i18n/server";
 
 const HEALTH: Record<JobHealth, { tone: "green" | "red" | "amber" | "slate"; label: string }> = {
   ok: { tone: "green", label: "Healthy" },
@@ -12,13 +13,14 @@ const HEALTH: Record<JobHealth, { tone: "green" | "red" | "amber" | "slate"; lab
 
 export default async function PlatformStatusPage() {
   const { jobs, telegram } = await getSystemStatus();
+  const t = await getT();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">System status</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t("System status")}</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Scheduled jobs and Telegram notifications, checked live when this page loads.
+          {t("Scheduled jobs and Telegram notifications, checked live when this page loads.")}
         </p>
       </div>
 
@@ -33,26 +35,27 @@ export default async function PlatformStatusPage() {
   );
 }
 
-function JobCard({ job }: { job: JobStatus }) {
+async function JobCard({ job }: { job: JobStatus }) {
   const health = HEALTH[job.health];
+  const t = await getT();
   return (
     <Card className="flex flex-col p-5">
       <div className="flex items-start justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-900">{job.label}</h2>
-        <Badge tone={health.tone}>{health.label}</Badge>
+        <Badge tone={health.tone}>{t(health.label)}</Badge>
       </div>
       <p className="mt-1 text-xs text-slate-500">{job.description}</p>
       <p className="mt-1 text-xs text-slate-400">{job.schedule}</p>
 
       <dl className="mt-4 space-y-1.5 text-sm">
         <div className="flex justify-between gap-3">
-          <dt className="text-slate-500">Last run</dt>
+          <dt className="text-slate-500">{t("Last run")}</dt>
           <dd className="text-right tabular-nums text-slate-900">
             {job.lastRun ? formatActivityTime(job.lastRun.startedAt) : "—"}
           </dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt className="text-slate-500">Last success</dt>
+          <dt className="text-slate-500">{t("Last success")}</dt>
           <dd className="text-right tabular-nums text-slate-900">
             {job.lastSuccessAt ? formatActivityTime(job.lastSuccessAt) : "—"}
           </dd>
@@ -71,7 +74,7 @@ function JobCard({ job }: { job: JobStatus }) {
 
       {job.recentRuns.length > 0 && (
         <div className="mt-4 border-t border-slate-100 pt-3">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">Recent runs</h3>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">{t("Recent runs")}</h3>
           <ul className="mt-2 space-y-1.5">
             {job.recentRuns.map((run) => (
               <li key={run.startedAt} className="flex items-start gap-2 text-xs">

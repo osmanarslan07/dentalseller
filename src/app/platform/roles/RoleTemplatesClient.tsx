@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { PERMISSION_GROUPS } from "@/lib/permission-catalog";
 import { Permission } from "@/types";
 import { updateRoleTemplate } from "../actions";
+import { useT } from "@/i18n/client";
 
 type TemplateRole = "sales" | "coordinator" | "accountant";
 const ROLES: { key: TemplateRole; name: string }[] = [
@@ -49,6 +50,7 @@ function TemplateCard({
   customised: number;
 }) {
   const router = useRouter();
+  const t = useT();
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [picked, setPicked] = useState<Set<string>>(new Set(initial));
@@ -64,30 +66,30 @@ function TemplateCard({
   }
 
   function save() {
-    if (!confirm(`Change the ${name} template for every clinic that hasn't changed ${name} itself?`)) return;
+    if (!confirm(t("Change the {role} template for every clinic that hasn't changed {role} itself?", { role: t(name) }))) return;
     startTransition(async () => {
       try {
         await updateRoleTemplate(role, [...picked]);
-        showToast(`${name} template saved ✓`);
+        showToast(t("{role} template saved ✓", { role: t(name) }));
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : t("Something went wrong"), "error");
       }
     });
   }
 
   return (
     <Card className="flex flex-col p-5">
-      <h2 className="text-base font-semibold text-slate-900">{name}</h2>
+      <h2 className="text-base font-semibold text-slate-900">{t(name)}</h2>
       <p className="mb-4 text-xs text-slate-500">
         {customised === 0
-          ? "No clinic has changed this role — all follow this template."
-          : `${customised} ${customised === 1 ? "clinic has" : "clinics have"} changed this role and keep their own version.`}
+          ? t("No clinic has changed this role — all follow this template.")
+          : t("{n} clinic(s) changed this role and keep their own version.", { n: customised })}
       </p>
       <div className="flex grow flex-col gap-4">
         {PERMISSION_GROUPS.map((g) => (
           <fieldset key={g.label}>
-            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{g.label}</legend>
+            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{t(g.label)}</legend>
             {g.permissions.map((p) => (
               <label key={p.key} className="flex items-start gap-2 py-0.5 text-sm text-slate-700">
                 <input
@@ -96,7 +98,7 @@ function TemplateCard({
                   onChange={() => toggle(p.key)}
                   className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
                 />
-                <span>{p.label}</span>
+                <span>{t(p.label)}</span>
               </label>
             ))}
           </fieldset>
@@ -105,11 +107,11 @@ function TemplateCard({
       <div className="mt-4 flex justify-end gap-2">
         {dirty && (
           <Button type="button" variant="secondary" disabled={pending} onClick={() => setPicked(new Set(initial))}>
-            Undo
+            {t("Undo")}
           </Button>
         )}
         <Button type="button" disabled={pending || !dirty} onClick={save}>
-          {pending ? "Saving…" : "Save template"}
+          {pending ? t("Saving…") : t("Save template")}
         </Button>
       </div>
     </Card>

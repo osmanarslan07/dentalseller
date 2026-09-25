@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { PlatformAuditEntry } from "@/lib/platform";
 import { formatActivityTime } from "@/lib/activity-log";
 import { Badge, Card, Select } from "@/components/ui";
+import { useT } from "@/i18n/client";
 
 const ACTION_TONES: Record<string, "slate" | "green" | "amber" | "blue" | "red"> = {
   clinic_created: "green",
@@ -32,6 +33,7 @@ export function AuditLogClient({
   limit: number;
 }) {
   const [action, setAction] = useState("all");
+  const t = useT();
   const [clinic, setClinic] = useState(
     initialClinic === "all" || clinicOptions.some(([id]) => id === initialClinic) ? initialClinic : "all"
   );
@@ -46,15 +48,15 @@ export function AuditLogClient({
     <Card className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center">
         <Select value={action} onChange={(e) => setAction(e.target.value)} className="sm:max-w-[220px]">
-          <option value="all">All actions</option>
+          <option value="all">{t("All actions")}</option>
           {actionOptions.map(([value, label]) => (
             <option key={value} value={value}>
-              {label}
+              {t(label)}
             </option>
           ))}
         </Select>
         <Select value={clinic} onChange={(e) => setClinic(e.target.value)} className="sm:max-w-[260px]">
-          <option value="all">All clinics</option>
+          <option value="all">{t("All clinics")}</option>
           {clinicOptions.map(([id, name]) => (
             <option key={id} value={id}>
               {name}
@@ -62,7 +64,7 @@ export function AuditLogClient({
           ))}
         </Select>
         <p className="text-xs text-slate-400 sm:ml-auto">
-          {entries.length >= limit ? `Latest ${limit} entries` : `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
+          {entries.length >= limit ? t("Latest {n} entries", { n: limit }) : entries.length === 1 ? t("1 entry") : t("{n} entries", { n: entries.length })}
         </p>
       </div>
 
@@ -70,11 +72,11 @@ export function AuditLogClient({
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50/60 text-xs font-medium uppercase tracking-wide text-slate-400">
-              <th className="py-3 pl-4 pr-4 font-medium">When</th>
-              <th className="py-3 pr-4 font-medium">Who</th>
-              <th className="py-3 pr-4 font-medium">Action</th>
-              <th className="py-3 pr-4 font-medium">Target</th>
-              <th className="py-3 pr-4 font-medium">Detail</th>
+              <th className="py-3 pl-4 pr-4 font-medium">{t("When")}</th>
+              <th className="py-3 pr-4 font-medium">{t("Who")}</th>
+              <th className="py-3 pr-4 font-medium">{t("Action")}</th>
+              <th className="py-3 pr-4 font-medium">{t("Target")}</th>
+              <th className="py-3 pr-4 font-medium">{t("Detail")}</th>
             </tr>
           </thead>
           <tbody>
@@ -85,7 +87,7 @@ export function AuditLogClient({
                 </td>
                 <td className="py-3 pr-4 text-slate-900">{e.actorName}</td>
                 <td className="whitespace-nowrap py-3 pr-4">
-                  <Badge tone={ACTION_TONES[e.action] ?? "slate"}>{e.actionLabel}</Badge>
+                  <Badge tone={ACTION_TONES[e.action] ?? "slate"}>{t(e.actionLabel)}</Badge>
                 </td>
                 <td className="py-3 pr-4">
                   <span className="text-slate-900">{e.targetLabel}</span>
@@ -95,7 +97,7 @@ export function AuditLogClient({
                   )}
                   {e.clinicId && (
                     <Link href={`/platform/clinics/${e.clinicId}`} className="block text-xs text-teal-700 hover:underline">
-                      Open clinic
+                      {t("Open clinic")}
                     </Link>
                   )}
                 </td>
@@ -106,8 +108,8 @@ export function AuditLogClient({
               <tr>
                 <td colSpan={5} className="py-12 text-center text-slate-400">
                   {entries.length === 0
-                    ? "Nothing yet. Creating, editing or suspending a clinic, resetting a password or adding a superadmin will show up here."
-                    : "No entries match these filters."}
+                    ? t("Nothing yet. Creating, editing or suspending a clinic, resetting a password or adding a superadmin will show up here.")
+                    : t("No entries match these filters.")}
                 </td>
               </tr>
             )}

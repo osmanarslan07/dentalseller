@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getClinicMembers, getClinicWithStats, getMonthlyUsage } from "@/lib/platform";
 import { currentMonthKey, monthLabel } from "@/lib/commission";
 import { formatActivityTime } from "@/lib/activity-log";
-import { formatDate, pluralize } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { Badge, StatCard } from "@/components/ui";
 import { ClinicDetailsCard } from "./ClinicDetailsCard";
 import { ClinicTeamCard } from "./ClinicTeamCard";
@@ -15,7 +15,6 @@ import { BillingCard } from "./BillingCard";
 import { SupportModeButton } from "./SupportModeButton";
 import { getLang, getT } from "@/i18n/server";
 import { localeOf, msg } from "@/i18n";
-import { rich } from "@/i18n/rich";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

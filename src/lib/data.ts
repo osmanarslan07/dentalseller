@@ -358,6 +358,45 @@ export async function getQuote(supabase: SupabaseClient, id: string): Promise<Qu
   return data as Quote | null;
 }
 
+/** The two numbers the menu shows on Tasks and Transfers. Best-effort: a badge is never
+ * worth breaking the page over, so a failed count is just 0. Tasks are counted overdue by
+ * date (the time of day is ignored); transfers are the planned ones from today on that
+ * haven't been sent yet. */
+export async function getNavBadges(
+  supabase: SupabaseClient,
+  wants: { tasks: boolean; transfers: boolean },
+  todayIso: string
+): Promise<{ tasks: number; transfers: number }> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return { tasks: 0, transfers: 0 };
+  const owner = await ownerFilter();
+  const [tasks, transfers] = await Promise.all([
+    wants.tasks
+      ? withRetry(() => {
+          let q = supabase
+            .from("tasks")
+            .select("id", { count: "exact", head: true })
+            .eq("clinic_id", clinicId)
+            .eq("status", "pending")
+            .lt("due_date", todayIso);
+          if (owner) q = q.eq("user_id", owner);
+          return q;
+        })
+      : null,
+    wants.transfers
+      ? withRetry(() =>
+          supabase
+            .from("transfers")
+            .select("id", { count: "exact", head: true })
+            .eq("clinic_id", clinicId)
+            .eq("status", "planned")
+            .gte("transfer_date", todayIso)
+        )
+      : null,
+  ]);
+  return { tasks: tasks?.count ?? 0, transfers: transfers?.count ?? 0 };
+}
+
 export async function getTasks(supabase: SupabaseClient): Promise<Task[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];

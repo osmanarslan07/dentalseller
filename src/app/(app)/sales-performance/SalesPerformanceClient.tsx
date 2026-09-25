@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Card, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
-import { formatActivityTime } from "@/lib/activity-log";
 
 interface Row {
   /** `role` null = a seller without an account (patients entered for them by a coordinator). */
@@ -17,27 +15,18 @@ interface Row {
   commissionInMonth: number;
 }
 
-interface ActivityEntry {
-  id: string;
-  createdAt: string;
-  description: string;
-}
-
 interface MonthOption {
   value: string;
   label: string;
 }
 
-export function TeamPerformanceClient({
+export function SalesPerformanceClient({
   rows,
-  activity,
   selectedMonth,
   selectedMonthLabel,
   monthOptions,
 }: {
-  /** null: not allowed to see earnings / activity */
-  rows: Row[] | null;
-  activity: ActivityEntry[] | null;
+  rows: Row[];
   selectedMonth: string;
   selectedMonthLabel: string;
   monthOptions: MonthOption[];
@@ -48,17 +37,14 @@ export function TeamPerformanceClient({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{rows ? "Team performance" : "Team activity"}</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {rows ? "Every seller’s sales and commission." : "What the team has been doing."} Only people whose role allows it see this page.
-          </p>
+          <h1 className="text-2xl font-semibold text-slate-900">Sales performance</h1>
+          <p className="mt-1 text-sm text-slate-500">Every seller&apos;s sales and commission. Only people whose role allows it see this page.</p>
         </div>
-        {rows && (
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">Month</label>
           <Select
             value={selectedMonth}
-            onChange={(e) => router.push(`/team?month=${e.target.value}`)}
+            onChange={(e) => router.push(`/sales-performance?month=${e.target.value}`)}
             className="w-40"
           >
             {monthOptions.map((m) => (
@@ -68,10 +54,8 @@ export function TeamPerformanceClient({
             ))}
           </Select>
         </div>
-        )}
       </div>
 
-      {rows && (
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
@@ -117,30 +101,7 @@ export function TeamPerformanceClient({
           </table>
         </div>
       </Card>
-      )}
 
-      {activity && (
-      <Card className="p-5">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2 className="text-base font-semibold text-slate-900">Recent activity</h2>
-          <Link href="/activity" className="text-sm font-medium text-teal-700 hover:underline">
-            Full history →
-          </Link>
-        </div>
-        {activity.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-400">Nothing logged yet.</p>
-        ) : (
-          <ul className="divide-y divide-slate-50">
-            {activity.map((entry) => (
-              <li key={entry.id} className="flex items-center justify-between gap-4 py-2.5 text-sm">
-                <span className="text-slate-700">{entry.description}</span>
-                <span className="shrink-0 text-xs text-slate-400">{formatActivityTime(entry.createdAt)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-      )}
     </div>
   );
 }

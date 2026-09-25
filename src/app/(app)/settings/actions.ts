@@ -66,7 +66,7 @@ export async function saveSettings(formData: FormData) {
     await logActivity(supabase, user.actorId, "commission_settings_updated", "settings", user.id, changes.join(", "));
   }
 
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/");
   revalidatePath("/patients");
   revalidatePath("/earnings");
@@ -138,7 +138,7 @@ export async function saveClinicBranding(formData: FormData) {
     await logActivity(supabase, user.actorId, "clinic_branding_updated", "settings", user.id, changes.join(", "));
   }
 
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/patients/[id]/confirmation-letter", "page");
   revalidatePath("/quotes/[id]/offer", "page");
 }
@@ -173,7 +173,7 @@ export async function saveTelegramGroupChat(formData: FormData) {
     );
   }
 
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 }
 
 /** settings.money — enforced both here and by the clinic_config RLS policy + guard trigger.
@@ -209,7 +209,7 @@ export async function saveSystemSettings(formData: FormData) {
     await logActivity(supabase, user.actorId, "system_settings_updated", "settings", user.id, changes.join(", "));
   }
 
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/");
   revalidatePath("/patients");
   revalidatePath("/earnings");
@@ -243,6 +243,6 @@ export async function saveDashboardCards(formData: FormData) {
   revalidatePath("/earnings");
   await logActivity(supabase, user.actorId, "dashboard_cards_updated", "settings", user.id, dashboard_cards.join(", "));
 
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/");
 }

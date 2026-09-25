@@ -57,7 +57,7 @@ export async function updateDisplayName(name: string): Promise<void> {
     `${before?.display_name ?? "—"} → ${trimmed}`
   );
 
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/", "layout");
 }
 

@@ -141,7 +141,7 @@ export function DriverMessagesOffHint() {
   return (
     <p className="text-xs text-slate-500">
       Driver messages are off ·{" "}
-      <Link href="/settings?tab=transfers" className="font-semibold text-teal-700 hover:text-teal-800">
+      <Link href="/settings/clinic/messaging" className="font-semibold text-teal-700 hover:text-teal-800">
         Turn on in Settings
       </Link>
     </p>

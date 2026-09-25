@@ -1,13 +1,15 @@
 /** Groups the activity_log action names into the filters shown on history pages. */
 
-export type ActivityCategory = "patients" | "transfers" | "quotes" | "tasks" | "team" | "settings";
+export type ActivityCategory = "patients" | "money" | "transfers" | "quotes" | "tasks" | "team" | "roles" | "settings";
 
 export const ACTIVITY_CATEGORY_LABELS: Record<ActivityCategory, string> = {
   patients: "Patients & visits",
+  money: "Payments, discounts & extras",
   transfers: "Transfers & drivers",
   quotes: "Quotes",
   tasks: "Tasks",
   team: "Team",
+  roles: "Roles & permissions",
   settings: "Settings & account",
 };
 
@@ -23,21 +25,23 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "visit_updated",
     "visit_deleted",
     "visit_logistics_toggled",
-    "payment_added",
-    "payment_updated",
-    "payment_deleted",
     "file_uploaded",
     "file_renamed",
     "file_deleted",
+    "transfer_added",
+    "transfer_updated",
+    "transfer_deleted",
+    "transfer_sent",
+  ],
+  money: [
+    "payment_added",
+    "payment_updated",
+    "payment_deleted",
     "discount_set",
     "discount_removed",
     "extra_added",
     "extra_updated",
     "extra_deleted",
-    "transfer_added",
-    "transfer_updated",
-    "transfer_deleted",
-    "transfer_sent",
   ],
   transfers: [
     "transfer_company_added",
@@ -57,11 +61,6 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "seller_deactivated",
     "seller_promoted",
     "seller_demoted",
-    "member_roles_changed",
-    "role_created",
-    "role_changed",
-    "role_reset",
-    "role_deleted",
     "seller_deleted",
     "password_reset",
     "seller_record_added",
@@ -71,6 +70,13 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "seller_record_deleted",
     "seller_record_merged",
     "seller_commission_updated",
+  ],
+  roles: [
+    "member_roles_changed",
+    "role_created",
+    "role_changed",
+    "role_reset",
+    "role_deleted",
   ],
   settings: [
     "commission_settings_updated",

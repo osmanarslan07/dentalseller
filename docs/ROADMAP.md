@@ -453,7 +453,7 @@ if it keeps master working, one consolidated test checklist at the end, merge af
 
 ---
 
-### Step H — Page map & new menu ☐
+### Step H — Page map & new menu ✅ (built, awaiting your check)
 
 **The page map** (decided in this step, reviewed by you before building):
 
@@ -482,14 +482,24 @@ entry — step J builds those pages, this step gives them their place.)
 **Phone**: the bottom bar stays (Home, Patients, Transfers, Tasks + More); "More" becomes a
 sheet with the same groups as the sidebar.
 
+**Decided from the mockup** (https://claude.ai/artifact/NfNozMN2sLgGZwDsZ4TgpL):
+- My profile / My settings / Sign out live in the **avatar menu** (top bar, right); the bottom
+  of the rail holds only the pin. On phones they sit at the bottom of the "More" sheet.
+- Fold delay **1 s**. Opening waits ~120 ms so passing over the rail doesn't open it.
+- **Clicking a page closes the menu at once** (unless pinned); Escape closes it too.
+- Badges for now: **Tasks** (overdue, red) and **Transfers** (to confirm, teal). Closed rail
+  shows a dot; open rail shows the number.
+- Look: current app palette (white / slate, teal active pill), existing icons; group labels
+  when open, short divider lines between groups when closed.
+
 To do:
-- ☐ Page map written out (every page and every setting → its home) — you approve it first
-- ☐ Sidebar: rail, hover-open overlay, delayed fold, pin (saved per user), groups, badges
-- ☐ Top bar: clinic, search, profile menu; phone "More" sheet grouped the same way
-- ☐ Accessibility: keyboard, focus, tooltips on the rail, reduced-motion
+- ✅ Page map written out and approved (Users / Sales performance / Clinic settings point at today's pages until steps I and J)
+- ✅ Sidebar: rail, hover-open overlay, delayed fold, pin (saved per user, cookie), groups, badges
+- ✅ Top bar: page title, patient search (Ctrl K), avatar menu; phone "More" sheet grouped the same way
+- ✅ Accessibility: keyboard, focus, tooltips on the rail, reduced-motion
 - ☐ Test checklist
 
-### Step I — Settings, regrouped ☐
+### Step I — Settings, regrouped ✅ (built, awaiting your check)
 
 Problem: one long page of tabs where personal and clinic-wide settings sit side by side, and
 every new feature adds another card.
@@ -520,12 +530,12 @@ every new feature adds another card.
 - Old links (`/settings?tab=…`) redirect to the new sections.
 
 To do:
-- ☐ My settings page; Clinic settings with section list, one route per section
-- ☐ Move every existing card to its section; redirects from old tab links
-- ☐ Settings search (static index of section + setting names)
+- ✅ My settings page (`/settings`); Clinic settings with section list, one route per section (`/settings/clinic/<section>`)
+- ✅ Every existing card moved to its section; old `/settings?tab=…` links redirect
+- ✅ Settings search (static index of section + setting names)
 - ☐ Test checklist
 
-### Step J — Users, profiles, sales performance, activity ☐
+### Step J — Users, profiles, sales performance, activity ◐ (Sales performance + Activity built; My profile + Users pending)
 
 **My profile** (every user, from the profile menu)
 - Name, email (change with confirmation), **phone number** (international format — used for
@@ -552,8 +562,8 @@ To do:
 To do:
 - ☐ Profile page (+ phone, stored in international format)
 - ☐ Users list + user detail page; move add/deactivate/delete/reset here
-- ☐ Sales performance page (from Team); Team route redirects
-- ☐ Activity page: filters, URL state, paging, CSV
+- ✅ Sales performance page (`/sales-performance`, from Team); `/team` redirects
+- ✅ Activity page: filters (person, category, patient, dates, support, text), URL state, paging, CSV export (`/activity/export`, max 5000 rows). `queryActivity`-style helper: `src/lib/activity-filters.ts` — reuse it for a user's page and a patient's History
 - ☐ Test checklist
 
 ### Step K — Coordinators you can see, and seller / coordinator filters with saved defaults ☐ (noted 2026-09-25)

@@ -15,7 +15,7 @@ function str(formData: FormData, key: string): string | null {
 }
 
 function revalidate() {
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/patients", "layout");
 }
 

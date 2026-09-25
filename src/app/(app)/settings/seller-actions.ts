@@ -26,8 +26,8 @@ function friendly(message: string): string {
 }
 
 function refresh() {
-  revalidatePath("/settings");
-  revalidatePath("/team");
+  revalidatePath("/settings", "layout");
+  revalidatePath("/sales-performance");
   revalidatePath("/patients");
   revalidatePath("/");
 }
@@ -147,6 +147,6 @@ export async function saveSellerCommission(id: string, formData: FormData): Prom
   if (error) throw new Error(friendly(error.message));
 
   await logActivity(supabase, user.actorId, "seller_commission_updated", "seller", id);
-  revalidatePath("/settings");
-  revalidatePath("/team");
+  revalidatePath("/settings", "layout");
+  revalidatePath("/sales-performance");
 }

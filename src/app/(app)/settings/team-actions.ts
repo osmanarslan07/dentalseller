@@ -87,8 +87,8 @@ export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sal
 
   await logActivity(supabase, user.actorId, "seller_added", "profile", null, `${email} (${rolesText(roles, custom)})`);
 
-  revalidatePath("/settings");
-  revalidatePath("/team");
+  revalidatePath("/settings", "layout");
+  revalidatePath("/sales-performance");
   return { email, tempPassword };
 }
 
@@ -109,8 +109,8 @@ export async function setSellerActive(sellerId: string, active: boolean): Promis
 
   await logActivity(supabase, user.actorId, active ? "seller_activated" : "seller_deactivated", "profile", sellerId);
 
-  revalidatePath("/settings");
-  revalidatePath("/team");
+  revalidatePath("/settings", "layout");
+  revalidatePath("/sales-performance");
 }
 
 /** team.manage — enforced both here and by the profiles_guard_privilege DB trigger, which also
@@ -137,8 +137,8 @@ export async function setMemberRoles(memberId: string, rawRoles: MemberRole[]): 
     `${rolesText(before.roles ?? [], custom) || "none"} → ${rolesText(roles, custom)}`
   );
 
-  revalidatePath("/settings");
-  revalidatePath("/team");
+  revalidatePath("/settings", "layout");
+  revalidatePath("/sales-performance");
 }
 
 /** For the two actions below that use the service-role client, which bypasses RLS (the caller's
@@ -226,8 +226,8 @@ export async function deleteSeller(sellerId: string): Promise<void> {
     `${targetUser?.email ?? sellerId} — kept ${patientCount ?? 0} patient(s) as a seller without an account; reassigned ${quoteCount ?? 0} quote(s), ${taskCount ?? 0} task(s) to self`
   );
 
-  revalidatePath("/settings");
-  revalidatePath("/team");
+  revalidatePath("/settings", "layout");
+  revalidatePath("/sales-performance");
   revalidatePath("/patients");
   revalidatePath("/quotes");
   revalidatePath("/tasks");

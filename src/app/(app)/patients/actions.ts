@@ -631,7 +631,7 @@ export async function reassignPatient(id: string, choice: SellerChoice) {
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/earnings");
-  revalidatePath("/team");
+  revalidatePath("/sales-performance");
 }
 
 /** The team member who follows this patient up; null clears it. Anyone who can edit the

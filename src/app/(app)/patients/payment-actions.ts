@@ -45,7 +45,7 @@ function revalidate(patientId: string) {
   revalidatePath("/patients");
   revalidatePath("/");
   revalidatePath("/earnings");
-  revalidatePath("/team");
+  revalidatePath("/sales-performance");
 }
 
 /** "Paid" per visit means paid at least what's expected for it (treatment + extras). */

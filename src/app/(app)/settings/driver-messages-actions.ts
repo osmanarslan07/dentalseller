@@ -18,7 +18,7 @@ async function requireAdmin() {
 }
 
 function revalidate() {
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/patients", "layout");
   revalidatePath("/transfers");
 }

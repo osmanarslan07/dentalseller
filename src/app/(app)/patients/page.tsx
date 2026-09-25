@@ -26,6 +26,7 @@ export default async function PatientsPage({
   ]);
   return (
     <PatientsClient
+      key={params.q ?? ""}
       patients={patients}
       settings={settings}
       initialQuery={params.q ?? ""}

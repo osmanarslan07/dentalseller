@@ -95,5 +95,5 @@ export async function sendTransfersWhatsApp(transferIds: string[]): Promise<Send
 function revalidate() {
   revalidatePath("/patients", "layout");
   revalidatePath("/transfers");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 }

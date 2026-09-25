@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { logout } from "@/lib/auth-actions";
 import { Permission } from "@/types";
+import { PIN_COOKIE } from "@/lib/nav-pin";
+import { CLINIC_SECTIONS, clinicSectionHref } from "@/app/(app)/settings/clinic/sections";
 
 function HomeIcon({ className = "" }: { className?: string }) {
   return (
@@ -104,32 +106,66 @@ function SettingsIcon({ className = "" }: { className?: string }) {
   );
 }
 
-/** Each page with what it takes to see it (null: everyone). */
-const ALL_LINKS: {
-  href: string;
-  label: string;
-  icon: (props: { className?: string }) => ReactNode;
-  needs: Permission[] | null;
-}[] = [
-  { href: "/", label: "Home", icon: HomeIcon, needs: null },
-  { href: "/patients", label: "Patients", icon: PatientsIcon, needs: ["patients.view"] },
-  { href: "/quotes", label: "Quotes", icon: QuotesIcon, needs: ["quotes.use"] },
-  { href: "/tasks", label: "Tasks", icon: TasksIcon, needs: ["tasks.use"] },
-  { href: "/calendar", label: "Calendar", icon: CalendarIcon, needs: ["patients.view"] },
-  { href: "/transfers", label: "Transfers", icon: TransfersIcon, needs: ["transfers.manage"] },
-  { href: "/earnings", label: "Earnings", icon: EarningsIcon, needs: ["earnings.own"] },
-  { href: "/accounting", label: "Accounting", icon: AccountingIcon, needs: ["accounting.view"] },
-  { href: "/settings", label: "Settings", icon: SettingsIcon, needs: null },
-  { href: "/team", label: "Team", icon: TeamIcon, needs: ["earnings.all", "activity.view"] },
-];
 
-/** The phone bar: the pages used most on the move. Everything else sits under "More". */
-const MOBILE_BAR = ["/", "/patients", "/transfers", "/tasks"];
-const MOBILE_BAR_SIZE = MOBILE_BAR.length;
+function ActivityIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 12h4l3-8 4 16 3-8h4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
-/** A page is active on its own path and on anything under it (/patients/123 → Patients). */
-function isActive(pathname: string, href: string): boolean {
-  return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+function PerformanceIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 17l6-6 4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M15 7h6v6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PinIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SearchIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m20 20-4.2-4.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ProfileIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="9" r="3.5" />
+      <path d="M5 20c1-3.5 3.8-5.5 7-5.5s6 2 7 5.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SlidersIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" strokeLinecap="round" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="m7 10 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function MoreIcon({ className = "" }: { className?: string }) {
@@ -149,30 +185,208 @@ function SignOutIcon({ className = "" }: { className?: string }) {
   );
 }
 
-export function Nav({
+type Badge = "tasks" | "transfers";
+type Item = {
+  href: string;
+  label: string;
+  icon: (props: { className?: string }) => ReactNode;
+  /** What it takes to see it (null: everyone). */
+  needs: Permission[] | null;
+  badge?: Badge;
+};
+
+const CLINIC_SETTINGS_HREF = "/settings/clinic";
+const USERS_HREF = clinicSectionHref("users");
+
+/** The menu, by group. A group with nothing the viewer may see is left out. Sales
+ * performance and Users point at the pages that hold that content until step J gives them
+ * their own. */
+const GROUPS: { label: string; items: Item[] }[] = [
+  {
+    label: "Work",
+    items: [
+      { href: "/", label: "Home", icon: HomeIcon, needs: null },
+      { href: "/patients", label: "Patients", icon: PatientsIcon, needs: ["patients.view"] },
+      { href: "/calendar", label: "Calendar", icon: CalendarIcon, needs: ["patients.view"] },
+      { href: "/transfers", label: "Transfers", icon: TransfersIcon, needs: ["transfers.manage"], badge: "transfers" },
+      { href: "/tasks", label: "Tasks", icon: TasksIcon, needs: ["tasks.use"], badge: "tasks" },
+    ],
+  },
+  {
+    label: "Sales",
+    items: [
+      { href: "/quotes", label: "Quotes", icon: QuotesIcon, needs: ["quotes.use"] },
+      { href: "/earnings", label: "My earnings", icon: EarningsIcon, needs: ["earnings.own"] },
+      { href: "/sales-performance", label: "Sales performance", icon: PerformanceIcon, needs: ["earnings.all"] },
+    ],
+  },
+  {
+    label: "Money",
+    items: [{ href: "/accounting", label: "Accounting", icon: AccountingIcon, needs: ["accounting.view"] }],
+  },
+  {
+    label: "Admin",
+    items: [
+      { href: USERS_HREF, label: "Users", icon: TeamIcon, needs: ["team.view", "team.manage"] },
+      { href: "/activity", label: "Activity", icon: ActivityIcon, needs: ["activity.view"] },
+      {
+        href: CLINIC_SETTINGS_HREF,
+        label: "Clinic settings",
+        icon: SettingsIcon,
+        // every section but the temporary Users one, which has its own entry above
+        needs: CLINIC_SECTIONS.filter((sec) => sec.id !== "users").flatMap((sec) => sec.needs),
+      },
+    ],
+  },
+];
+
+/** The phone bar: the pages used most on the move. Everything else sits under "More". */
+const MOBILE_BAR = ["/", "/patients", "/transfers", "/tasks"];
+const MOBILE_BAR_SIZE = MOBILE_BAR.length;
+
+const MY_PROFILE_HREF = "/settings";
+const FOLD_DELAY_MS = 1000;
+const OPEN_DELAY_MS = 120;
+
+/** A page is active on its own path and on anything under it (/patients/123 → Patients).
+ * Clinic settings covers every settings section except Users, which has its own entry. */
+function isActive(pathname: string, href: string): boolean {
+  if (href === CLINIC_SETTINGS_HREF) {
+    return pathname.startsWith(CLINIC_SETTINGS_HREF) && !pathname.startsWith(USERS_HREF);
+  }
+  return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+}
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  return (words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[1][0]).toUpperCase();
+}
+
+function CountPill({ n, tone, className = "" }: { n: number; tone: "warn" | "info"; className?: string }) {
+  return (
+    <span
+      className={`grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
+        tone === "warn" ? "bg-red-100 text-red-700" : "bg-teal-100 text-teal-700"
+      } ${className}`}
+    >
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
+
+function BadgeDot({ tone, className = "" }: { tone: "warn" | "info"; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`absolute h-2.5 w-2.5 rounded-full border-2 border-white ${tone === "warn" ? "bg-red-500" : "bg-teal-500"} ${className}`}
+    />
+  );
+}
+
+export function AppShell({
   email,
   displayName,
   permissions,
+  userId,
+  clinicName,
+  clinicLogoUrl,
+  badges,
+  initialPinned,
+  banners,
+  children,
 }: {
   email: string;
   displayName: string;
   permissions: Permission[];
+  userId: string;
+  clinicName: string;
+  clinicLogoUrl: string | null;
+  badges: { tasks: number; transfers: number };
+  initialPinned: boolean;
+  /** Support bar and announcements: they sit above the top bar, beside the menu. */
+  banners: ReactNode;
+  children: ReactNode;
 }) {
   const pathname = usePathname();
-  const navRef = useRef<HTMLElement>(null);
-  const linkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  const router = useRouter();
+
+  const [pinned, setPinned] = useState(initialPinned);
+  const [open, setOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const LINKS = ALL_LINKS.filter((l) => !l.needs || l.needs.some((p) => permissions.includes(p)));
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const foldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hovering = useRef(false);
+  const desktopSearchRef = useRef<HTMLInputElement>(null);
+  const phoneSearchRef = useRef<HTMLInputElement>(null);
+  const avatarWrapRef = useRef<HTMLDivElement>(null);
+
+  const expanded = pinned || open;
+  const canSearch = permissions.includes("patients.view");
+
+  const groups = GROUPS.map((g) => ({
+    ...g,
+    items: g.items
+      .filter((i) => !i.needs || i.needs.some((p) => permissions.includes(p)))
+  })).filter((g) => g.items.length > 0);
+  const allItems = groups.flatMap((g) => g.items);
+
   // the usual four when allowed; a page someone can't see gives its place to the next one
   const barLinks = [
-    ...MOBILE_BAR.map((href) => LINKS.find((l) => l.href === href)).filter((l) => !!l),
-    ...LINKS.filter((l) => !MOBILE_BAR.includes(l.href)),
+    ...MOBILE_BAR.map((href) => allItems.find((l) => l.href === href)).filter((l) => !!l),
+    ...allItems.filter((l) => !MOBILE_BAR.includes(l.href)),
   ].slice(0, MOBILE_BAR_SIZE);
-  const moreLinks = LINKS.filter((l) => !barLinks.includes(l));
-  const moreActive = moreLinks.some((l) => isActive(pathname, l.href));
+  const moreGroups = groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => !barLinks.includes(i)) }))
+    .filter((g) => g.items.length > 0);
+  const moreActive = moreGroups.some((g) => g.items.some((i) => isActive(pathname, i.href)));
 
-  // the panel covers the page: no scrolling behind it, Escape closes it
+  const activeItem = allItems.find((i) => isActive(pathname, i.href));
+  const pageTitle = activeItem?.label ?? (pathname === "/settings" ? "My settings" : pathname.startsWith("/settings") ? "Settings" : "");
+
+  const badgeOf = (item: Item): { n: number; tone: "warn" | "info" } | null => {
+    if (item.badge === "tasks" && badges.tasks > 0) return { n: badges.tasks, tone: "warn" };
+    if (item.badge === "transfers" && badges.transfers > 0) return { n: badges.transfers, tone: "info" };
+    return null;
+  };
+
+  const clearTimers = useCallback(() => {
+    if (openTimer.current) clearTimeout(openTimer.current);
+    if (foldTimer.current) clearTimeout(foldTimer.current);
+    openTimer.current = foldTimer.current = null;
+  }, []);
+  useEffect(() => clearTimers, [clearTimers]);
+
+  const openSoon = () => {
+    clearTimers();
+    // a short pause, so passing the pointer over the rail doesn't make it flicker open
+    openTimer.current = setTimeout(() => setOpen(true), OPEN_DELAY_MS);
+  };
+  const foldSoon = () => {
+    clearTimers();
+    foldTimer.current = setTimeout(() => setOpen(false), FOLD_DELAY_MS);
+  };
+  const foldNow = () => {
+    clearTimers();
+    setOpen(false);
+  };
+
+  function togglePin() {
+    const next = !pinned;
+    setPinned(next);
+    clearTimers();
+    setOpen(false);
+    try {
+      document.cookie = `${PIN_COOKIE}_${userId}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+    } catch {
+      // the choice just isn't remembered
+    }
+  }
+
+  // the More sheet covers the page: no scrolling behind it, Escape closes it
   useEffect(() => {
     if (!moreOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMoreOpen(false);
@@ -184,74 +398,291 @@ export function Nav({
     };
   }, [moreOpen]);
 
+  // avatar menu: a click outside or Escape closes it
   useEffect(() => {
-    const activeHref = [...linkRefs.current.keys()].find((href) => isActive(pathname, href));
-    const el = activeHref ? linkRefs.current.get(activeHref) : undefined;
-    const container = navRef.current;
-    if (el && container) {
-      const elRect = el.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      setIndicator({ left: elRect.left - containerRect.left, width: elRect.width });
-    } else {
-      setIndicator(null);
-    }
-  }, [pathname]);
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!avatarWrapRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  // Ctrl/Cmd+K jumps to the search
+  useEffect(() => {
+    if (!canSearch) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (window.matchMedia("(min-width: 768px)").matches) desktopSearchRef.current?.focus();
+        else setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [canSearch]);
+
+  useEffect(() => {
+    if (searchOpen) phoneSearchRef.current?.focus();
+  }, [searchOpen]);
+
+  function submitSearch(e: FormEvent) {
+    e.preventDefault();
+    const q = query.trim();
+    router.push(q ? `/patients?q=${encodeURIComponent(q)}` : "/patients");
+    setSearchOpen(false);
+    desktopSearchRef.current?.blur();
+  }
+
+  const logo = clinicLogoUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={clinicLogoUrl} alt="" className="h-9 w-9 flex-none rounded-[10px] object-contain" />
+  ) : (
+    <span className="grid h-9 w-9 flex-none place-items-center rounded-[10px] bg-teal-600 text-[13px] font-bold tracking-wide text-white">
+      {initials(clinicName)}
+    </span>
+  );
+
+  const avatar = (
+    <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-amber-500 text-xs font-bold text-white">
+      {initials(displayName || email)}
+    </span>
+  );
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.svg" alt="DentalSeller" className="h-10 w-10" />
-              <span className="hidden sm:inline">DentalSeller</span>
-            </Link>
+      {/* desktop / tablet: icon rail, opens over the page */}
+      <nav
+        aria-label="Main menu"
+        onMouseEnter={() => {
+          hovering.current = true;
+          if (!pinned) openSoon();
+        }}
+        onMouseLeave={() => {
+          hovering.current = false;
+          if (!pinned) foldSoon();
+        }}
+        onFocus={() => {
+          if (pinned) return;
+          clearTimers();
+          setOpen(true);
+        }}
+        onBlur={(e) => {
+          if (!pinned && !e.currentTarget.contains(e.relatedTarget) && !hovering.current) foldSoon();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && !pinned) {
+            foldNow();
+            (document.activeElement as HTMLElement | null)?.blur();
+          }
+        }}
+        className={`fixed inset-y-0 left-0 z-50 hidden flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width,box-shadow] duration-200 ease-out motion-reduce:transition-none md:flex print:hidden ${
+          expanded ? "w-60" : "w-16"
+        } ${open && !pinned ? "shadow-xl" : ""}`}
+      >
+        <Link href="/" className="flex h-14 flex-none items-center gap-2.5 whitespace-nowrap border-b border-slate-200 pl-3.5 pr-3" title={clinicName}>
+          {logo}
+          <span className={`min-w-0 truncate text-sm font-semibold text-slate-900 transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"}`}>
+            {clinicName}
+          </span>
+        </Link>
 
-            <nav ref={navRef} className="relative hidden gap-1 md:flex">
-              {indicator && (
-                <span
-                  className="absolute inset-y-0 rounded-lg bg-teal-50 transition-all duration-300 ease-out"
-                  style={{ left: indicator.left, width: indicator.width }}
-                />
-              )}
-              {LINKS.map((link) => {
-                const active = isActive(pathname, link.href);
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2">
+          {groups.map((group, gi) => (
+            <div key={group.label}>
+              <div className={`relative flex items-center pl-3 ${gi === 0 ? "h-2" : "h-7"}`}>
+                {gi > 0 && (
+                  <>
+                    <span className={`text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"}`}>
+                      {group.label}
+                    </span>
+                    <span aria-hidden className={`absolute left-3 h-px w-6 bg-slate-300 transition-opacity duration-150 ${expanded ? "opacity-0" : "opacity-100"}`} />
+                  </>
+                )}
+              </div>
+              {group.items.map((item) => {
+                const active = isActive(pathname, item.href);
+                const badge = badgeOf(item);
+                const Icon = item.icon;
                 return (
                   <Link
-                    key={link.href}
-                    href={link.href}
-                    ref={(el) => {
-                      if (el) linkRefs.current.set(link.href, el);
+                    key={item.href}
+                    href={item.href}
+                    title={expanded ? undefined : item.label}
+                    aria-current={active ? "page" : undefined}
+                    onClick={(e) => {
+                      // a click is a choice: the menu folds at once (unless pinned)
+                      if (!pinned) {
+                        foldNow();
+                        e.currentTarget.blur();
+                      }
                     }}
-                    className={`relative z-10 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      active ? "text-teal-700" : "text-slate-600 hover:bg-slate-100"
+                    className={`relative flex h-10 items-center gap-3.5 whitespace-nowrap rounded-[9px] pl-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
+                      active ? "bg-teal-50 font-semibold text-teal-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     }`}
                   >
-                    {link.label}
+                    <Icon className="h-[22px] w-[22px] flex-none" />
+                    <span className={`transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"}`}>{item.label}</span>
+                    {badge && (
+                      <>
+                        <CountPill
+                          n={badge.n}
+                          tone={badge.tone}
+                          className={`ml-auto mr-2 transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"}`}
+                        />
+                        {!expanded && <BadgeDot tone={badge.tone} className="left-[29px] top-1.5" />}
+                        <span className="sr-only">{`${badge.n} ${item.badge === "tasks" ? "overdue" : "to confirm"}`}</span>
+                      </>
+                    )}
                   </Link>
                 );
               })}
-            </nav>
-          </div>
-
-          <div className="hidden items-center gap-3 md:flex">
-            <span className="text-sm text-slate-500" title={email}>
-              {displayName}
-            </span>
-            <form action={logout}>
-              <button className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
-                Sign out
-              </button>
-            </form>
-          </div>
-
-          <span className="max-w-[45%] truncate text-sm text-slate-500 md:hidden" title={email}>
-            {displayName}
-          </span>
+            </div>
+          ))}
         </div>
-      </header>
 
+        <div className="flex-none border-t border-slate-200 p-2">
+          <button
+            type="button"
+            onClick={togglePin}
+            aria-pressed={pinned}
+            title={expanded ? undefined : "Keep menu open"}
+            className={`flex h-10 w-full items-center gap-3.5 whitespace-nowrap rounded-[9px] pl-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
+              pinned ? "text-teal-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <PinIcon className={`h-[22px] w-[22px] flex-none ${pinned ? "fill-teal-100" : ""}`} />
+            <span className={`transition-opacity duration-150 ${expanded ? "opacity-100" : "opacity-0"}`}>
+              {pinned ? "Menu kept open" : "Keep menu open"}
+            </span>
+          </button>
+        </div>
+      </nav>
+
+      <div className={`transition-[padding] duration-200 ease-out motion-reduce:transition-none print:pl-0 ${pinned ? "md:pl-60" : "md:pl-16"}`}>
+        {banners}
+
+        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur print:hidden">
+          <div className="flex h-14 items-center gap-3 px-4 sm:px-6 lg:px-8">
+            {/* phone: who we are; desktop: where we are */}
+            <Link href="/" className="flex min-w-0 items-center gap-2 md:hidden">
+              {logo}
+              <span className="truncate text-sm font-semibold text-slate-900">{clinicName}</span>
+            </Link>
+            <p className="hidden min-w-[6rem] truncate text-[15px] font-semibold text-slate-900 md:block">{pageTitle}</p>
+
+            {canSearch && (
+              <form
+                onSubmit={submitSearch}
+                role="search"
+                className="hidden h-9 max-w-md flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-400 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/20 md:flex"
+              >
+                <SearchIcon className="h-4 w-4 flex-none" />
+                <input
+                  ref={desktopSearchRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search patients…"
+                  aria-label="Search patients"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                />
+                <kbd className="rounded border border-slate-300 px-1.5 font-mono text-[11px] text-slate-400">Ctrl K</kbd>
+              </form>
+            )}
+
+            <div className="ml-auto flex items-center gap-1">
+              {canSearch && (
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen((o) => !o)}
+                  aria-label="Search patients"
+                  aria-expanded={searchOpen}
+                  className="grid h-9 w-9 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+                >
+                  <SearchIcon className="h-5 w-5" />
+                </button>
+              )}
+
+              <div ref={avatarWrapRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((o) => !o)}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  aria-label="Account menu"
+                  className="flex items-center gap-1.5 rounded-full p-1 pr-1.5 hover:bg-slate-100"
+                >
+                  {avatar}
+                  <ChevronIcon className="hidden h-4 w-4 text-slate-400 sm:block" />
+                </button>
+                {menuOpen && (
+                  <div role="menu" className="animate-fade-in absolute right-0 top-11 z-50 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                    <div className="mb-1 border-b border-slate-100 px-2.5 pb-2.5 pt-2">
+                      <p className="truncate text-sm font-semibold text-slate-900">{displayName || email}</p>
+                      <p className="truncate text-xs text-slate-400" title={email}>
+                        {email}
+                      </p>
+                    </div>
+                    <Link
+                      role="menuitem"
+                      href={MY_PROFILE_HREF}
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    >
+                      <ProfileIcon className="h-[18px] w-[18px]" />
+                      My profile
+                    </Link>
+                    <Link
+                      role="menuitem"
+                      href="/settings"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    >
+                      <SlidersIcon className="h-[18px] w-[18px]" />
+                      My settings
+                    </Link>
+                    <form action={logout}>
+                      <button
+                        role="menuitem"
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      >
+                        <SignOutIcon className="h-[18px] w-[18px]" />
+                        Sign out
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {canSearch && searchOpen && (
+            <form onSubmit={submitSearch} role="search" className="border-t border-slate-100 px-4 py-2 md:hidden">
+              <div className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-400 focus-within:border-teal-500">
+                <SearchIcon className="h-4 w-4 flex-none" />
+                <input
+                  ref={phoneSearchRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search patients…"
+                  aria-label="Search patients"
+                  enterKeyHint="search"
+                  className="min-w-0 flex-1 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400"
+                />
+              </div>
+            </form>
+          )}
+        </header>
+
+        {children}
+      </div>
+
+      {/* phone: the More sheet, grouped like the sidebar */}
       {moreOpen && (
         <div className="animate-fade-in fixed inset-0 z-40 bg-slate-900/40 md:hidden print:hidden" onClick={() => setMoreOpen(false)} aria-hidden />
       )}
@@ -260,38 +691,58 @@ export function Nav({
           id="more-menu"
           role="dialog"
           aria-label="More pages"
-          className="animate-fade-in-up fixed inset-x-0 z-50 rounded-t-2xl bg-white px-4 pb-3 pt-4 shadow-xl md:hidden print:hidden"
+          className="animate-fade-in-up fixed inset-x-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-white px-4 pb-3 pt-4 shadow-xl md:hidden print:hidden"
           style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
         >
-          <div className="grid grid-cols-3 gap-2">
-            {moreLinks.map((link) => {
-              const active = isActive(pathname, link.href);
-              const Icon = link.icon;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMoreOpen(false)}
-                  className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs font-medium ${
-                    active ? "bg-teal-50 text-teal-700" : "text-slate-600 active:bg-slate-100"
-                  }`}
-                >
-                  <Icon className="h-6 w-6" />
-                  {link.label}
-                </Link>
-              );
-            })}
-          </div>
-          <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-            <span className="min-w-0 truncate text-sm text-slate-500" title={email}>
-              {displayName || email}
-            </span>
-            <form action={logout}>
-              <button className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
-                <SignOutIcon className="h-5 w-5" />
-                Sign out
-              </button>
-            </form>
+          {moreGroups.map((group) => (
+            <div key={group.label} className="pb-2">
+              <p className="pl-1 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">{group.label}</p>
+              <div className="mt-1 grid grid-cols-3 gap-2">
+                {group.items.map((item) => {
+                  const active = isActive(pathname, item.href);
+                  const badge = badgeOf(item);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMoreOpen(false)}
+                      className={`relative flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-center text-xs font-medium leading-tight ${
+                        active ? "bg-teal-50 text-teal-700" : "text-slate-600 active:bg-slate-100"
+                      }`}
+                    >
+                      <Icon className="h-6 w-6" />
+                      {item.label}
+                      {badge && <BadgeDot tone={badge.tone} className="right-[calc(50%-20px)] top-2" />}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <div className="mt-1 border-t border-slate-100 pt-3">
+            <div className="flex items-center gap-3">
+              {avatar}
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900" title={email}>
+                {displayName || email}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1">
+              <Link href={MY_PROFILE_HREF} onClick={() => setMoreOpen(false)} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
+                <ProfileIcon className="h-5 w-5" />
+                My profile
+              </Link>
+              <Link href="/settings" onClick={() => setMoreOpen(false)} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
+                <SlidersIcon className="h-5 w-5" />
+                My settings
+              </Link>
+              <form action={logout} className="ml-auto">
+                <button className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
+                  <SignOutIcon className="h-5 w-5" />
+                  Sign out
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}
@@ -302,16 +753,18 @@ export function Nav({
       >
         {barLinks.map((link) => {
           const active = isActive(pathname, link.href) && !moreOpen;
+          const badge = badgeOf(link);
           const Icon = link.icon;
           return (
             <Link
               key={link.href}
               href={link.href}
               onClick={() => setMoreOpen(false)}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${active ? "text-teal-600" : "text-slate-500"}`}
+              className={`relative flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${active ? "text-teal-600" : "text-slate-500"}`}
             >
               <Icon className="h-6 w-6" />
               {link.label}
+              {badge && <BadgeDot tone={badge.tone} className="left-[calc(50%+6px)] top-2.5" />}
             </Link>
           );
         })}

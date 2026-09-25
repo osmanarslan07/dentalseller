@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getMyProfile, getSettings } from "@/lib/data";
+import { getClinicConfig, getMyProfile, getNavBadges, getSettings } from "@/lib/data";
+import { todayIsoLocal } from "@/lib/balance";
+import { cookies } from "next/headers";
+import { PIN_COOKIE } from "@/lib/nav-pin";
 import { getTryRate } from "@/lib/currency";
-import { Nav } from "@/components/Nav";
+import { AppShell } from "@/components/Nav";
 import { PrivacyProvider } from "@/components/privacy";
 import { CelebrationSoundProvider } from "@/components/celebration-sound";
 import { ToastProvider } from "@/components/Toast";
@@ -53,10 +56,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }
   }
 
-  const [settings, announcements] = await Promise.all([
+  const [settings, announcements, clinicConfig, badges, cookieStore] = await Promise.all([
     getSettings(supabase, viewer.userId),
     getLiveAnnouncements(supabase),
+    getClinicConfig(supabase),
+    getNavBadges(
+      supabase,
+      { tasks: viewer.permissions.includes("tasks.use"), transfers: viewer.permissions.includes("transfers.manage") },
+      todayIsoLocal()
+    ),
+    cookies(),
   ]);
+  const menuPinned = cookieStore.get(`${PIN_COOKIE}_${viewer.authUserId}`)?.value === "1";
   const tryRate =
     settings.show_try && settings.currency !== "TRY" ? await getTryRate(settings.currency) : null;
 
@@ -67,12 +78,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <PermissionsProvider permissions={viewer.permissions} modules={viewer.modules}>
         <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
           <CelebrationSoundProvider initialEnabled={settings.celebration_sound}>
-            {viewer.support && <SupportBar support={viewer.support} viewAsId={viewer.userId} />}
-            <AnnouncementBanner announcements={announcements} />
-            <Nav email={viewer.email} displayName={viewer.displayName ?? ""} permissions={viewer.permissions} />
-            <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-8 lg:px-8">
-              <PageTransition>{children}</PageTransition>
-            </main>
+            <AppShell
+              email={viewer.email}
+              displayName={viewer.displayName ?? ""}
+              permissions={viewer.permissions}
+              userId={viewer.authUserId}
+              clinicName={clinicConfig.clinicName}
+              clinicLogoUrl={clinicConfig.clinicLogoUrl}
+              badges={badges}
+              initialPinned={menuPinned}
+              banners={
+                <>
+                  {viewer.support && <SupportBar support={viewer.support} viewAsId={viewer.userId} />}
+                  <AnnouncementBanner announcements={announcements} />
+                </>
+              }
+            >
+              <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-8 lg:px-8">
+                <PageTransition>{children}</PageTransition>
+              </main>
+            </AppShell>
           </CelebrationSoundProvider>
         </PrivacyProvider>
         </PermissionsProvider>

@@ -9,6 +9,9 @@ import { Badge, Card } from "@/components/ui";
 import { AddUserPanel } from "./AddUserPanel";
 import { SellersCard } from "./SellersCard";
 import { STATUS_LABELS, StatusBadge, lastActiveText, parseStatus } from "./status";
+import { WORKLOAD_DAYS, coordinatorWorkload, getCoordinatorOptions } from "@/lib/coordinators";
+import { patientsHrefForCoordinator } from "@/lib/people-filter";
+import { todayIsoLocal } from "@/lib/balance";
 
 type Search = { tab?: string; q?: string; role?: string; status?: string };
 
@@ -61,6 +64,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           clinicId={viewer.clinicId}
           currentUserId={viewer.userId}
           canManage={can(viewer, "team.manage")}
+          canPatients={can(viewer, "patients.view")}
           q={(params.q ?? "").trim().slice(0, 100)}
           role={params.role ?? ""}
           status={parseStatus(params.status)}
@@ -77,6 +81,7 @@ async function AccountsTab({
   clinicId,
   currentUserId,
   canManage,
+  canPatients,
   q,
   role,
   status,
@@ -85,6 +90,7 @@ async function AccountsTab({
   clinicId: string;
   currentUserId: string;
   canManage: boolean;
+  canPatients: boolean;
   q: string;
   role: string;
   status: AccountStatus | null;
@@ -204,7 +210,74 @@ async function AccountsTab({
           </table>
         )}
       </Card>
+
+      {canPatients && <WorkloadCard supabase={supabase} clinicId={clinicId} profiles={profiles} />}
     </>
+  );
+}
+
+/** Who coordinates how much: patients with a visit still to come, and arrivals soon. The
+ * numbers open the patients list filtered to that coordinator. */
+async function WorkloadCard({
+  supabase,
+  clinicId,
+  profiles,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  clinicId: string;
+  profiles: Awaited<ReturnType<typeof getProfiles>>;
+}) {
+  const patients = await getPatients(supabase);
+  const coordinators = await getCoordinatorOptions(supabase, clinicId, profiles, patients);
+  const workload = coordinatorWorkload(patients, todayIsoLocal());
+  const unassigned = patients.filter((p) => !p.coordinator_id).length;
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b border-slate-100 px-5 py-4">
+        <h2 className="text-base font-semibold text-slate-900">Coordinators</h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Patients with a visit still to come, and arrivals in the next {WORKLOAD_DAYS} days.{" "}
+          <Link href="/patients?coordinator=none" className="font-medium text-teal-700 hover:underline">
+            {unassigned} patient{unassigned === 1 ? "" : "s"} without a coordinator
+          </Link>
+        </p>
+      </div>
+      {coordinators.length === 0 ? (
+        <p className="px-5 py-8 text-center text-sm text-slate-400">Nobody can coordinate patients yet.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-5 py-2.5">Coordinator</th>
+              <th className="px-3 py-2.5 text-right">Active patients</th>
+              <th className="px-5 py-2.5 text-right">Arriving</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {coordinators.map((c) => {
+              const w = workload.get(c.id) ?? { active: 0, arriving: 0 };
+              return (
+                <tr key={c.id}>
+                  <td className="px-5 py-2.5">
+                    <Link href={`/users/${c.id}`} className="font-medium text-slate-800 hover:underline">
+                      {c.name}
+                    </Link>
+                    {!c.pickable && <span className="ml-1.5 text-xs text-slate-400">(can no longer coordinate)</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">
+                    <Link href={patientsHrefForCoordinator(c.id)} className="text-teal-700 hover:underline">
+                      {w.active}
+                    </Link>
+                  </td>
+                  <td className="px-5 py-2.5 text-right tabular-nums text-slate-700">{w.arriving}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }
 

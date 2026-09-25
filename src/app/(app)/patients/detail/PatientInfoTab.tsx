@@ -1,5 +1,6 @@
 "use client";
 
+import type { CoordinatorOption } from "@/lib/coordinators";
 import { FormEvent, ReactNode, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -124,9 +125,11 @@ export function PatientInfoTab({
   sellers,
   currentUserId,
   canAssignSellers,
+  coordinators,
   files,
   onOpenVisit,
 }: {
+  coordinators: CoordinatorOption[];
   files: PatientFile[];
   patient: Patient;
   visits: VisitView[];
@@ -177,7 +180,7 @@ export function PatientInfoTab({
 
         <TreatmentCard patient={patient} letterItems={letterItems} onSave={save} />
 
-        <SaleCard patient={patient} profiles={profiles} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} komoIsLink={komoIsLink} onSave={save} />
+        <SaleCard patient={patient} coordinators={coordinators} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} komoIsLink={komoIsLink} onSave={save} />
 
         <EditCard
           title="Notes"
@@ -310,7 +313,7 @@ function SecondVisitFields({ initial, recallMonths }: { initial: boolean; recall
 
 function SaleCard({
   patient,
-  profiles,
+  coordinators,
   sellers,
   currentUserId,
   canAssignSellers,
@@ -318,7 +321,7 @@ function SaleCard({
   onSave,
 }: {
   patient: Patient;
-  profiles: Profile[];
+  coordinators: CoordinatorOption[];
   sellers: Seller[];
   currentUserId: string;
   canAssignSellers: boolean;
@@ -402,7 +405,7 @@ function SaleCard({
               </>
             )}
           </div>
-          <CoordinatorField patient={patient} profiles={profiles} currentUserId={currentUserId} />
+          <CoordinatorField patient={patient} coordinators={coordinators} currentUserId={currentUserId} />
           <Field label="Confirmed">{patient.confirmation_date ? shortDate(patient.confirmation_date, true) : <span className="font-normal text-slate-400">Not set</span>}</Field>
           <Field label="Komo reference">
             {patient.komo_reference ? (
@@ -437,17 +440,25 @@ function SaleCard({
 }
 
 /** The team member who follows this patient up. Anyone who can edit the patient can change it. */
-function CoordinatorField({ patient, profiles, currentUserId }: { patient: Patient; profiles: Profile[]; currentUserId: string }) {
+/** Only members who can edit patients are offered (the database checks the same); the
+ * current coordinator stays shown even if they've since been deactivated. */
+function CoordinatorField({
+  patient,
+  coordinators,
+  currentUserId,
+}: {
+  patient: Patient;
+  coordinators: CoordinatorOption[];
+  currentUserId: string;
+}) {
   const router = useRouter();
   const { showToast } = useToast();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(patient.coordinator_id ?? "");
   const [pending, startTransition] = useTransition();
   const canEdit = useCan("patients.edit");
-  const current = profiles.find((p) => p.id === patient.coordinator_id);
-  const team = profiles
-    .filter((p) => p.is_active || p.id === patient.coordinator_id)
-    .sort((a, b) => (a.display_name || "").localeCompare(b.display_name || ""));
+  const current = coordinators.find((c) => c.id === patient.coordinator_id);
+  const team = coordinators.filter((c) => c.pickable || c.id === patient.coordinator_id);
 
   function save() {
     if (value === (patient.coordinator_id ?? "")) return setEditing(false);
@@ -470,10 +481,11 @@ function CoordinatorField({ patient, profiles, currentUserId }: { patient: Patie
         <div className="flex flex-col gap-2">
           <Select value={value} onChange={(e) => setValue(e.target.value)} disabled={pending} autoFocus aria-label="Coordinator">
             <option value="">No coordinator — the seller follows up</option>
-            {team.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.display_name || "Unnamed member"}
-                {p.id === currentUserId ? " (you)" : ""}
+            {team.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.id === currentUserId ? " (you)" : ""}
+                {c.pickable ? "" : " (can no longer coordinate)"}
               </option>
             ))}
           </Select>
@@ -489,7 +501,7 @@ function CoordinatorField({ patient, profiles, currentUserId }: { patient: Patie
       ) : (
         <>
           <span className="font-semibold">
-            {current ? current.display_name || "Unnamed member" : <span className="font-normal text-slate-400">None — the seller follows up</span>}
+            {current ? current.name : patient.coordinator_id ? "Former member" : <span className="font-normal text-slate-400">None — the seller follows up</span>}
           </span>
           {canEdit && (
           <button

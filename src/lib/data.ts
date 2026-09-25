@@ -4,6 +4,7 @@ import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { visitCosts } from "@/lib/commission";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer } from "@/lib/viewer";
+import { SavedFilters, parseSavedFilters } from "@/lib/people-filter";
 
 /** Cold-start Supabase reads occasionally flake with a network error; one retry clears it. */
 async function withRetry<T>(fn: () => PromiseLike<T>): Promise<T> {
@@ -145,6 +146,15 @@ export async function getSettings(supabase: SupabaseClient, userId: string): Pro
   };
 }
 
+/** The viewer's saved default Seller / Coordinator filters, per page (step K). */
+export async function getSavedFilters(supabase: SupabaseClient, userId: string): Promise<SavedFilters> {
+  const { data, error } = await withRetry(() =>
+    supabase.from("settings").select("saved_filters").eq("user_id", userId).maybeSingle()
+  );
+  if (error) throw error;
+  return parseSavedFilters(data?.saved_filters);
+}
+
 /** One row per clinic — clinic-wide settings not tied to any one seller (the shared Telegram
  * group chat, confirmation-letter/quote-offer branding). Readable by any active seller of that
  * clinic; only its admins can write it (see the clinic_config RLS policies). */
@@ -208,7 +218,7 @@ export async function getTransferCompanies(supabase: SupabaseClient): Promise<Tr
 
 /** A transfer with who it's for — the operations list across all patients. */
 export type TransferWithPatient = Transfer & {
-  patient: { id: string; name: string; phone: string | null; responsible_seller_id: string };
+  patient: { id: string; name: string; phone: string | null; responsible_seller_id: string; coordinator_id: string | null };
 };
 
 /** Every transfer dated from..to (inclusive, YYYY-MM-DD), in pickup order. */
@@ -222,7 +232,7 @@ export async function getTransfersInRange(
   const { data, error } = await withRetry(() =>
     supabase
       .from("transfers")
-      .select("*, patient:patients(id, name, phone, responsible_seller_id)")
+      .select("*, patient:patients(id, name, phone, responsible_seller_id, coordinator_id)")
       .eq("clinic_id", clinicId)
       .gte("transfer_date", from)
       .lte("transfer_date", to)

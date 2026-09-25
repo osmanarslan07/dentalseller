@@ -276,6 +276,8 @@ export function describeActivity(
       return `${actor} changed their photo`;
     case "avatar_removed":
       return `${actor} removed their photo`;
+    case "coordinator_handover":
+      return `${actor} handed ${target}'s coordinated patients over${entry.detail ? ` (${entry.detail})` : ""}`;
     case "member_profile_updated":
       return `${actor} changed ${target}'s details${entry.detail ? ` (${entry.detail})` : ""}`;
     case "telegram_link_generated":

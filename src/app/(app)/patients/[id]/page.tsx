@@ -36,6 +36,7 @@ export default async function PatientPage({
       sellers={ctx.sellers}
       currentUserId={ctx.currentUserId}
       canAssignSellers={ctx.canAssignSellers}
+      coordinators={ctx.coordinators}
       transfers={transfers}
       files={files}
       companies={companies}

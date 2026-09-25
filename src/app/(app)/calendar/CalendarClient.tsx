@@ -17,7 +17,9 @@ import {
 } from "date-fns";
 import { Patient, Seller } from "@/types";
 import { sellerLabel } from "@/lib/sellers";
-import { Button, Card, Select } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
+import { PeopleFilter, matchesPeopleFilter } from "@/lib/people-filter";
+import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 import { CalendarEvent, KIND_STYLES, flattenCalendarEvents, groupEventsByDate } from "@/lib/calendar-events";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -26,10 +28,16 @@ const MAX_VISIBLE = 3;
 export function CalendarClient({
   patients,
   sellers,
+  coordinators,
+  initialFilter,
+  savedFilter,
   currentUserId,
 }: {
   patients: Patient[];
   sellers: Seller[];
+  coordinators: PersonOption[];
+  initialFilter: PeopleFilter;
+  savedFilter: PeopleFilter;
   currentUserId: string;
 }) {
   const sellerName = useMemo(() => {
@@ -37,24 +45,24 @@ export function CalendarClient({
     return (id: string) => map.get(id) ?? "Unknown";
   }, [sellers]);
 
+  const [people, setPeople] = useState<PeopleFilter>(initialFilter);
+
   // Only sellers who actually have a patient here — no point listing an empty roster.
   const sellerOptions = useMemo(() => {
     const ids = new Set(patients.map((p) => p.responsible_seller_id));
+    ids.add(people.seller);
     return sellers
       .filter((s) => ids.has(s.id))
       .map((s) => ({ id: s.id, name: sellerLabel(s) }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [patients, sellers]);
+  }, [patients, sellers, people.seller]);
 
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [sellerFilter, setSellerFilter] = useState<string>("all");
-
-  const filteredPatients = useMemo(() => {
-    if (sellerFilter === "all") return patients;
-    const wanted = sellerFilter === "mine" ? currentUserId : sellerFilter;
-    return patients.filter((p) => p.responsible_seller_id === wanted);
-  }, [patients, sellerFilter, currentUserId]);
+  const filteredPatients = useMemo(
+    () => patients.filter((p) => matchesPeopleFilter(p, people, currentUserId)),
+    [patients, people, currentUserId]
+  );
 
   const events = useMemo(() => flattenCalendarEvents(filteredPatients), [filteredPatients]);
   const eventsByDate = useMemo(() => groupEventsByDate(events), [events]);
@@ -110,21 +118,15 @@ export function CalendarClient({
           <LegendDot className="bg-purple-100" label="Departure (V2)" />
           <LegendDot className="bg-slate-200" label="Visit (self-arranged)" />
         </div>
-        <Select
-          value={sellerFilter}
-          onChange={(e) => setSellerFilter(e.target.value)}
-          className="max-w-[180px]"
-        >
-          <option value="all">All sellers</option>
-          <option value="mine">Mine only</option>
-          {sellerOptions
-            .filter((s) => s.id !== currentUserId)
-            .map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-        </Select>
+        <PeopleFilterBar
+          page="calendar"
+          value={people}
+          onChange={setPeople}
+          sellers={sellerOptions}
+          coordinators={coordinators}
+          savedDefault={savedFilter}
+          currentUserId={currentUserId}
+        />
       </div>
 
       <div className="space-y-3 md:hidden">

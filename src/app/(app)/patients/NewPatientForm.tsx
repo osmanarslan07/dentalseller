@@ -15,6 +15,7 @@ import { sellerNameMap } from "@/lib/sellers";
 import { createPatient } from "./actions";
 import { Toggle } from "./detail/bits";
 import { pickableSellers } from "@/lib/sellers";
+import type { CoordinatorOption } from "@/lib/coordinators";
 
 /** Carried over from the patient being duplicated but not shown — the rest of the group
  * booking (same flights and hotel), edited later on the patient page like anyone else's. */
@@ -39,8 +40,11 @@ export function NewPatientForm({
   sellers,
   currentUserId,
   canAssignSellers,
+  coordinators,
   existingPatients,
 }: {
+  /** Members who can coordinate patients (patients.edit). */
+  coordinators: CoordinatorOption[];
   /** Prefill from an existing patient — for group bookings sharing a flight/hotel. */
   duplicateFrom: Patient | null;
   sellers: Seller[];
@@ -61,6 +65,11 @@ export function NewPatientForm({
     const me = pickable.find((s) => s.id === currentUserId);
     return { sellerId: me?.id ?? pickable[0]?.id ?? currentUserId, newName: null };
   });
+  // null = not chosen: you when you enter the patient for someone else, else nobody (the
+  // seller follows up) — the same default as before there was a picker
+  const [coordinatorChoice, setCoordinatorChoice] = useState<string | null>(null);
+  const sellingMyself = seller.newName == null && seller.sellerId === currentUserId;
+  const coordinatorId = coordinatorChoice ?? (sellingMyself ? "" : currentUserId);
   const [needsVisit2, setNeedsVisit2] = useState(duplicateFrom ? duplicateFrom.needs_visit2 : true);
   const src = duplicateFrom;
   const recall = src?.visit2_recall_months ?? 3;
@@ -136,11 +145,21 @@ export function NewPatientForm({
             <div className="sm:col-span-2">
               <Label>Seller</Label>
               <SellerPicker sellers={sellers} value={seller} onChange={setSeller} currentUserId={currentUserId} allowNew formFields />
-              {(seller.newName != null || seller.sellerId !== currentUserId) && (
-                <p className="mt-1.5 text-xs text-slate-500">You&apos;ll be this patient&apos;s coordinator — the one who follows up.</p>
-              )}
             </div>
           )}
+          <div className="sm:col-span-2">
+            <Label>Coordinator — who follows the patient up</Label>
+            <input type="hidden" name="coordinator_id" value={coordinatorId} />
+            <Select value={coordinatorId} onChange={(e) => setCoordinatorChoice(e.target.value)} aria-label="Coordinator">
+              <option value="">Nobody — the seller follows up</option>
+              {coordinators.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.id === currentUserId ? " (you)" : ""}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
 
         <div className="border-t border-slate-100" />

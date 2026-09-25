@@ -1,5 +1,6 @@
 "use client";
 
+import type { CoordinatorOption } from "@/lib/coordinators";
 import { FormEvent, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -34,6 +35,7 @@ export function PatientDetail({
   sellers = [],
   currentUserId = "",
   canAssignSellers = false,
+  coordinators = [],
   transfers = [],
   files = [],
   companies = [],
@@ -53,6 +55,8 @@ export function PatientDetail({
   sellers?: Seller[];
   currentUserId?: string;
   canAssignSellers?: boolean;
+  /** Who can coordinate patients (see getCoordinatorOptions). */
+  coordinators?: CoordinatorOption[];
   /** Every transfer of this patient, all visits. */
   transfers?: Transfer[];
   /** The patient's files (Patient info tab). */
@@ -356,7 +360,7 @@ export function PatientDetail({
         />
       )}
       {activeTab === "info" && (
-        <PatientInfoTab patient={patient} visits={visits} profiles={profiles} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} files={files} onOpenVisit={setTab} />
+        <PatientInfoTab patient={patient} visits={visits} profiles={profiles} sellers={sellers} currentUserId={currentUserId} canAssignSellers={canAssignSellers} coordinators={coordinators} files={files} onOpenVisit={setTab} />
       )}
       {activeTab === "history" && <HistoryTab patient={patient} profiles={profiles} sellers={sellers} entries={history} error={historyError} />}
 

@@ -10,6 +10,8 @@ import { driverDayMessage, driverMessage, isWhatsAppable, waDigits } from "@/lib
 import { DriverSend, DriverMessagesOffHint, FallbackLink, sendLabel, useDriverMessages, WhatsAppDelivery } from "@/components/driver-messages";
 import { Driver, DriverMessagesMode, TransferCompany, TransferKind, TransferStatus } from "@/types";
 import { markTransferSent, markTransfersSent, setTransferStatus } from "../patients/transfer-actions";
+import { PeopleFilter, isAllFilter, matchesPeopleFilter } from "@/lib/people-filter";
+import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 
 const KIND: Record<TransferKind, { label: string; tone: "green" | "amber" | "slate" }> = {
   arrival: { label: "Arrival", tone: "green" },
@@ -74,6 +76,11 @@ export function TransfersClient({
   dates,
   prevDate,
   nextDate,
+  sellers,
+  coordinators,
+  initialFilter,
+  savedFilter,
+  currentUserId,
 }: {
   transfers: TransferWithPatient[];
   companies: TransferCompany[];
@@ -85,7 +92,16 @@ export function TransfersClient({
   dates: string[];
   prevDate: string;
   nextDate: string;
+  sellers: PersonOption[];
+  coordinators: PersonOption[];
+  initialFilter: PeopleFilter;
+  savedFilter: PeopleFilter;
+  currentUserId: string;
 }) {
+  const [people, setPeople] = useState<PeopleFilter>(initialFilter);
+  // the filter narrows what is listed; a driver's whole-day message below always covers all
+  // of their transfers, whatever the filter, so a driver never gets half a day
+  const shown = transfers.filter((t) => matchesPeopleFilter(t.patient, people, currentUserId));
   const router = useRouter();
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
@@ -93,8 +109,8 @@ export function TransfersClient({
   const messages = useDriverMessages(driverMessages);
 
   const href = (date: string, d = days) => `/transfers?date=${date}&days=${d}`;
-  const noDriver = transfers.filter((t) => !t.driver_id).length;
-  const notSent = transfers.filter((t) => t.driver_id && t.status === "planned").length;
+  const noDriver = shown.filter((t) => !t.driver_id).length;
+  const notSent = shown.filter((t) => t.driver_id && t.status === "planned").length;
 
   function run(id: string, fn: () => Promise<void>, ok?: string) {
     setBusyId(id);
@@ -124,7 +140,7 @@ export function TransfersClient({
 
   /** The driver's whole day in one message — the transfers still to do. */
   function daySend(group: DriverGroup, date: string): DriverSend {
-    const open = group.items.filter((t) => t.status !== "done");
+    const open = transfers.filter((t) => t.transfer_date === date && t.driver_id === group.key && t.status !== "done");
     return {
       key: `${group.key}-${date}`,
       transferIds: open.map((t) => t.id),
@@ -194,8 +210,23 @@ export function TransfersClient({
         </div>
       </div>
 
+      <PeopleFilterBar
+        page="transfers"
+        value={people}
+        onChange={setPeople}
+        sellers={sellers}
+        coordinators={coordinators}
+        savedDefault={savedFilter}
+        currentUserId={currentUserId}
+      />
+      {!isAllFilter(people) && (
+        <p className="-mt-3 text-xs text-slate-500">
+          Showing only the filtered patients&apos; transfers. A driver&apos;s day list still includes all of their transfers.
+        </p>
+      )}
+
       {dates.map((date) => {
-        const dayItems = transfers.filter((t) => t.transfer_date === date);
+        const dayItems = shown.filter((t) => t.transfer_date === date);
         return (
           <section key={date} className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

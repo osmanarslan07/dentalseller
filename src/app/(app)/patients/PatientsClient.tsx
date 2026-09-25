@@ -19,6 +19,8 @@ import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
 import { deletePatient, sendPatientTelegramMessage } from "./actions";
 import { patientDueNow, todayIsoLocal } from "@/lib/balance";
+import { PeopleFilter, matchesPeopleFilter } from "@/lib/people-filter";
+import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 
 /** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. */
 function visitMoney(p: Patient, key: "visit1" | "visit2", currency: string): string {
@@ -324,14 +326,26 @@ export function PatientsClient({
   settings,
   initialQuery,
   sellers,
+  coordinators,
+  initialFilter,
+  savedFilter,
   currentUserId,
 }: {
   patients: Patient[];
   settings: CommissionSettings;
   initialQuery: string;
   sellers: Seller[];
+  /** Everyone who coordinates or may coordinate patients. */
+  coordinators: PersonOption[];
+  /** From the link (?seller= / ?coordinator=) or else the viewer's saved default. */
+  initialFilter: PeopleFilter;
+  savedFilter: PeopleFilter;
   currentUserId: string;
 }) {
+  const coordinatorName = useMemo(() => {
+    const map = new Map(coordinators.map((c) => [c.id, c.name]));
+    return (id: string | null) => (id ? (map.get(id) ?? "Former member") : null);
+  }, [coordinators]);
   const sellerName = useMemo(() => {
     const map = new Map(sellers.map((s) => [s.id, sellerLabel(s)]));
     return (id: string) => map.get(id) ?? "Unknown";
@@ -342,7 +356,7 @@ export function PatientsClient({
   const [stageFilter, setStageFilter] = useState<Stage | "all">("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [treatmentFilter, setTreatmentFilter] = useState<string>("all");
-  const [sellerFilter, setSellerFilter] = useState<string>("all");
+  const [people, setPeople] = useState<PeopleFilter>(initialFilter);
   const [sortKey, setSortKey] = useState<SortKey>("confirmation_date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [, startTransition] = useTransition();
@@ -390,14 +404,15 @@ export function PatientsClient({
   }, [patients]);
 
   // Only sellers who actually show up as "responsible" on a patient here — no point
-  // listing a colleague with an empty roster.
+  // listing a colleague with an empty roster (plus whoever the filter is on right now).
   const sellerOptions = useMemo(() => {
     const ids = new Set(patients.map((p) => p.responsible_seller_id));
+    ids.add(people.seller);
     return sellers
       .filter((s) => ids.has(s.id))
       .map((s) => ({ id: s.id, name: sellerLabel(s) }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [patients, sellers]);
+  }, [patients, sellers, people.seller]);
 
   const rows = useMemo(() => {
     let list = patients.map((p) => {
@@ -425,11 +440,7 @@ export function PatientsClient({
     if (treatmentFilter !== "all") {
       list = list.filter((r) => r.patient.treatment === treatmentFilter);
     }
-    if (sellerFilter === "mine") {
-      list = list.filter((r) => r.isMine);
-    } else if (sellerFilter !== "all") {
-      list = list.filter((r) => r.patient.responsible_seller_id === sellerFilter);
-    }
+    list = list.filter((r) => matchesPeopleFilter(r.patient, people, currentUserId));
 
     list.sort((a, b) => {
       let cmp = 0;
@@ -445,7 +456,7 @@ export function PatientsClient({
     });
 
     return list;
-  }, [patients, search, stageFilter, monthFilter, treatmentFilter, sellerFilter, sortKey, sortDir, ratesMap, currentUserId]);
+  }, [patients, search, stageFilter, monthFilter, treatmentFilter, people, sortKey, sortDir, ratesMap, currentUserId]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -545,22 +556,17 @@ export function PatientsClient({
               </option>
             ))}
           </Select>
-          <Select
-            value={sellerFilter}
-            onChange={(e) => setSellerFilter(e.target.value)}
-            className="sm:max-w-[180px]"
-          >
-            <option value="all">All sellers</option>
-            <option value="mine">Mine only</option>
-            {sellerOptions
-              .filter((s) => s.id !== currentUserId)
-              .map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-          </Select>
         </div>
+        <PeopleFilterBar
+          page="patients"
+          value={people}
+          onChange={setPeople}
+          sellers={sellerOptions}
+          coordinators={coordinators}
+          savedDefault={savedFilter}
+          currentUserId={currentUserId}
+          className="mt-3"
+        />
       </Card>
 
       {view === "kanban" && (
@@ -595,6 +601,9 @@ export function PatientsClient({
                   <div className="mt-0.5 text-xs text-slate-400">
                     Responsible: {sellerName(p.responsible_seller_id)}
                   </div>
+                )}
+                {p.coordinator_id && (
+                  <div className="text-xs text-slate-400">Coordinator: {coordinatorName(p.coordinator_id)}</div>
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
@@ -693,11 +702,13 @@ export function PatientsClient({
       {view === "list" && (
       <Card className="hidden overflow-hidden md:block">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-left text-sm">
+          <table className="w-full min-w-[1180px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
                 <SortHeader label="Name" sortKeyValue="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="pl-4" />
                 <th className="py-3 pr-4 font-medium">Treatment</th>
+                <th className="py-3 pr-4 font-medium">Seller</th>
+                <th className="py-3 pr-4 font-medium">Coordinator</th>
                 <SortHeader label="Confirmed" sortKeyValue="confirmation_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Visit 1" sortKeyValue="visit1_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Visit 2" sortKeyValue="visit2_date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
@@ -722,13 +733,12 @@ export function PatientsClient({
                         +{p.extra_visits.length} extra
                       </span>
                     )}
-                    {!isMine && (
-                      <div className="text-xs font-normal text-slate-400">
-                        Responsible: {sellerName(p.responsible_seller_id)}
-                      </div>
-                    )}
                   </td>
                   <td className="py-3 pr-4 text-slate-500">{p.treatment || "—"}</td>
+                  <td className="py-3 pr-4 text-slate-500">{isMine ? "Me" : sellerName(p.responsible_seller_id)}</td>
+                  <td className="py-3 pr-4 text-slate-500">
+                    {p.coordinator_id === currentUserId ? "Me" : (coordinatorName(p.coordinator_id) ?? <span className="text-slate-300">—</span>)}
+                  </td>
                   <td className="py-3 pr-4 text-slate-500">{formatDate(p.confirmation_date)}</td>
                   <td className="py-3 pr-4 text-slate-500">
                     <div>{formatDate(p.visit1_date)}</div>
@@ -808,7 +818,7 @@ export function PatientsClient({
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-slate-400">
+                  <td colSpan={11} className="py-10 text-center text-slate-400">
                     No patients match your filters.
                   </td>
                 </tr>

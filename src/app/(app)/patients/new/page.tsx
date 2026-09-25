@@ -15,6 +15,7 @@ export default async function NewPatientPage({ searchParams }: { searchParams: P
       sellers={ctx.sellers}
       currentUserId={ctx.currentUserId}
       canAssignSellers={ctx.canAssignSellers}
+      coordinators={ctx.coordinators.filter((c) => c.pickable)}
       existingPatients={ctx.patients.map(({ id, name, confirmation_date, responsible_seller_id }) => ({
         id,
         name,

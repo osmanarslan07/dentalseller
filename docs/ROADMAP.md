@@ -618,7 +618,7 @@ To do:
 20. ☐ Another clinic's user id in `/users/<id>` → not found.
 21. ☐ Support mode: Users and My profile are read-only (My profile shows the viewed-as member).
 
-### Step K — Coordinators you can see, and seller / coordinator filters with saved defaults ☐ (noted 2026-09-25)
+### Step K — Coordinators you can see, and seller / coordinator filters with saved defaults ✅ (built on branch `step-k-coordinators`, awaiting your check)
 
 Why: some clinics have several coordinators (and several admins), and admins want to see who
 coordinates what. The patient's Coordinator field exists since step A, but it only shows on
@@ -651,15 +651,49 @@ Patient → Patient info, and lists / the dashboard only filter by seller ("Mine
   person's default doesn't change anyone else's view. A "Reset to All" link next to it.
 - In support mode the viewed-as member's defaults apply (read-only unless editing is unlocked).
 
+**Decided while building (2026-09-25)**
+- Saved defaults are a `saved_filters` column on each person's own `settings` row (no new
+  table): same security as their other settings. "Me" is saved as "me", so it stays right per
+  person; a saved person who no longer exists falls back to All.
+- The dashboard's count cards follow the filter too (counts only — no money on the dashboard).
+- Transfers: the filter narrows the list, but a driver's **day list** always contains all of
+  that driver's transfers, so a driver never gets half a day.
+- A new or changed coordinator must be active with `patients.edit` — checked by the picker,
+  the server and the database. Someone already coordinating stays until changed.
+- Handover lives on the user's page ("Move their patients to…", optionally only patients
+  with a visit still to come); needs `team.manage` + `patients.edit`; logged on the person and
+  on every patient. The delete dialog's handover offers only people who can coordinate.
+- Workload: "Coordinators" card on the Users page (needs `patients.view`) — patients with a
+  visit still to come, arrivals in the next 14 days, and a link to patients without a coordinator.
+
+SQL (applied 2026-09-25): `settings.saved_filters` (JSON object), and
+`guard_patient_people()` now also requires a new coordinator to have `patients.edit`
+(no existing patient had a coordinator, so nothing was affected).
+
 To do:
-- ☐ Patients list: Coordinator column; Seller + Coordinator filters; saved default
-- ☐ Dashboard: Seller + Coordinator filters replacing Mine / Whole team; saved default
-- ☐ Calendar and Transfers: the same two filters; saved default each
-- ☐ Per-user saved filters (DB column or small table, own-row RLS)
-- ☐ New patient form: Coordinator picker; picker limited to `patients.edit`
-- ☐ Handover: move all patients from one coordinator to another (logged)
-- ☐ Workload per coordinator
-- ☐ Type-check + lint; test checklist
+- ✅ Patients list: Coordinator (and Seller) columns; Seller + Coordinator filters; saved default; `?coordinator=` links
+- ✅ Dashboard: Seller + Coordinator filters replacing Mine / Whole team (default All / All); cards and panel follow; saved default
+- ✅ Calendar and Transfers: the same two filters; saved default each
+- ✅ Per-user saved filters (`settings.saved_filters`, existing own-row RLS)
+- ✅ New patient form: Coordinator picker; picker (here and on the patient page) limited to `patients.edit`
+- ✅ Handover: move a coordinator's patients to another member (logged)
+- ✅ Workload per coordinator (Users page + each user's page)
+- ✅ Type-check + lint (two older lint errors remain in earnings/page.tsx and RelativeTime.tsx, not from this step)
+- ☐ Test checklist (below)
+
+**Test checklist — step K**
+1. ☐ Patients list shows Seller and Coordinator columns (phone: "Coordinator: X" under the name).
+2. ☐ Seller filter: All / Me / each seller (incl. a seller without an account); Coordinator filter: All / Me / None / each coordinator; the two combine (e.g. Seller = Leo and Coordinator = Me).
+3. ☐ Dashboard: the same filters; the count cards, upcoming events, follow-ups, logistics and unpaid lists all follow them. Default is All / All.
+4. ☐ Calendar and Transfers follow the filters; on Transfers a driver's "day list" still has all their transfers when filtered.
+5. ☐ "Save as my default" on each page separately; reload → it comes back; open on the phone → same default; another user's view is unchanged; "Reset to All" works (and saving All clears the default).
+6. ☐ A seller **without** `earnings.all`: any filter combination never shows another seller's commission (Commission column shows only their own; dashboard has no money cards).
+7. ☐ New patient: Coordinator picker lists only people who can edit patients (not an accountant-only member); default is you when you enter the patient for someone else, "Nobody" when you are the seller; the choice is saved.
+8. ☐ Patient page → Coordinator → Change…: same list; a deactivated coordinator still shows on their existing patients.
+9. ☐ User page (someone who coordinates patients): "Move their patients to…" with and without "only patients with a visit still to come" → patients move; each patient's History shows the change; Activity shows the handover.
+10. ☐ Users page → Coordinators card: numbers match; clicking a number opens the patients list filtered to that coordinator; "without a coordinator" link works.
+11. ☐ Delete a coordinator with the handover option → only people who can coordinate are offered.
+12. ☐ Support mode: filters work; "Save as my default" is refused while view-only.
 
 ### Step L — Currency: one main currency, deals in several ☐
 

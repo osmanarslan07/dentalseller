@@ -29,8 +29,6 @@ const EVENT_ICONS: Record<CalendarEventKind, string> = {
   extra_visit: "🦷",
 };
 
-type Scope = "mine" | "team";
-
 type UpcomingEvent = {
   patientId: string;
   patientName: string;
@@ -76,26 +74,26 @@ type PaymentMismatch = {
 };
 
 /** Everything here is operational (arrivals, follow-ups, logistics, unpaid amounts) — none of
- * it reveals commission, which is computed from each seller's own private tier rates and stays
- * confined to the stat cards/chart above. So it's safe to show the whole shared roster here,
- * same as /patients and /calendar already do — this panel just adds a Mine/Whole-team switch
- * and a "Responsible: X" label once there's more than one seller's data on screen. */
+ * it reveals commission, which is computed from each seller's own private tier rates. So it's
+ * safe to show any part of the shared roster here, same as /patients and /calendar already
+ * do. The dashboard's Seller / Coordinator filter decides which patients come in; this panel
+ * adds a "Responsible: X" label whenever that can be someone other than the viewer. */
 export function TeamOperationsPanel({
-  allPatients,
+  patients,
+  showResponsible,
   sellers,
-  currentUserId,
   currency,
   todayIso,
   monthAheadIso,
 }: {
-  allPatients: Patient[];
+  /** Already narrowed by the dashboard's filter. */
+  patients: Patient[];
+  showResponsible: boolean;
   sellers: Seller[];
-  currentUserId: string;
   currency: string;
   todayIso: string;
   monthAheadIso: string;
 }) {
-  const [scope, setScope] = useState<Scope>("mine");
   // flights, hotels and transfers are the Operations module
   const operations = useModule("operations");
   const [busyTargetKey, setBusyTargetKey] = useState<string | null>(null);
@@ -121,11 +119,6 @@ export function TeamOperationsPanel({
     const map = new Map(sellers.map((s) => [s.id, sellerLabel(s)]));
     return (id: string) => map.get(id) ?? "Unknown";
   }, [sellers]);
-
-  const patients = useMemo(
-    () => (scope === "mine" ? allPatients.filter((p) => p.responsible_seller_id === currentUserId) : allPatients),
-    [allPatients, scope, currentUserId]
-  );
 
   const patientMap = useMemo(() => new Map(patients.map((p) => [p.id, p])), [patients]);
 
@@ -270,23 +263,6 @@ export function TeamOperationsPanel({
   const dayHeaderLabel = (daysLeft: number, date: string) =>
     daysLeft === 0 ? "Today" : daysLeft === 1 ? "Tomorrow" : `${formatDate(date)} · in ${daysLeft} days`;
 
-  const ScopeToggle = (
-    <div className="inline-flex shrink-0 rounded-lg border border-slate-200 p-0.5">
-      {(["mine", "team"] as const).map((s) => (
-        <button
-          key={s}
-          type="button"
-          onClick={() => setScope(s)}
-          className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
-            scope === s ? "bg-teal-600 text-white" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          {s === "mine" ? "Mine" : "Whole team"}
-        </button>
-      ))}
-    </div>
-  );
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -294,7 +270,6 @@ export function TeamOperationsPanel({
           <h2 className="text-base font-semibold text-slate-900">Team operations</h2>
           <p className="text-xs text-slate-500">Arrivals, follow-ups, logistics and payments — applies to every card below.</p>
         </div>
-        {ScopeToggle}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -341,7 +316,7 @@ export function TeamOperationsPanel({
                                   {v.flightNo ? ` · ${v.flightNo}` : ""}
                                   {v.treatment ? ` · ${v.treatment}` : ""}
                                 </p>
-                                {scope === "team" && (
+                                {showResponsible && (
                                   <p className="text-xs text-slate-400">Responsible: {sellerName(v.responsibleSellerId)}</p>
                                 )}
                               </div>
@@ -389,7 +364,7 @@ export function TeamOperationsPanel({
                       <p className="text-xs text-slate-500">
                         {p.treatment ? `${p.treatment} · ` : ""}Visit 1 completed {formatDate(p.visit1_date)}
                       </p>
-                      {scope === "team" && (
+                      {showResponsible && (
                         <p className="text-xs text-slate-400">Responsible: {sellerName(p.responsible_seller_id)}</p>
                       )}
                     </div>
@@ -451,7 +426,7 @@ export function TeamOperationsPanel({
                         {m.visitLabel}
                         {m.visitDate ? ` · ${formatDate(m.visitDate)}` : ""}
                       </p>
-                      {scope === "team" && (
+                      {showResponsible && (
                         <p className="text-xs text-slate-400">
                           Responsible: {sellerName(m.patient.responsible_seller_id)}
                         </p>
@@ -509,7 +484,7 @@ export function TeamOperationsPanel({
                     <p className="text-xs text-slate-500">
                       {item.label} · {formatDate(item.date)}
                     </p>
-                    {scope === "team" && (
+                    {showResponsible && (
                       <p className="text-xs text-slate-400">Responsible: {sellerName(item.responsibleSellerId)}</p>
                     )}
                   </Link>
@@ -576,7 +551,7 @@ export function TeamOperationsPanel({
                 <th className="py-3 font-medium">Confirmed</th>
                 <th className="py-3 font-medium">First visit</th>
                 <th className="py-3 font-medium">Visit 2</th>
-                {scope === "team" && <th className="py-3 font-medium">Responsible</th>}
+                {showResponsible && <th className="py-3 font-medium">Responsible</th>}
                 <th className="py-3 font-medium">Komo</th>
               </tr>
             </thead>
@@ -593,7 +568,7 @@ export function TeamOperationsPanel({
                   <td className="py-2.5">
                     <StatusBadge status={p.visit2_status} />
                   </td>
-                  {scope === "team" && (
+                  {showResponsible && (
                     <td className="py-2.5 text-slate-500">{sellerName(p.responsible_seller_id)}</td>
                   )}
                   <td className="py-2.5">
@@ -614,7 +589,7 @@ export function TeamOperationsPanel({
               ))}
               {patients.length === 0 && (
                 <tr>
-                  <td colSpan={scope === "team" ? 7 : 6} className="py-8 text-center text-slate-400">
+                  <td colSpan={showResponsible ? 7 : 6} className="py-8 text-center text-slate-400">
                     No patients yet.{" "}
                     <Link href="/patients" className="text-teal-600 hover:underline">
                       Add your first patient
@@ -634,7 +609,7 @@ export function TeamOperationsPanel({
                 <div>
                   <p className="text-sm font-medium text-slate-800">{p.name}</p>
                   <p className="text-xs text-slate-500">{p.treatment || "—"}</p>
-                  {scope === "team" && (
+                  {showResponsible && (
                     <p className="text-xs text-slate-400">Responsible: {sellerName(p.responsible_seller_id)}</p>
                   )}
                 </div>

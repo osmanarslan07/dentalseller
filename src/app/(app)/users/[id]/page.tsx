@@ -15,6 +15,10 @@ import { Card } from "@/components/ui";
 import { Patient, Permission } from "@/types";
 import { StatusBadge, lastActiveText } from "../status";
 import { UserActions } from "./UserActions";
+import { HandoverForm } from "./HandoverForm";
+import { WORKLOAD_DAYS, coordinatorWorkload, getCoordinatorOptions } from "@/lib/coordinators";
+import { todayIsoLocal } from "@/lib/balance";
+import { ReactNode } from "react";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RECENT_ACTIVITY = 20;
@@ -56,6 +60,11 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   const asSeller = canPatients ? patients.filter((p) => p.responsible_seller_id === id) : [];
   const asCoordinator = canPatients ? patients.filter((p) => p.coordinator_id === id) : [];
   const isSelf = id === viewer.userId;
+  // who could take over their patients: members who can coordinate (patients.edit), not them
+  const coordinatorOptions = await getCoordinatorOptions(supabase, viewer.clinicId, profiles, patients);
+  const heirs = coordinatorOptions.filter((c) => c.pickable && c.id !== id).map((c) => ({ id: c.id, name: c.name }));
+  const workload = coordinatorWorkload(asCoordinator, todayIsoLocal()).get(id) ?? { active: 0, arriving: 0 };
+  const canHandover = can(viewer, "team.manage") && can(viewer, "patients.edit");
 
   return (
     <div className="space-y-6">
@@ -89,9 +98,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
         roles={roles}
         // unknown (null) when the viewer can't see patients — the delete dialog then always offers the handover
         coordinatedCount={canPatients ? asCoordinator.length : null}
-        others={profiles
-          .filter((p) => p.id !== id && p.is_active && p.display_name)
-          .map((p) => ({ id: p.id, name: p.display_name! }))}
+        others={heirs}
         isSelf={isSelf}
         canManage={can(viewer, "team.manage")}
         canDelete={can(viewer, "team.delete")}
@@ -126,7 +133,21 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
       {canPatients && (
         <div className="grid gap-6 lg:grid-cols-2">
           <PatientList title="Patients as seller" patients={asSeller} empty="No patients credited to them." />
-          <PatientList title="Patients as coordinator" patients={asCoordinator} empty="They coordinate no patients." />
+          <PatientList
+            title="Patients as coordinator"
+            patients={asCoordinator}
+            empty="They coordinate no patients."
+            summary={
+              asCoordinator.length > 0
+                ? `${workload.active} with a visit to come · ${workload.arriving} arriving in the next ${WORKLOAD_DAYS} days`
+                : undefined
+            }
+            footer={
+              canHandover && asCoordinator.length > 0 ? (
+                <HandoverForm fromId={id} fromName={name} count={asCoordinator.length} others={heirs} />
+              ) : undefined
+            }
+          />
         </div>
       )}
     </div>
@@ -142,12 +163,25 @@ function Detail({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-function PatientList({ title, patients, empty }: { title: string; patients: Patient[]; empty: string }) {
+function PatientList({
+  title,
+  patients,
+  empty,
+  summary,
+  footer,
+}: {
+  title: string;
+  patients: Patient[];
+  empty: string;
+  summary?: string;
+  footer?: ReactNode;
+}) {
   const sorted = [...patients].sort((a, b) => (b.visit1_date ?? "").localeCompare(a.visit1_date ?? ""));
   return (
     <Card className="overflow-hidden">
       <h2 className="border-b border-slate-100 px-5 py-4 text-base font-semibold text-slate-900">
         {title} <span className="ml-1 text-sm font-normal text-slate-400">{patients.length}</span>
+        {summary && <span className="mt-0.5 block text-xs font-normal text-slate-500">{summary}</span>}
       </h2>
       {sorted.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-slate-400">{empty}</p>
@@ -166,6 +200,7 @@ function PatientList({ title, patients, empty }: { title: string; patients: Pati
           )}
         </ul>
       )}
+      {footer && <div className="px-5 pb-4">{footer}</div>}
     </Card>
   );
 }

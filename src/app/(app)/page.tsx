@@ -1,39 +1,39 @@
-import { ReactNode } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getSellers, getSettings } from "@/lib/data";
-import { addMonths, currentMonthKey } from "@/lib/commission";
-import { StatCard } from "@/components/ui";
-import { CountUp } from "@/components/CountUp";
-import { OPERATIONAL_CARD_IDS, DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
-import { TeamOperationsPanel } from "./TeamOperationsPanel";
-import { CheckCircleIcon, PeopleIcon, UserPlusIcon } from "@/components/StatIcons";
+import { getPatients, getProfiles, getSavedFilters, getSellers, getSettings } from "@/lib/data";
+import { OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
+import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
+import { ALL_FILTER } from "@/lib/people-filter";
+import { DashboardClient } from "./DashboardClient";
 import { getViewer } from "@/lib/viewer";
 import { can } from "@/lib/permissions";
+
+type CountCardId = "patients_sold" | "confirmed_this_month" | "new_patients_delta";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const viewer = await getViewer();
-  const user = viewer ? { id: viewer.userId } : null;
-  // "my sales" cards are for people who sell; transfers for people who book them
+  const userId = viewer?.userId ?? "";
+  // the count cards are for people who sell; transfers for people who book them
   const sells = can(viewer, "earnings.own");
   const booksTransfers = can(viewer, "transfers.manage");
-  const [allPatients, settings, sellers] = await Promise.all([
+  const [allPatients, settings, sellers, profiles, saved] = await Promise.all([
     getPatients(supabase),
-    getSettings(supabase, user?.id ?? ""),
+    getSettings(supabase, userId),
     getSellers(supabase),
+    getProfiles(supabase),
+    getSavedFilters(supabase, userId),
   ]);
-  // The stat cards above and the operational panel below are both scoped per-seller where it
-  // matters: the panel's shared roster reveals no commission (that lives on /earnings) — those
-  // numbers are already visible to everyone on /patients — so it can show the whole team via
-  // its own Mine/Whole-team toggle without leaking anyone's pay.
-  const patients = allPatients.filter((p) => p.responsible_seller_id === user?.id);
-
-  const thisMonth = currentMonthKey();
-  const patientsThisMonth = patients.filter(
-    (p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === thisMonth
-  ).length;
+  const coordinators = viewer ? await getCoordinatorOptions(supabase, viewer.clinicId, profiles, allPatients) : [];
+  // Default All / All (step K); a saved default wins. Everything filtered here is patient
+  // counts and operational data — no commission — so any filter is safe to show.
+  const initialFilter = initialPeopleFilter(
+    {},
+    saved.dashboard,
+    new Set(sellers.map((s) => s.id)),
+    new Set(coordinators.map((c) => c.id))
+  );
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -47,54 +47,9 @@ export default async function DashboardPage() {
     "0"
   )}-${String(monthAhead.getDate()).padStart(2, "0")}`;
 
-  const lastMonth = addMonths(thisMonth, -1);
-  const patientsLastMonth = patients.filter(
-    (p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === lastMonth
-  ).length;
-  const newPatientsDelta = patientsThisMonth - patientsLastMonth;
-  const totalPatients = patients.length;
-
-  const cardsById: Record<DashboardCardId, ReactNode> = {
-    patients_sold: (
-      <StatCard
-        label="Total patients sold"
-        value={<CountUp value={totalPatients} />}
-        sublabel={`${patientsThisMonth} confirmed this month`}
-        icon={<PeopleIcon className="h-4 w-4" />}
-      />
-    ),
-    confirmed_this_month: (
-      <StatCard
-        label="Patients sold this month"
-        value={<CountUp value={patientsThisMonth} />}
-        sublabel={`vs ${patientsLastMonth} last month`}
-        icon={<CheckCircleIcon className="h-4 w-4" />}
-      />
-    ),
-    new_patients_delta: (
-      <StatCard
-        label="New patients vs last month"
-        value={<CountUp value={newPatientsDelta} signed />}
-        sublabel={`${patientsThisMonth} this month, ${patientsLastMonth} last month`}
-        icon={<UserPlusIcon className="h-4 w-4" />}
-      />
-    ),
-    // Money cards live on Earnings, not here — never reached, kept for the shared type.
-    total_earned: null,
-    total_commission: null,
-    month_earnings: null,
-    expected_earnings: null,
-    upcoming_visits_value: null,
-    avg_commission_patient: null,
-    avg_treatment_value: null,
-    highest_value_patient: null,
-  };
-
-  const cardById = new Map(DASHBOARD_CARDS.map((c) => [c.id, c]));
-  const visibleCards = settings.dashboard_cards
-    .filter((id) => sells && OPERATIONAL_CARD_IDS.includes(id))
-    .map((id) => cardById.get(id))
-    .filter((c): c is (typeof DASHBOARD_CARDS)[number] => c != null);
+  const cardIds = settings.dashboard_cards.filter(
+    (id): id is CountCardId => sells && OPERATIONAL_CARD_IDS.includes(id)
+  );
 
   return (
     <div className="space-y-8">
@@ -120,18 +75,14 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      {visibleCards.length > 0 && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {visibleCards.map((card) => (
-            <div key={card.id}>{cardsById[card.id]}</div>
-          ))}
-        </div>
-      )}
-
-      <TeamOperationsPanel
+      <DashboardClient
         allPatients={allPatients}
         sellers={sellers}
-        currentUserId={user?.id ?? ""}
+        coordinators={coordinators}
+        cardIds={cardIds}
+        initialFilter={initialFilter}
+        savedFilter={saved.dashboard ?? ALL_FILTER}
+        currentUserId={userId}
         currency={settings.currency}
         todayIso={todayIso}
         monthAheadIso={monthAheadIso}

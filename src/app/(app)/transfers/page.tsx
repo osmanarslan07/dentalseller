@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getTransferCompanies, getTransfersInRange } from "@/lib/data";
-import { getViewer } from "@/lib/viewer";
+import { getClinicConfig, getProfiles, getSavedFilters, getSellers, getTransferCompanies, getTransfersInRange } from "@/lib/data";
+import { sellerLabel } from "@/lib/sellers";
+import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
+import { ALL_FILTER } from "@/lib/people-filter";
 import { TransfersClient } from "./TransfersClient";
 import { can, requirePagePermission } from "@/lib/permissions";
 
@@ -23,7 +25,7 @@ export default async function TransfersPage({
 }: {
   searchParams: Promise<{ date?: string; days?: string }>;
 }) {
-  await requirePagePermission("transfers.manage");
+  const viewer = await requirePagePermission("transfers.manage");
   const params = await searchParams;
   const today = istanbulToday();
   const from = params.date && ISO_DATE.test(params.date) ? params.date : today;
@@ -31,12 +33,21 @@ export default async function TransfersPage({
   const to = addDays(from, days - 1);
 
   const supabase = await createClient();
-  const [transfers, companies, clinicConfig, viewer] = await Promise.all([
+  const [transfers, companies, clinicConfig, sellers, profiles, saved] = await Promise.all([
     getTransfersInRange(supabase, from, to),
     getTransferCompanies(supabase),
     getClinicConfig(supabase),
-    getViewer(),
+    getSellers(supabase),
+    getProfiles(supabase),
+    getSavedFilters(supabase, viewer.userId),
   ]);
+  const coordinators = await getCoordinatorOptions(supabase, viewer.clinicId, profiles, transfers.map((t) => t.patient));
+  const initialFilter = initialPeopleFilter(
+    {},
+    saved.transfers,
+    new Set(sellers.map((s) => s.id)),
+    new Set(coordinators.map((c) => c.id))
+  );
 
   return (
     <TransfersClient
@@ -50,6 +61,11 @@ export default async function TransfersPage({
       dates={Array.from({ length: days }, (_, i) => addDays(from, i))}
       prevDate={addDays(from, -days)}
       nextDate={addDays(from, days)}
+      sellers={sellers.map((s) => ({ id: s.id, name: sellerLabel(s) })).sort((a, b) => a.name.localeCompare(b.name))}
+      coordinators={coordinators}
+      initialFilter={initialFilter}
+      savedFilter={saved.transfers ?? ALL_FILTER}
+      currentUserId={viewer.userId}
     />
   );
 }

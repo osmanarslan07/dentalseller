@@ -4025,3 +4025,44 @@ create policy "avatars_objects_delete" on storage.objects
 -- first. No foreign key on purpose: it outlives the account, and the same id is the deleted
 -- account's surviving seller record, which still carries their name.
 alter table public.activity_log add column if not exists former_actor_id uuid;
+
+-- =====================================================================
+-- COORDINATORS & FILTERS (roadmap step K). Idempotent/safe to re-run.
+-- =====================================================================
+
+-- ---------- saved default filters, per user ----------
+-- { "patients": {"seller": "all"|"me"|<seller id>, "coordinator": "all"|"me"|"none"|<profile id>},
+--   "dashboard": {...}, "calendar": {...}, "transfers": {...} }. On the user's own settings row,
+-- so the existing settings policies apply (own row; support reads the viewed-as member's).
+alter table public.settings add column if not exists saved_filters jsonb not null default '{}'::jsonb;
+alter table public.settings drop constraint if exists settings_saved_filters_object;
+alter table public.settings add constraint settings_saved_filters_object check (jsonb_typeof(saved_filters) = 'object');
+
+-- ---------- a new coordinator must be able to edit patients ----------
+-- Seller and coordinator always belong to the patient's own clinic; a coordinator newly set
+-- (or changed) must also be an active member with patients.edit. One already assigned stays,
+-- even if they're deactivated or lose the role later. Named to run after
+-- patients_set_clinic_id (same-timing triggers fire in name order) so clinic_id is known.
+create or replace function public.guard_patient_people()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if (tg_op = 'INSERT' or new.responsible_seller_id is distinct from old.responsible_seller_id)
+     and not public.is_clinic_seller(new.responsible_seller_id, new.clinic_id) then
+    raise exception 'That seller isn''t part of this clinic';
+  end if;
+  if new.coordinator_id is not null
+     and (tg_op = 'INSERT' or new.coordinator_id is distinct from old.coordinator_id) then
+    if not exists (select 1 from public.profiles where id = new.coordinator_id and clinic_id = new.clinic_id) then
+      raise exception 'That coordinator isn''t part of this clinic';
+    end if;
+    if not public.has_permission(new.coordinator_id, 'patients.edit') then
+      raise exception 'That team member can''t coordinate patients (they need to be active and able to edit patients)';
+    end if;
+  end if;
+  return new;
+end;
+$$;

@@ -9,8 +9,11 @@ import { logActivity } from "@/lib/activity-log";
 import { assertSeatAvailable } from "@/lib/seats";
 import { assertViewerCanWrite } from "@/lib/viewer";
 import { MEMBER_ROLES, MemberRole, roleLabel } from "@/types";
-import { requirePermission } from "@/lib/permissions";
+import { can, requirePermission } from "@/lib/permissions";
+import { hasVisitToCome } from "@/lib/coordinators";
 import { normalizePhone } from "@/lib/phone";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Long enough to mean "until someone reactivates them". */
 const BAN_FOREVER = "876000h";
@@ -274,7 +277,10 @@ export async function deleteSeller(sellerId: string, coordinatorHandoverTo: stri
       .select("clinic_id, is_active")
       .eq("id", coordinatorHandoverTo)
       .maybeSingle();
-    if (!heir || heir.clinic_id !== clinicId || !heir.is_active) throw new Error("That team member can't take over their patients");
+    const { data: heirCanEdit } = await admin.rpc("has_permission", { uid: coordinatorHandoverTo, perm: "patients.edit" });
+    if (!heir || heir.clinic_id !== clinicId || !heir.is_active || !heirCanEdit) {
+      throw new Error("That team member can't take over their patients");
+    }
   }
 
   const {
@@ -329,4 +335,66 @@ export async function deleteSeller(sellerId: string, coordinatorHandoverTo: stri
   revalidatePath("/quotes");
   revalidatePath("/tasks");
   revalidatePath("/");
+}
+
+/** Hands every patient one member coordinates to another (or to nobody): someone leaves, or
+ * is away. Needs team.manage and patients.edit. Runs through RLS (this clinic's patients
+ * only), and the database refuses a new coordinator from another clinic or without
+ * patients.edit. Logged once on the member and once on each patient, so every patient's
+ * History shows the change. Returns how many patients moved. */
+export async function handOverCoordinatedPatients(
+  fromId: string,
+  toId: string | null,
+  onlyWithVisitToCome: boolean
+): Promise<number> {
+  const supabase = await createClient();
+  const user = await requirePermission("team.manage");
+  if (!can(user.viewer, "patients.edit")) throw new Error("You don't have permission to do that");
+  if (!UUID_RE.test(fromId) || (toId !== null && !UUID_RE.test(toId))) throw new Error("Team member not found");
+  if (toId === fromId) throw new Error("Pick someone else to take over");
+
+  const { data: people } = await supabase
+    .from("profiles")
+    .select("id, display_name")
+    .in("id", toId ? [fromId, toId] : [fromId]);
+  const nameOf = (id: string | null) =>
+    id ? ((people ?? []).find((p) => p.id === id)?.display_name as string | null) || "Unnamed member" : "nobody";
+  if (!(people ?? []).some((p) => p.id === fromId) || (toId && !(people ?? []).some((p) => p.id === toId))) {
+    throw new Error("Team member not found");
+  }
+
+  const { data: patients, error: readError } = await supabase
+    .from("patients")
+    .select("id, visit1_status, visit2_status, needs_visit2, extra_visits:patient_visits(status)")
+    .eq("coordinator_id", fromId);
+  if (readError) throw new Error(readError.message);
+  const ids = (patients ?? [])
+    .filter((p) => !onlyWithVisitToCome || hasVisitToCome(p))
+    .map((p) => p.id as string);
+  if (ids.length === 0) return 0;
+
+  const { error, count } = await supabase
+    .from("patients")
+    .update({ coordinator_id: toId }, { count: "exact" })
+    .in("id", ids)
+    .eq("coordinator_id", fromId);
+  if (error) throw new Error(error.message);
+
+  const change = `coordinator ${nameOf(fromId)} → ${nameOf(toId)} (handover)`;
+  const { error: logError } = await supabase.from("activity_log").insert([
+    {
+      actor_id: user.actorId,
+      action: "coordinator_handover",
+      target_type: "profile",
+      target_id: fromId,
+      detail: `${count ?? ids.length} patient(s) to ${nameOf(toId)}${onlyWithVisitToCome ? " (only those with a visit to come)" : ""}`,
+    },
+    ...ids.map((id) => ({ actor_id: user.actorId, action: "patient_updated", target_type: "patient", target_id: id, detail: change })),
+  ]);
+  if (logError) console.error("Activity log write failed:", logError.message);
+
+  revalidateTeamPages();
+  revalidatePath("/patients", "layout");
+  revalidatePath("/");
+  return count ?? ids.length;
 }

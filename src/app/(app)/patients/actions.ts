@@ -19,6 +19,8 @@ import { extraLabel, extrasFor } from "@/lib/balance";
 import { PATIENT_FILE_BUCKET } from "@/lib/patient-files";
 import { can, requirePermission } from "@/lib/permissions";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Built from local Y/M/D components on both ends (never via `new Date(isoString)`, which
  * parses as UTC) so this can't drift a day depending on the server's timezone offset. */
 function addMonthsToDateString(dateStr: string, months: number): string {
@@ -385,7 +387,17 @@ export async function createPatient(formData: FormData) {
     throw new Error("You can only add patients as yourself");
   }
   const seller = await resolveSellerChoice(supabase, choice, user.id);
-  const coordinatorId = seller.id === user.id ? null : user.id;
+  // The form's Coordinator picker; without one (older clients), whoever enters a patient for
+  // someone else becomes its coordinator. The database checks the pick can edit patients.
+  const pickedCoordinator = formData.get("coordinator_id");
+  const coordinatorId =
+    typeof pickedCoordinator === "string"
+      ? UUID_RE.test(pickedCoordinator)
+        ? pickedCoordinator
+        : null
+      : seller.id === user.id
+        ? null
+        : user.id;
 
   const { data: created, error } = await supabase
     .from("patients")

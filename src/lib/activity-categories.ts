@@ -64,6 +64,7 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "seller_deleted",
     "password_reset",
     "member_profile_updated",
+    "coordinator_handover",
     "seller_record_added",
     "seller_record_renamed",
     "seller_record_activated",

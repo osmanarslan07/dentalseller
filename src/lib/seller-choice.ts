@@ -30,7 +30,7 @@ export async function resolveSellerChoice(
   let seller = name ? findSellerByName(sellers, name) : sellers.find((s) => s.id === (choice.sellerId || fallbackId));
   if (!seller && name) {
     if (name.length > 80) throw new Error("That name is too long");
-    const { data, error } = await supabase.from("sellers").insert({ name }).select("id, name, profile_id, is_active, created_at").single();
+    const { data, error } = await supabase.from("sellers").insert({ name }).select("id, name, profile_id, is_active, default_currency, created_at").single();
     if (error) {
       throw new Error(/row-level security/i.test(error.message) ? "You don't have permission to add a new seller" : error.message);
     }

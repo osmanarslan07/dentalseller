@@ -5,7 +5,9 @@ import { formatCurrency } from "@/lib/format";
 import { useCan } from "@/components/permissions";
 import { Permission } from "@/types";
 
-export const gbp = (n: number) => formatCurrency(n, "GBP");
+/** A formatter for one currency: the patient's deal currency for prices and payments, the
+ * clinic's main currency for its own costs (hotel, transfers). */
+export const moneyIn = (currency: string) => (n: number) => formatCurrency(n, currency);
 
 /** A white card with a title row — every section of the patient page. */
 export function Section({

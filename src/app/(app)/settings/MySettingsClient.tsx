@@ -10,11 +10,11 @@ import { CelebrationSoundToggle } from "@/components/celebration-sound";
 import { DashboardCardId, EARNINGS_CARD_IDS, OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
 import { DashboardCardsPicker } from "@/components/DashboardCardsPicker";
 import { ExchangeRatePoint } from "@/lib/data";
+import { CURRENCY_NAMES, SUPPORTED_CURRENCIES, currencySymbol } from "@/lib/money";
+import { useCurrencies } from "@/components/currency";
 import { RateHistoryChart } from "@/components/RateHistoryChart";
 import { TelegramCard } from "./TelegramCard";
 import { saveDashboardCards, saveSettings } from "./actions";
-
-const CURRENCIES = ["GBP", "USD", "EUR", "TRY"];
 
 type TabId = "account" | "commission" | "cards";
 
@@ -47,7 +47,9 @@ export function MySettingsClient({
   const [earningsCardsPending, startEarningsCardsTransition] = useTransition();
   const [earningsCardsError, setEarningsCardsError] = useState<string | null>(null);
   const [earningsCardsSaved, setEarningsCardsSaved] = useState(false);
-  const { hidden, tryRate } = usePrivacy();
+  const { hidden, approx } = usePrivacy();
+  const { main } = useCurrencies();
+  const sym = currencySymbol(main);
   const permissions = usePermissions();
   const has = (p: Permission) => permissions.includes(p);
   const tabs = TABS.filter((t) => !t.needs || t.needs.some(has));
@@ -170,7 +172,7 @@ export function MySettingsClient({
             <form action={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Tier 1 threshold (£, up to)</Label>
+                  <Label>Tier 1 threshold ({sym}, up to)</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -193,7 +195,7 @@ export function MySettingsClient({
                   />
                 </div>
                 <div>
-                  <Label>Tier 2 threshold (£, up to)</Label>
+                  <Label>Tier 2 threshold ({sym}, up to)</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -228,7 +230,7 @@ export function MySettingsClient({
                   />
                 </div>
                 <div>
-                  <Label>Fixed monthly payment (£)</Label>
+                  <Label>Fixed monthly payment ({sym})</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -240,29 +242,32 @@ export function MySettingsClient({
                 </div>
               </div>
 
-              <div>
-                <Label>Currency display</Label>
-                <Select name="currency" defaultValue={settings.currency}>
-                  {CURRENCIES.map((c) => (
+              <p className="text-xs text-slate-500">
+                Amounts, tiers and commission are in the clinic&apos;s main currency ({main}).
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="show_try"
+                    defaultChecked={settings.show_try}
+                    className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
+                  />
+                  Also show approx. in
+                </label>
+                <Select name="approx_currency" defaultValue={settings.approx_currency} className="w-auto" aria-label="Approximate currency">
+                  {SUPPORTED_CURRENCIES.filter((c) => c !== main).map((c) => (
                     <option key={c} value={c}>
-                      {c}
+                      {c} — {CURRENCY_NAMES[c]}
                     </option>
                   ))}
                 </Select>
+                <span>alongside earnings figures</span>
               </div>
-
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  name="show_try"
-                  defaultChecked={settings.show_try}
-                  className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
-                />
-                Show approx. Turkish Lira (₺) alongside earnings figures
-              </label>
               <p className="text-xs text-slate-400">
-                {settings.show_try && settings.currency !== "TRY" && tryRate
-                  ? `Current rate: 1 ${settings.currency} ≈ ${tryRate.toFixed(2)} ₺. Refreshed automatically once a day — approximate, not for invoicing.`
+                {approx
+                  ? `Current rate: 1 ${main} ≈ ${approx.rate.toFixed(approx.rate >= 100 ? 2 : 4)} ${approx.currency}. Refreshed automatically once a day — approximate, not for invoicing.`
                   : "Rate fetched automatically once a day — approximate, not for invoicing."}
               </p>
 
@@ -279,15 +284,15 @@ export function MySettingsClient({
             </form>
           </Card>
 
-          {settings.show_try && settings.currency !== "TRY" && (
+          {settings.show_try && settings.approx_currency !== main && (
             <Card className="p-6">
               <h2 className="mb-1 text-base font-semibold text-slate-900">
-                {settings.currency}/TRY rate history
+                {main}/{settings.approx_currency} rate history
               </h2>
               <p className="mb-4 text-sm text-slate-500">
                 Recorded once a day. Approximate — not for invoicing.
               </p>
-              <RateHistoryChart data={rateHistory} base={settings.currency} />
+              <RateHistoryChart data={rateHistory} base={main} quote={settings.approx_currency} />
             </Card>
           )}
         </div>

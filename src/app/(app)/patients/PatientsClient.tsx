@@ -21,13 +21,15 @@ import { deletePatient, sendPatientTelegramMessage } from "./actions";
 import { patientDueNow, todayIsoLocal } from "@/lib/balance";
 import { PeopleFilter, hasVisitToCome, matchesPeopleFilter, sellerFilterOptions } from "@/lib/people-filter";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
+import { useCurrencies } from "@/components/currency";
 
-/** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. */
-function visitMoney(p: Patient, key: "visit1" | "visit2", currency: string): string {
+/** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. In the
+ * patient's own currency. */
+function visitMoney(p: Patient, key: "visit1" | "visit2"): string {
   const actual = key === "visit1" ? p.visit1_actual : p.visit2_actual;
-  if (actual != null) return formatCurrency(actual, currency);
+  if (actual != null) return formatCurrency(actual, p.currency);
   const expected = visitExpectedTotal(p, key, key === "visit1" ? p.visit1_expected : p.visit2_expected);
-  return expected != null ? `${formatCurrency(expected, currency)} (exp.)` : "—";
+  return expected != null ? `${formatCurrency(expected, p.currency)} (exp.)` : "—";
 }
 
 /** What's short right now (price + extras vs payments on visits already under way), else
@@ -35,26 +37,26 @@ function visitMoney(p: Patient, key: "visit1" | "visit2", currency: string): str
 function BalanceBadge({ patient }: { patient: Patient }) {
   const { short, dueNow, overpaid, upcoming, anyOwed } = patientDueNow(patient, todayIsoLocal());
   const detail = short
-    .map((b) => `${b.label}: ${b.due > 0 ? `${formatCurrency(b.due, "GBP")} due` : `overpaid ${formatCurrency(-b.due, "GBP")}`}`)
+    .map((b) => `${b.label}: ${b.due > 0 ? `${formatCurrency(b.due, patient.currency)} due` : `overpaid ${formatCurrency(-b.due, patient.currency)}`}`)
     .join(" · ");
   if (!anyOwed) return <span className="text-slate-300">—</span>;
   if (dueNow > 0) {
     return (
       <span title={detail}>
-        <Badge tone="amber">{formatCurrency(dueNow, "GBP")} due</Badge>
+        <Badge tone="amber">{formatCurrency(dueNow, patient.currency)} due</Badge>
       </span>
     );
   }
   if (overpaid > 0) {
     return (
       <span title={detail}>
-        <Badge tone="blue">Overpaid {formatCurrency(overpaid, "GBP")}</Badge>
+        <Badge tone="blue">Overpaid {formatCurrency(overpaid, patient.currency)}</Badge>
       </span>
     );
   }
   if (upcoming > 0) {
     return (
-      <span title={`${formatCurrency(upcoming, "GBP")} for visits not started yet`}>
+      <span title={`${formatCurrency(upcoming, patient.currency)} for visits not started yet`}>
         <Badge tone="slate">Upcoming</Badge>
       </span>
     );
@@ -345,6 +347,8 @@ export function PatientsClient({
   savedFilter: PeopleFilter;
   currentUserId: string;
 }) {
+  // commission is in the clinic's main currency; a patient's prices in their own
+  const { main: mainCurrency } = useCurrencies();
   const coordinatorName = useMemo(() => {
     const map = new Map(coordinators.map((c) => [c.id, c.name]));
     return (id: string | null) => (id ? (map.get(id) ?? "Former member") : null);
@@ -583,7 +587,6 @@ export function PatientsClient({
       {view === "kanban" && (
         <KanbanBoard
           rows={rows}
-          settings={settings}
           sellerName={sellerName}
           onCardClick={(p) => router.push(`/patients/${p.id}`)}
         />
@@ -632,10 +635,10 @@ export function PatientsClient({
                 <div className="text-xs uppercase tracking-wide text-slate-400">Commission</div>
                 {commission.actual > 0 || commission.expected > 0 ? (
                   <div className="font-medium text-slate-700">
-                    <Money value={commission.actual} currency={settings.currency} showConversion={false} />
+                    <Money value={commission.actual} currency={mainCurrency} showConversion={false} />
                     {commission.expected > 0 && (
                       <div className="text-xs font-normal text-slate-400">
-                        +<Money value={commission.expected} currency={settings.currency} showConversion={false} /> expected
+                        +<Money value={commission.expected} currency={mainCurrency} showConversion={false} /> expected
                       </div>
                     )}
                   </div>
@@ -647,14 +650,14 @@ export function PatientsClient({
                 <div className="text-xs uppercase tracking-wide text-slate-400">Visit 1</div>
                 <div className="text-slate-600">{formatDate(p.visit1_date)}</div>
                 <div className="text-xs text-slate-400">
-                  {visitMoney(p, "visit1", settings.currency)}
+                  {visitMoney(p, "visit1")}
                 </div>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-400">Visit 2</div>
                 <div className="text-slate-600">{formatDate(p.visit2_date)}</div>
                 <div className="text-xs text-slate-400">
-                  {visitMoney(p, "visit2", settings.currency)}
+                  {visitMoney(p, "visit2")}
                 </div>
               </div>
             </div>
@@ -754,13 +757,13 @@ export function PatientsClient({
                   <td className="py-3 pr-4 text-slate-500">
                     <div>{formatDate(p.visit1_date)}</div>
                     <div className="text-xs">
-                      {visitMoney(p, "visit1", settings.currency)}
+                      {visitMoney(p, "visit1")}
                     </div>
                   </td>
                   <td className="py-3 pr-4 text-slate-500">
                     <div>{formatDate(p.visit2_date)}</div>
                     <div className="text-xs">
-                      {visitMoney(p, "visit2", settings.currency)}
+                      {visitMoney(p, "visit2")}
                     </div>
                   </td>
                   <td className="py-3 pr-4">
@@ -772,10 +775,10 @@ export function PatientsClient({
                   <td className="py-3 pr-4 font-medium text-slate-700">
                     {commission.actual > 0 || commission.expected > 0 ? (
                       <>
-                        <Money value={commission.actual} currency={settings.currency} showConversion={false} />
+                        <Money value={commission.actual} currency={mainCurrency} showConversion={false} />
                         {commission.expected > 0 && (
                           <div className="text-xs font-normal text-slate-400">
-                            +<Money value={commission.expected} currency={settings.currency} showConversion={false} /> expected
+                            +<Money value={commission.expected} currency={mainCurrency} showConversion={false} /> expected
                           </div>
                         )}
                       </>
@@ -846,15 +849,14 @@ export function PatientsClient({
 
 function KanbanBoard({
   rows,
-  settings,
   sellerName,
   onCardClick,
 }: {
   rows: { patient: Patient; commission: { actual: number; expected: number }; stage: Stage; isMine: boolean }[];
-  settings: CommissionSettings;
   sellerName: (id: string) => string;
   onCardClick: (p: Patient) => void;
 }) {
+  const { main: mainCurrency } = useCurrencies();
   const columns = STAGES.map((stage) => ({
     ...stage,
     items: rows.filter((r) => r.stage === stage.id),
@@ -886,7 +888,7 @@ function KanbanBoard({
                 </p>
                 {commission.actual > 0 || commission.expected > 0 ? (
                   <p className="mt-2 text-sm font-medium text-slate-700">
-                    <Money value={commission.actual + commission.expected} currency={settings.currency} showConversion={false} />
+                    <Money value={commission.actual + commission.expected} currency={mainCurrency} showConversion={false} />
                   </p>
                 ) : (
                   <p className="mt-2 text-xs text-slate-400">Responsible: {sellerName(p.responsible_seller_id)}</p>

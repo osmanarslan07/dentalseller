@@ -24,6 +24,9 @@ const HEADERS = [
   "Visit 2 Extras",
   "Visit 2 Discount",
   "Notes",
+  // amounts above are in the patient's own currency; the rate turns them into the main one
+  "Currency",
+  "Rate To Main Currency",
 ];
 
 export function escapeCsv(value: string | number | null): string {
@@ -52,6 +55,8 @@ export function patientsToCsv(patients: Patient[]): string {
       extrasTotalFor(p, "visit2") || null,
       discountFor(p, "visit2", p.visit2_expected),
       p.notes,
+      p.currency,
+      p.deal_rate,
     ]
       .map(escapeCsv)
       .join(",")

@@ -3,7 +3,7 @@
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ExchangeRatePoint } from "@/lib/data";
 
-export function RateHistoryChart({ data, base }: { data: ExchangeRatePoint[]; base: string }) {
+export function RateHistoryChart({ data, base, quote }: { data: ExchangeRatePoint[]; base: string; quote: string }) {
   if (data.length < 2) {
     return <p className="text-sm text-slate-400">Not enough history yet — check back after a few days.</p>;
   }
@@ -26,7 +26,7 @@ export function RateHistoryChart({ data, base }: { data: ExchangeRatePoint[]; ba
           domain={["auto", "auto"]}
         />
         <Tooltip
-          formatter={(value) => [`${Number(value).toFixed(2)} ₺`, `1 ${base}`]}
+          formatter={(value) => [`${Number(value).toFixed(Number(value) >= 100 ? 2 : 4)} ${quote}`, `1 ${base}`]}
           contentStyle={{
             borderRadius: 12,
             border: "1px solid #e2e8f0",

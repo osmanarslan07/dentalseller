@@ -703,7 +703,7 @@ To do:
 11. ☐ Delete a coordinator with the handover option → only people who can coordinate are offered.
 12. ☐ Support mode: filters work; "Save as my default" is refused while view-only.
 
-### Step L — Currency: one main currency, deals in several ☐
+### Step L — Currency: one main currency, deals in several ✅ (built on branch `step-l-currency`, awaiting your check)
 
 Today: every amount is shown in **£** (hard-coded in about 50 places); the only currency setting
 is each user's "Currency display" plus "approx. in ₺" on earnings.
@@ -760,17 +760,56 @@ of this complexity. Thera stays on GBP.
 - Default rate: the **automatic market rate**; a clinic can switch a currency to its own fixed rate.
 - A patient's deal currency can change **only before the first payment**; after that it's locked.
 
-To do:
-- ☐ Clinic settings → Money → Currencies: main currency, other currencies, rate source / own rates
-- ☐ Data: currency + main-currency value + rate on prices, extras, discounts, payments;
-      backfill every existing amount as GBP at rate 1 (Thera unchanged)
-- ☐ One money formatter replacing every hard-coded £ (screens, letters, offers, messages, CSV)
-- ☐ Deal currency on patient / new patient form; per-seller default currency
-- ☐ Payments in another currency; exchange gain / loss in Accounting
-- ☐ Commission, dashboard, Accounting, Sales performance on main-currency values
-- ☐ Personal "approx. in …" setting; rate job for any pair
-- ☐ Snapshot commission attribution before / after (must be identical for Thera)
-- ☐ Test checklist: a GBP-only clinic (no visible change), a TEST clinic with GBP main + EUR deals
+Done (2026-09-25):
+- ✅ Clinic settings → Money → Currencies: main currency (fixed once the clinic has patients —
+      DB-enforced, support can change it), other currencies, market rate or the clinic's own rate
+      per currency, and "Usual currency per seller". Main currency is also picked when the
+      platform creates a clinic.
+- ✅ Data (SQL live): `patients.currency / deal_rate / deal_rate_on / deal_rate_source`;
+      `patient_payments.currency / paid_amount / rate_to_deal / rate_to_main / main_amount /
+      rate_source` (amount + main_amount worked out by a DB trigger); clinic_config
+      `main_currency / deal_currencies / fixed_rates`; `sellers.default_currency`;
+      `settings.approx_currency`. Everything existing backfilled as GBP at rate 1.
+- ✅ Prices, extras and discounts are in the patient's deal currency, so they share the patient's
+      one rate (`deal_rate`) instead of a rate per row. Hotel and transfer costs are the clinic's
+      own, in the main currency.
+- ✅ Every hard-coded £ replaced (screens, letters, document, Telegram, history lines, CSV —
+      patient CSV gains Currency + Rate columns at the end).
+- ✅ Deal currency on the new-patient form (only when the clinic deals in several), from the
+      seller's usual one; change it or correct its rate on the Money card (money.edit; the
+      currency locks at the first payment). Quotes use the clinic's currencies and carry theirs
+      into the patient.
+- ✅ Payments in any clinic currency, with a live rate preview; money.edit can set the rate by hand.
+      Accounting totals use each payment's main-currency value, with an "Exchange-rate gain / loss"
+      tile (and CSV columns) only once other currencies are in use.
+- ✅ Commission = deal amount × agreed rate − costs; tiers in the main currency.
+- ✅ My settings: "Also show approx. in [any currency]" (was TRY only); the old per-user
+      "Currency display" (which relabelled £ without converting) is gone.
+- ✅ Rates: the daily job stores EUR → every supported currency; any pair is crossed through EUR;
+      past dates are fetched on demand. 90 days of history backfilled.
+- ✅ Commission snapshot for every Thera seller before/after: byte-for-byte identical.
+
+#### Test checklist (step L)
+GBP-only clinic (Thera) — nothing should look different:
+1. Dashboard, Patients list, a patient page (Money card), Earnings, Sales performance, Accounting:
+   same £ amounts as before; no currency pickers or rate lines anywhere.
+2. Record a payment, add an extra, set a discount — works as before; History reads "£300 cash".
+3. Confirmation letter still says "cash payments in British Pounds (£)"; Telegram message shows £.
+4. My settings → Commission & currency: "Also show approx. in TRY" still shows ≈ ₺ under earnings;
+   try another currency (e.g. EUR) and the rate chart follows.
+5. Clinic settings → Money: Currencies card shows GBP (fixed) and no other currencies ticked.
+
+GBP main + EUR deals (a TEST clinic, or tick EUR on Thera briefly):
+6. Tick EUR (market rate) → the new-patient form shows "Price agreed in"; create "TEST Euro patient"
+   in EUR with a €2,000 price → Money card: "Prices in EUR · 1 € = £0.86 (market rate, …)",
+   owed €2,000 ≈ £1,7xx.
+7. Record €1,000 cash → still due €1,000. Record £500 → "Counts as €5xx toward this visit".
+8. Try to change the patient's currency after the payment → refused (rate can still be corrected).
+9. Accounting: payments in £ at their payment-day value; "Exchange-rate gain / loss" tile appears.
+10. Earnings / Sales performance: commission counts €1,000 × agreed rate, in £.
+11. Switch EUR to "Our own rate" (e.g. 0.85) → a new EUR patient uses 0.85; the old one keeps its rate.
+12. Usual currency per seller: set a seller to EUR → their new patients and quotes start in EUR.
+13. Untick EUR again: the EUR patient keeps its currency and can still be paid in EUR.
 
 ### Step M — Notifications on WhatsApp (Telegram removed) ☐
 

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getQuotes, getSettings } from "@/lib/data";
+import { getClinicConfig, getQuotes, getSellers } from "@/lib/data";
 import { QuotesClient } from "./QuotesClient";
 import { getViewerUser } from "@/lib/viewer";
 import { requirePagePermission } from "@/lib/permissions";
@@ -9,7 +9,11 @@ export default async function QuotesPage() {
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const user = await getViewerUser();
-  const [quotes, settings] = await Promise.all([getQuotes(supabase), getSettings(supabase, user?.id ?? "")]);
+  const [quotes, sellers, clinicConfig] = await Promise.all([getQuotes(supabase), getSellers(supabase), getClinicConfig(supabase)]);
+  // a new quote starts in the currency this seller usually agrees prices in
+  const usual = sellers.find((s) => s.id === user?.id)?.default_currency;
+  const allowed = [clinicConfig.mainCurrency, ...clinicConfig.dealCurrencies];
+  const defaultCurrency = usual && allowed.includes(usual) ? usual : clinicConfig.mainCurrency;
 
-  return <QuotesClient quotes={quotes} defaultCurrency={settings.currency} />;
+  return <QuotesClient quotes={quotes} defaultCurrency={defaultCurrency} />;
 }

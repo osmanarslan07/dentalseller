@@ -3,13 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getPatient } from "@/lib/data";
+import { plainAmount } from "@/lib/money";
 import { logActivity } from "@/lib/activity-log";
 import { requirePermission } from "@/lib/permissions";
 import { visitDiscountSetting } from "@/lib/commission";
 import { DiscountType } from "@/types";
 
-function describe(type: DiscountType, value: number, reason: string | null): string {
-  return `${type === "percent" ? `${value}%` : `£${value}`}${reason ? ` (${reason})` : ""}`;
+function describe(type: DiscountType, value: number, reason: string | null, currency: string): string {
+  return `${type === "percent" ? `${value}%` : plainAmount(value, currency)}${reason ? ` (${reason})` : ""}`;
 }
 
 /** Sets or (no value) removes the discount on one visit — "visit1" | "visit2" | an extra
@@ -63,8 +64,8 @@ export async function setVisitDiscount(patientId: string, visitKey: string, form
   const label = visitKey === "visit1" ? "Visit 1" : visitKey === "visit2" ? "Visit 2" : patient.extra_visits.find((v) => v.id === visitKey)?.label ?? "visit";
   const detail =
     value == null
-      ? `${label}: removed${before ? ` ${describe(before.type, before.value, before.reason)}` : ""}`
-      : `${label}: ${before ? `${describe(before.type, before.value, before.reason)} → ` : ""}${describe(type, value, reason)}`;
+      ? `${label}: removed${before ? ` ${describe(before.type, before.value, before.reason, patient.currency)}` : ""}`
+      : `${label}: ${before ? `${describe(before.type, before.value, before.reason, patient.currency)} → ` : ""}${describe(type, value, reason, patient.currency)}`;
   await logActivity(supabase, user.actorId, value == null ? "discount_removed" : "discount_set", "patient", patientId, detail);
 
   revalidatePath("/patients");

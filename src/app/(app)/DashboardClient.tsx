@@ -23,7 +23,6 @@ export function DashboardClient({
   initialFilter,
   savedFilter,
   currentUserId,
-  currency,
   todayIso,
   monthAheadIso,
 }: {
@@ -35,7 +34,6 @@ export function DashboardClient({
   initialFilter: PeopleFilter;
   savedFilter: PeopleFilter;
   currentUserId: string;
-  currency: string;
   todayIso: string;
   monthAheadIso: string;
 }) {
@@ -106,7 +104,6 @@ export function DashboardClient({
         patients={patients}
         showResponsible={!onlyMine(filter)}
         sellers={sellers}
-        currency={currency}
         todayIso={todayIso}
         monthAheadIso={monthAheadIso}
       />

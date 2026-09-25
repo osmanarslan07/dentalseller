@@ -4,9 +4,10 @@ import { getClinicConfig, getMyProfile, getNavBadges, getSettings } from "@/lib/
 import { todayIsoLocal } from "@/lib/balance";
 import { cookies } from "next/headers";
 import { PIN_COOKIE } from "@/lib/nav-pin";
-import { getTryRate } from "@/lib/currency";
+import { marketRate } from "@/lib/rates";
 import { AppShell } from "@/components/Nav";
 import { PrivacyProvider } from "@/components/privacy";
+import { CurrencyProvider } from "@/components/currency";
 import { CelebrationSoundProvider } from "@/components/celebration-sound";
 import { ToastProvider } from "@/components/Toast";
 import { PageTransition } from "@/components/PageTransition";
@@ -76,15 +77,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getMyAvatarUrl(supabase, viewer.userId),
   ]);
   const menuPinned = cookieStore.get(`${PIN_COOKIE}_${viewer.authUserId}`)?.value === "1";
-  const tryRate =
-    settings.show_try && settings.currency !== "TRY" ? await getTryRate(settings.currency) : null;
+  const main = clinicConfig.mainCurrency;
+  const approxRate =
+    settings.show_try && settings.approx_currency !== main ? await marketRate(main, settings.approx_currency) : null;
+  const approx = approxRate ? { from: main, currency: settings.approx_currency, rate: approxRate } : null;
 
   return (
     <div className="min-h-screen">
       <PresenceHeartbeat />
       <ToastProvider>
         <PermissionsProvider permissions={viewer.permissions} modules={viewer.modules}>
-        <PrivacyProvider initialHidden={settings.hide_earnings} showTry={settings.show_try} tryRate={tryRate}>
+        <CurrencyProvider currencies={{ main, deal: clinicConfig.dealCurrencies }}>
+        <PrivacyProvider initialHidden={settings.hide_earnings} approx={approx}>
           <CelebrationSoundProvider initialEnabled={settings.celebration_sound}>
             <AppShell
               email={viewer.email}
@@ -109,6 +113,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </AppShell>
           </CelebrationSoundProvider>
         </PrivacyProvider>
+        </CurrencyProvider>
         </PermissionsProvider>
       </ToastProvider>
     </div>

@@ -6,6 +6,7 @@ import { computeMonthlyAggregates, monthKey, monthLabel } from "@/lib/commission
 import { formatCurrency } from "@/lib/format";
 import { Card, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
+import { useCurrencies } from "@/components/currency";
 
 export function CloseoutSummary({
   allPatients,
@@ -21,6 +22,7 @@ export function CloseoutSummary({
   defaultMonth: string;
 }) {
   const [month, setMonth] = useState(defaultMonth);
+  const { main: currency } = useCurrencies();
 
   // Pipeline counts (confirmed/visits done) follow current ownership; money follows
   // visit-level attribution so a reassigned-away patient's already-earned commission
@@ -85,14 +87,14 @@ export function CloseoutSummary({
           <p className="mt-1 text-xl font-semibold text-slate-900">
             {stats.paymentsReceived}
             <span className="ml-1 text-xs font-normal text-slate-400">
-              ({formatCurrency(stats.paymentsTotal, settings.currency)})
+              ({formatCurrency(stats.paymentsTotal, currency)})
             </span>
           </p>
         </div>
         <div>
           <p className="text-xs text-slate-500">Commission earned</p>
           <p className="mt-1 text-xl font-semibold text-slate-900">
-            <Money value={stats.commission} currency={settings.currency} />
+            <Money value={stats.commission} currency={currency} />
           </p>
         </div>
       </div>

@@ -84,7 +84,6 @@ export default async function DashboardPage() {
         initialFilter={initialFilter}
         savedFilter={saved.dashboard ?? ALL_FILTER}
         currentUserId={userId}
-        currency={settings.currency}
         todayIso={todayIso}
         monthAheadIso={monthAheadIso}
       />

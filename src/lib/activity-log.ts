@@ -123,6 +123,12 @@ export function describeActivity(
       return `${actor} merged seller ${entry.detail ?? ""}`.trim();
     case "seller_commission_updated":
       return `${actor} changed ${target}'s commission rates`;
+    case "seller_currency_updated":
+      return `${actor} set ${target}'s usual currency${entry.detail ? ` to ${entry.detail}` : ""}`;
+    case "deal_currency_updated": {
+      const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
+      return `${actor} changed ${patientName}'s deal currency or rate${entry.detail ? ` — ${entry.detail}` : ""}`;
+    }
     case "patient_reassigned": {
       const patientName = (entry.target_id && patientNameById.get(entry.target_id)) || "a patient";
       const newSeller = (entry.detail && nameById.get(entry.detail)) || "another seller";

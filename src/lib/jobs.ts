@@ -31,7 +31,7 @@ export const JOBS: JobDefinition[] = [
   {
     id: "exchange-rate",
     label: "Exchange rates",
-    description: "Saves today's GBP / USD / EUR → TRY rates.",
+    description: "Saves today's market rates (EUR → every supported currency; any pair is crossed through EUR).",
     schedule: "Daily at 06:00 UTC (vercel.json)",
     expectedEveryHours: 24,
   },

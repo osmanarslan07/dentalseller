@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/activity-log";
 import { visitLabel, visitRef } from "@/lib/visit-key";
 import { PatientExtraKind } from "@/types";
 import { requirePermission } from "@/lib/permissions";
+import { plainAmount } from "@/lib/money";
 
 const KINDS: PatientExtraKind[] = ["night", "treatment", "other"];
 const KIND_NAMES: Record<PatientExtraKind, string> = {
@@ -30,8 +31,15 @@ function parseExtra(formData: FormData) {
   return { kind, description, quantity, unit_price };
 }
 
-function describe(e: { kind: PatientExtraKind; description: string | null; quantity: number; unit_price: number }) {
-  return `${e.quantity} × ${e.description || KIND_NAMES[e.kind]} @ £${e.unit_price}`;
+/** "2 × Extra night @ £80" — in the patient's deal currency. */
+function describe(e: { kind: PatientExtraKind; description: string | null; quantity: number; unit_price: number }, currency: string) {
+  return `${e.quantity} × ${e.description || KIND_NAMES[e.kind]} @ ${plainAmount(e.unit_price, currency)}`;
+}
+
+/** The deal currency of the patient an extra belongs to. */
+async function patientCurrency(supabase: Awaited<ReturnType<typeof createClient>>, patientId: string): Promise<string> {
+  const { data } = await supabase.from("patients").select("currency").eq("id", patientId).maybeSingle();
+  return data?.currency ?? "GBP";
 }
 
 function revalidate(patientId: string) {
@@ -56,7 +64,7 @@ export async function addPatientExtra(patientId: string, visitKey: string, formD
     "extra_added",
     "patient",
     patientId,
-    `${visitLabel(visitKey, patient?.extra_visits ?? [])}: ${describe(input)}`
+    `${visitLabel(visitKey, patient?.extra_visits ?? [])}: ${describe(input, patient?.currency ?? (await patientCurrency(supabase, patientId)))}`
   );
   revalidate(patientId);
 }
@@ -69,7 +77,7 @@ export async function updatePatientExtra(id: string, formData: FormData) {
   const { data, error } = await supabase.from("patient_extras").update(input).eq("id", id).select("patient_id").single();
   if (error) throw new Error(error.message);
 
-  await logActivity(supabase, user.actorId, "extra_updated", "patient", data.patient_id, describe(input));
+  await logActivity(supabase, user.actorId, "extra_updated", "patient", data.patient_id, describe(input, await patientCurrency(supabase, data.patient_id)));
   revalidate(data.patient_id);
 }
 
@@ -91,7 +99,7 @@ export async function deletePatientExtra(id: string) {
     "extra_deleted",
     "patient",
     data.patient_id,
-    describe({ ...data, quantity: Number(data.quantity), unit_price: Number(data.unit_price) })
+    describe({ ...data, quantity: Number(data.quantity), unit_price: Number(data.unit_price) }, await patientCurrency(supabase, data.patient_id))
   );
   revalidate(data.patient_id);
 }

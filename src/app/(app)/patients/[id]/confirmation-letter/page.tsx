@@ -2,7 +2,8 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatient, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatient } from "@/lib/data";
+import { currencyInWords } from "@/lib/money";
 import { extraLabel, extrasFor, visitAmount } from "@/lib/balance";
 import { formatCurrency } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
@@ -76,7 +77,6 @@ export default async function ConfirmationLetterPage({
 
   if (!patient) notFound();
 
-  const settings = await getSettings(supabase, patient.responsible_seller_id);
   const clinicConfig = await getClinicConfig(supabase);
 
   const clinic = {
@@ -202,34 +202,34 @@ export default async function ConfirmationLetterPage({
                 <li className="flex items-baseline justify-between gap-4 border-b border-slate-100 pb-1.5">
                   <span>First Visit Payment:</span>
                   <span className="font-bold tabular-nums">
-                    {firstVisitPayment != null ? formatCurrency(firstVisitPayment, settings.currency) : "—"}
+                    {firstVisitPayment != null ? formatCurrency(firstVisitPayment, patient.currency) : "—"}
                   </span>
                 </li>
                 {firstVisitExtras.map((e) => (
                   <li key={e.id} className="flex items-baseline justify-between gap-4 pl-4 text-xs text-slate-500">
                     <span>incl. {extraLabel(e)}</span>
-                    <span className="tabular-nums">{formatCurrency(e.total, settings.currency)}</span>
+                    <span className="tabular-nums">{formatCurrency(e.total, patient.currency)}</span>
                   </li>
                 ))}
                 <li className="flex items-baseline justify-between gap-4">
                   <span>Second Visit Payment:</span>
                   <span className="font-bold tabular-nums">
-                    {secondVisitPayment != null ? formatCurrency(secondVisitPayment, settings.currency) : "—"}
+                    {secondVisitPayment != null ? formatCurrency(secondVisitPayment, patient.currency) : "—"}
                   </span>
                 </li>
                 {secondVisitExtras.map((e) => (
                   <li key={e.id} className="flex items-baseline justify-between gap-4 pl-4 text-xs text-slate-500">
                     <span>incl. {extraLabel(e)}</span>
-                    <span className="tabular-nums">{formatCurrency(e.total, settings.currency)}</span>
+                    <span className="tabular-nums">{formatCurrency(e.total, patient.currency)}</span>
                   </li>
                 ))}
               </ul>
               <div className="mt-3 flex items-center justify-between gap-4 rounded-lg bg-teal-600 px-4 py-3 text-white">
                 <span className="text-sm font-semibold">Total Amount To Be Paid</span>
-                <span className="text-xl font-bold tabular-nums">{formatCurrency(totalPayment, settings.currency)}</span>
+                <span className="text-xl font-bold tabular-nums">{formatCurrency(totalPayment, patient.currency)}</span>
               </div>
               <p className="mt-4 text-xs leading-relaxed text-slate-500">
-                Our package prices are quoted for cash payments in British Pounds (£). If you prefer to pay
+                Our package prices are quoted for cash payments in {currencyInWords(patient.currency)}. If you prefer to pay
                 via credit card, debit card, or bank transfer, please be aware that a {surchargePct} bank commission fee
                 will be applied. We kindly ask that you have your preferred payment method arranged before
                 your treatment begins.

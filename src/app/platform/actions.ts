@@ -13,6 +13,7 @@ import {
   AnnouncementLevel,
 } from "@/lib/announcements";
 import { CLINIC_MODULES } from "@/types";
+import { isSupportedCurrency } from "@/lib/money";
 import { grantablePermissions } from "@/lib/permission-catalog";
 import { getRoleTemplates } from "@/lib/roles";
 
@@ -54,6 +55,8 @@ export async function createClinic(formData: FormData): Promise<CreateClinicResu
   const adminEmail = String(formData.get("admin_email") ?? "").trim().toLowerCase();
   if (!adminName) throw new Error("Admin name is required");
   if (!EMAIL_RE.test(adminEmail)) throw new Error("Enter a valid admin email address");
+  const mainCurrency = String(formData.get("main_currency") ?? "GBP");
+  if (!isSupportedCurrency(mainCurrency)) throw new Error("Pick the clinic's main currency");
 
   const admin = createAdminClient();
   const { data: clinic, error: clinicError } = await admin.from("clinics").insert({ name, slug }).select("id").single();
@@ -73,6 +76,7 @@ export async function createClinic(formData: FormData): Promise<CreateClinicResu
     clinic_address: "",
     clinic_phone: "",
     clinic_email: "",
+    main_currency: mainCurrency,
   });
   if (configError) {
     await rollbackClinic();

@@ -16,6 +16,8 @@ import { createPatient } from "./actions";
 import { Toggle } from "./detail/bits";
 import { pickableSellers } from "@/lib/sellers";
 import type { CoordinatorOption } from "@/lib/coordinators";
+import { useCurrencies } from "@/components/currency";
+import { currencySymbol } from "@/lib/money";
 
 /** Carried over from the patient being duplicated but not shown — the rest of the group
  * booking (same flights and hotel), edited later on the patient page like anyone else's. */
@@ -73,6 +75,15 @@ export function NewPatientForm({
   const [needsVisit2, setNeedsVisit2] = useState(duplicateFrom ? duplicateFrom.needs_visit2 : true);
   const src = duplicateFrom;
   const recall = src?.visit2_recall_months ?? 3;
+  // The deal currency (only asked when the clinic deals in several): the one picked, else the
+  // duplicated patient's, else the chosen seller's usual one, else the main currency.
+  const currencies = useCurrencies();
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(
+    src && currencies.list.includes(src.currency) ? src.currency : null
+  );
+  const usual = seller.newName == null ? sellers.find((s) => s.id === seller.sellerId)?.default_currency : null;
+  const currency = currencyChoice ?? (usual && currencies.list.includes(usual) ? usual : currencies.main);
+  const sym = currencySymbol(currency);
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -147,6 +158,19 @@ export function NewPatientForm({
               <SellerPicker sellers={sellers} value={seller} onChange={setSeller} currentUserId={currentUserId} allowNew formFields />
             </div>
           )}
+          {currencies.multi && (
+            <div>
+              <Label>Price agreed in</Label>
+              <Select name="currency" value={currency} onChange={(e) => setCurrencyChoice(e.target.value)} aria-label="Deal currency">
+                {currencies.list.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                    {c === currencies.main ? " (main)" : ""}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <Label>Coordinator — who follows the patient up</Label>
             <input type="hidden" name="coordinator_id" value={coordinatorId} />
@@ -173,7 +197,7 @@ export function NewPatientForm({
               <Input type="date" name="visit1_date" aria-label="Visit 1 date" defaultValue={src?.visit1_date ?? ""} />
             </div>
             <div>
-              <Label>Price (£)</Label>
+              <Label>Price ({sym})</Label>
               <Input type="number" min="0" step="0.01" name="visit1_expected" aria-label="Visit 1 price" defaultValue={src?.visit1_expected ?? ""} />
             </div>
 
@@ -195,7 +219,7 @@ export function NewPatientForm({
                   </Select>
                 </div>
                 <div>
-                  <Label>Price (£)</Label>
+                  <Label>Price ({sym})</Label>
                   <Input type="number" min="0" step="0.01" name="visit2_expected" aria-label="Visit 2 price" defaultValue={src?.visit2_expected ?? ""} />
                 </div>
                 {src?.visit2_date && <input type="hidden" name="visit2_date" value={src.visit2_date} />}

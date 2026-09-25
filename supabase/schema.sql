@@ -4066,3 +4066,272 @@ begin
   return new;
 end;
 $$;
+
+-- =====================================================================
+-- CURRENCIES (roadmap step L). Idempotent/safe to re-run.
+-- =====================================================================
+-- A clinic has one MAIN currency (its reporting currency: commission, tiers, totals) and,
+-- optionally, other currencies it deals in. A patient's prices, extras and discounts are in
+-- the patient's DEAL currency; `deal_rate` (1 deal unit = x main, fixed on the day the price
+-- is agreed) turns them into the main currency. A payment can be handed over in any clinic
+-- currency: `paid_amount` in `currency`, `amount` = its value in the deal currency (what
+-- counts toward the visit, as before) and `main_amount` = its value in the main currency on
+-- the day it was received. Hotel and transfer costs are the clinic's own costs, in the main
+-- currency. A clinic with no other currencies has deal_rate 1 and rates 1 everywhere.
+
+create or replace function public.supported_currencies()
+returns text[]
+language sql
+immutable
+as $$ select array['GBP', 'EUR', 'USD', 'TRY', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CAD', 'AUD'] $$;
+
+-- ---------- exchange rates: any pair, more precision ----------
+-- Market rates are stored against EUR (base 'EUR', one row per currency per day) and crossed
+-- in the app; the older GBP/USD → TRY rows stay as history.
+alter table public.exchange_rates alter column rate type numeric(18,8);
+
+-- ---------- clinic settings ----------
+alter table public.clinic_config add column if not exists main_currency text not null default 'GBP';
+alter table public.clinic_config add column if not exists deal_currencies text[] not null default '{}';
+-- { "EUR": 0.86 } = the clinic's own fixed rate, 1 EUR = 0.86 main; a currency not listed
+-- uses the automatic market rate.
+alter table public.clinic_config add column if not exists fixed_rates jsonb not null default '{}'::jsonb;
+alter table public.clinic_config drop constraint if exists clinic_config_currencies_check;
+alter table public.clinic_config add constraint clinic_config_currencies_check check (
+  main_currency = any(public.supported_currencies())
+  and deal_currencies <@ public.supported_currencies()
+  and not (main_currency = any(deal_currencies))
+  and jsonb_typeof(fixed_rates) = 'object'
+);
+
+-- ---------- per-seller usual currency (their new patients start in it) ----------
+alter table public.sellers add column if not exists default_currency text;
+alter table public.sellers drop constraint if exists sellers_default_currency_check;
+alter table public.sellers add constraint sellers_default_currency_check
+  check (default_currency is null or default_currency = any(public.supported_currencies()));
+
+-- ---------- patients: deal currency + the rate it was agreed at ----------
+alter table public.patients add column if not exists currency text;
+alter table public.patients add column if not exists deal_rate numeric(18,8) not null default 1;
+alter table public.patients add column if not exists deal_rate_on date;
+-- 'auto' market rate, 'clinic' the clinic's fixed rate, 'manual' corrected by hand
+alter table public.patients add column if not exists deal_rate_source text;
+update public.patients p
+set currency = coalesce((select c.main_currency from public.clinic_config c where c.clinic_id = p.clinic_id), 'GBP')
+where p.currency is null;
+alter table public.patients alter column currency set not null;
+alter table public.patients drop constraint if exists patients_currency_check;
+alter table public.patients add constraint patients_currency_check check (
+  currency = any(public.supported_currencies())
+  and deal_rate > 0
+  and (deal_rate_source is null or deal_rate_source in ('auto', 'clinic', 'manual'))
+);
+
+-- ---------- payments: what was handed over, and its value in deal + main currency ----------
+alter table public.patient_payments add column if not exists currency text;
+alter table public.patient_payments add column if not exists paid_amount numeric(12,2);
+alter table public.patient_payments add column if not exists rate_to_deal numeric(18,8);
+alter table public.patient_payments add column if not exists rate_to_main numeric(18,8);
+alter table public.patient_payments add column if not exists main_amount numeric(12,2);
+alter table public.patient_payments add column if not exists rate_source text;
+update public.patient_payments x
+set currency = p.currency, paid_amount = x.amount, rate_to_deal = 1, rate_to_main = 1, main_amount = x.amount
+from public.patients p
+where p.id = x.patient_id and x.currency is null;
+alter table public.patient_payments alter column currency set not null;
+alter table public.patient_payments alter column paid_amount set not null;
+alter table public.patient_payments alter column rate_to_deal set not null;
+alter table public.patient_payments alter column rate_to_main set not null;
+alter table public.patient_payments alter column main_amount set not null;
+alter table public.patient_payments drop constraint if exists patient_payments_currency_check;
+alter table public.patient_payments add constraint patient_payments_currency_check check (
+  currency = any(public.supported_currencies())
+  and paid_amount > 0 and rate_to_deal > 0 and rate_to_main > 0
+  and (rate_source is null or rate_source in ('auto', 'clinic', 'manual'))
+);
+
+-- The clinic's main currency (GBP for a clinic without a settings row yet).
+create or replace function public.clinic_main_currency(p_clinic uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$ select coalesce((select main_currency from public.clinic_config where clinic_id = p_clinic), 'GBP') $$;
+
+-- Patients: a new patient starts in the main currency unless the app says otherwise; the main
+-- currency always has rate 1; the deal currency is locked once a payment exists; changing the
+-- currency or its rate on an existing patient needs money.edit. Named to run after
+-- patients_set_clinic_id (same-timing triggers fire in name order).
+create or replace function public.guard_patient_currency()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  main text := public.clinic_main_currency(new.clinic_id);
+begin
+  new.currency := coalesce(new.currency, main);
+  if new.currency = main then
+    new.deal_rate := 1;
+    new.deal_rate_source := null;
+  end if;
+  if tg_op = 'UPDATE' then
+    if new.currency is distinct from old.currency
+       and exists (select 1 from public.patient_payments where patient_id = new.id) then
+      raise exception 'The deal currency can''t change once a payment is recorded';
+    end if;
+    if auth.uid() is not null
+       and not public.has_permission(auth.uid(), 'money.edit')
+       and (new.currency is distinct from old.currency or new.deal_rate is distinct from old.deal_rate) then
+      raise exception 'You don''t have permission to change the deal currency or its rate';
+    end if;
+  elsif new.deal_rate_source = 'manual' and auth.uid() is not null
+        and not public.has_permission(auth.uid(), 'money.edit') then
+    raise exception 'You don''t have permission to set an exchange rate';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists patients_set_currency on public.patients;
+create trigger patients_set_currency before insert or update on public.patients
+  for each row execute function public.guard_patient_currency();
+
+-- Payments: the currency defaults to the patient's deal currency; `amount` (deal) and
+-- `main_amount` are always worked out here from paid_amount × rate — never trusted from the
+-- client. Same currency = rate 1. A hand-corrected rate needs money.edit. Named to run before
+-- patient_payments_validate (which works the card surcharge out from `amount`).
+create or replace function public.set_payment_currency()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  deal text;
+  main text;
+begin
+  select p.currency, public.clinic_main_currency(p.clinic_id) into deal, main
+  from public.patients p where p.id = new.patient_id;
+  if deal is null then
+    raise exception 'Patient not found';
+  end if;
+  new.currency := coalesce(new.currency, deal);
+  new.paid_amount := coalesce(new.paid_amount, new.amount);
+  if new.currency = deal then new.rate_to_deal := 1; end if;
+  if new.currency = main then new.rate_to_main := 1; end if;
+  if deal = main then new.rate_to_main := new.rate_to_deal; end if;
+  if new.rate_to_deal is null or new.rate_to_main is null then
+    raise exception 'No exchange rate for %', new.currency;
+  end if;
+  if new.currency = deal and new.currency = main then new.rate_source := null; end if;
+  if new.rate_source = 'manual' and auth.uid() is not null
+     and not public.has_permission(auth.uid(), 'money.edit')
+     and (tg_op = 'INSERT' or new.rate_to_deal is distinct from old.rate_to_deal
+          or new.rate_to_main is distinct from old.rate_to_main) then
+    raise exception 'You don''t have permission to set an exchange rate';
+  end if;
+  new.amount := round(new.paid_amount * new.rate_to_deal, 2);
+  new.main_amount := round(new.paid_amount * new.rate_to_main, 2);
+  return new;
+end;
+$$;
+drop trigger if exists patient_payments_currency on public.patient_payments;
+create trigger patient_payments_currency before insert or update on public.patient_payments
+  for each row execute function public.set_payment_currency();
+
+-- ---------- clinic settings guard: currencies are money settings; the main currency is
+-- fixed once the clinic has patients (changing it then means converting data — support) ----------
+create or replace function public.guard_clinic_config_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  branding_cols text[] := array['clinic_name', 'clinic_short_name', 'clinic_address', 'clinic_phone', 'clinic_email',
+    'clinic_logo_url'];
+  telegram_cols text[] := array['telegram_group_chat_id'];
+  money_cols text[] := array['deduct_costs_from_commission', 'card_surcharge_rate', 'main_currency', 'deal_currencies',
+    'fixed_rates'];
+  driver_cols text[] := array['default_airport_company_id', 'default_airport_driver_id', 'default_local_company_id',
+    'default_local_driver_id'];
+  message_cols text[] := array['driver_messages_mode', 'whatsapp_phone_number_id', 'whatsapp_business_account_id',
+    'whatsapp_template_single', 'whatsapp_template_day', 'whatsapp_template_lang', 'whatsapp_verified_at',
+    'whatsapp_last_error', 'whatsapp_last_error_at'];
+  allowed text[] := array['updated_at'];
+begin
+  if auth.uid() is not null
+     and new.main_currency is distinct from (case when tg_op = 'UPDATE' then old.main_currency else 'GBP' end)
+     and exists (select 1 from public.patients where clinic_id = new.clinic_id) then
+    raise exception 'The main currency can''t be changed once the clinic has patients — contact support';
+  end if;
+  if auth.uid() is null or public.has_permission(auth.uid(), 'settings.clinic') then
+    return new;
+  end if;
+  if public.has_permission(auth.uid(), 'settings.branding') then
+    allowed := allowed || branding_cols;
+  end if;
+  if public.has_permission(auth.uid(), 'settings.telegram') then
+    allowed := allowed || telegram_cols;
+  end if;
+  if public.has_permission(auth.uid(), 'settings.money') then
+    allowed := allowed || money_cols;
+  end if;
+  if public.has_permission(auth.uid(), 'drivers.manage') then
+    allowed := allowed || driver_cols;
+  end if;
+  if public.has_permission(auth.uid(), 'messaging.manage') then
+    allowed := allowed || message_cols;
+  end if;
+  -- (a clinic's row exists from its first settings save; a first insert isn't checked)
+  if tg_op = 'UPDATE' and (to_jsonb(new) - allowed) is distinct from (to_jsonb(old) - allowed) then
+    raise exception 'You don''t have permission to change that setting';
+  end if;
+  return new;
+end;
+$$;
+
+-- ---------- My settings: "also show approx. in …" ----------
+-- The per-user `currency` column used to relabel every amount (without converting it); money
+-- is now always in the clinic's main currency and `currency` is no longer read. The personal
+-- extra figure (TRY only before) can be in any supported currency.
+alter table public.settings add column if not exists approx_currency text not null default 'TRY';
+alter table public.settings drop constraint if exists settings_approx_currency_check;
+alter table public.settings add constraint settings_approx_currency_check
+  check (approx_currency = any(public.supported_currencies()));
+
+-- ---------- a seller's usual currency ----------
+-- Set from Clinic settings → Money for any seller, account or not (an account's seller row
+-- is otherwise only changed through its profile). Must be one of the clinic's currencies.
+create or replace function public.set_seller_currency(p_seller uuid, p_currency text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cid uuid := public.my_clinic_id();
+  cfg public.clinic_config;
+begin
+  if cid is null or not (public.has_permission(auth.uid(), 'settings.money') or public.has_permission(auth.uid(), 'sellers.manage')) then
+    raise exception 'You don''t have permission to change that';
+  end if;
+  if public.is_superadmin(auth.uid()) and not public.support_can_write() then
+    raise exception 'Support is read-only until editing is unlocked';
+  end if;
+  select * into cfg from public.clinic_config where clinic_id = cid;
+  if p_currency is not null
+     and p_currency <> coalesce(cfg.main_currency, 'GBP')
+     and not (p_currency = any(coalesce(cfg.deal_currencies, '{}'))) then
+    raise exception 'The clinic doesn''t deal in %', p_currency;
+  end if;
+  update public.sellers set default_currency = p_currency where id = p_seller and clinic_id = cid;
+  if not found then
+    raise exception 'Seller not found';
+  end if;
+end;
+$$;
+revoke execute on function public.set_seller_currency(uuid, text) from public, anon;
+grant execute on function public.set_seller_currency(uuid, text) to authenticated;

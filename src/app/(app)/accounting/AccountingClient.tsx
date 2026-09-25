@@ -10,16 +10,22 @@ import { visitLabel } from "@/lib/visit-key";
 import { downloadCsv, escapeCsv } from "@/lib/csv";
 import { Patient, PatientPayment, PaymentMethod, Profile, Seller } from "@/types";
 import { sellerNameMap } from "@/lib/sellers";
+import { useCurrencies } from "@/components/currency";
+import { dealToMain, paymentFx, surchargeMain } from "@/lib/money";
 
 const METHOD_LABELS: Record<PaymentMethod, string> = { cash: "Cash", card: "Card", bank: "Bank transfer" };
-const gbp = (n: number) => formatCurrency(n, "GBP");
 
 type LedgerRow = { payment: PatientPayment; patient: Patient; visit: string };
 
 /** Pre-accounting: what came in (by month, split by method) and what's still open. Money
- * collected only — no commission here, so every team member can use it. */
+ * collected only — no commission here, so every team member can use it. Totals are in the
+ * clinic's main currency: each payment at the rate on the day it came in. A payment in another
+ * currency also shows what was handed over, and the difference against the rate the price was
+ * agreed at is the exchange-rate gain / loss. */
 export function AccountingClient({ patients, profiles, sellers }: { patients: Patient[]; profiles: Profile[]; sellers: Seller[] }) {
   const today = todayIso();
+  const { main } = useCurrencies();
+  const gbp = (n: number) => formatCurrency(n, main);
   const [month, setMonth] = useState(today.slice(0, 7));
   const [receivedBy, setReceivedBy] = useState("all");
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name || "—";
@@ -52,14 +58,18 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
   );
 
   const totals = useMemo(() => {
-    const t = { all: 0, cash: 0, card: 0, bank: 0, surcharge: 0 };
-    for (const { payment } of ledger) {
-      t.all += payment.amount;
-      t[payment.method] += payment.amount;
-      t.surcharge += payment.surcharge_amount;
+    const t = { all: 0, cash: 0, card: 0, bank: 0, surcharge: 0, fx: 0 };
+    for (const { payment, patient } of ledger) {
+      t.all += payment.main_amount;
+      t[payment.method] += payment.main_amount;
+      t.surcharge += surchargeMain(payment);
+      t.fx += paymentFx(patient, payment);
     }
+    t.fx = Math.round(t.fx * 100) / 100;
     return t;
   }, [ledger]);
+  // only a clinic with payments in (or prices agreed in) other currencies has any of this
+  const anyForeign = allPayments.some((r) => r.payment.currency !== main || r.patient.currency !== main);
 
   const openBalances = useMemo(
     () =>
@@ -68,21 +78,34 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
         .sort((a, b) => (a.balance.date ?? "").localeCompare(b.balance.date ?? "")),
     [patients, today]
   );
-  const outstanding = openBalances.reduce((s, r) => s + Math.max(0, r.balance.due), 0);
+  // what's still due, in the main currency at each patient's agreed rate
+  const outstanding = openBalances.reduce((s, r) => s + dealToMain(r.patient, Math.max(0, r.balance.due)), 0);
 
   function exportCsv() {
-    const header = ["Date", "Patient", "Visit", "Method", "Amount", "Card surcharge", "Total paid", "Received by", "Note"];
+    const header = [
+      "Date",
+      "Patient",
+      "Visit",
+      "Method",
+      "Amount",
+      "Card surcharge",
+      "Total paid",
+      "Received by",
+      "Note",
+      ...(anyForeign ? ["Paid", "Paid currency", `Rate to ${main}`, `Exchange gain/loss (${main})`] : []),
+    ];
     const rows = ledger.map(({ payment: x, patient, visit }) =>
       [
         x.paid_on,
         patient.name,
         visit,
         METHOD_LABELS[x.method],
-        x.amount.toFixed(2),
-        x.surcharge_amount.toFixed(2),
-        (x.amount + x.surcharge_amount).toFixed(2),
+        x.main_amount.toFixed(2),
+        surchargeMain(x).toFixed(2),
+        (x.main_amount + surchargeMain(x)).toFixed(2),
         nameOf(x.received_by),
         x.note,
+        ...(anyForeign ? [x.paid_amount.toFixed(2), x.currency, x.rate_to_main, paymentFx(patient, x).toFixed(2)] : []),
       ]
         .map(escapeCsv)
         .join(",")
@@ -96,6 +119,9 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
     { label: "Card", value: totals.card },
     { label: "Bank transfer", value: totals.bank },
     { label: "Card surcharges", value: totals.surcharge, hint: "on top, not commissionable" },
+    ...(anyForeign
+      ? [{ label: "Exchange-rate gain / loss", value: totals.fx, hint: "vs the rates prices were agreed at" }]
+      : []),
   ];
 
   return (
@@ -124,7 +150,7 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${anyForeign ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
         {tiles.map((t) => (
           <Card key={t.label} className="p-4">
             <p className="text-xs uppercase tracking-wide text-slate-400">{t.label}</p>
@@ -179,8 +205,13 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
                         {METHOD_LABELS[x.method]}
                       </Badge>
                     </td>
-                    <td className="py-2.5 pr-4 text-right font-medium text-slate-900">{gbp(x.amount)}</td>
-                    <td className="py-2.5 pr-4 text-right text-slate-500">{x.surcharge_amount > 0 ? gbp(x.surcharge_amount) : "—"}</td>
+                    <td className="py-2.5 pr-4 text-right font-medium text-slate-900">
+                      {gbp(x.main_amount)}
+                      {x.currency !== main && (
+                        <div className="text-xs font-normal text-slate-400">{formatCurrency(x.paid_amount, x.currency)}</div>
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-4 text-right text-slate-500">{x.surcharge_amount > 0 ? gbp(surchargeMain(x)) : "—"}</td>
                     <td className="py-2.5 pr-5 text-slate-600">{nameOf(x.received_by)}</td>
                   </tr>
                 ))}
@@ -236,13 +267,13 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
                       <div className="text-xs text-slate-400">{b.label}</div>
                     </td>
                     <td className="py-2.5 pr-4 text-slate-600">{b.date ? formatDate(b.date) : "—"}</td>
-                    <td className="py-2.5 pr-4 text-right text-slate-700">{gbp(b.owed)}</td>
-                    <td className="py-2.5 pr-4 text-right text-slate-700">{gbp(b.paid)}</td>
+                    <td className="py-2.5 pr-4 text-right text-slate-700">{formatCurrency(b.owed, patient.currency)}</td>
+                    <td className="py-2.5 pr-4 text-right text-slate-700">{formatCurrency(b.paid, patient.currency)}</td>
                     <td className="py-2.5 pr-4 text-right">
                       {b.due > 0 ? (
-                        <Badge tone="amber">{gbp(b.due)} due</Badge>
+                        <Badge tone="amber">{formatCurrency(b.due, patient.currency)} due</Badge>
                       ) : (
-                        <Badge tone="blue">Overpaid {gbp(-b.due)}</Badge>
+                        <Badge tone="blue">Overpaid {formatCurrency(-b.due, patient.currency)}</Badge>
                       )}
                     </td>
                     <td className="py-2.5 pr-5 text-slate-600">{sellerNames.get(patient.responsible_seller_id) ?? "—"}</td>

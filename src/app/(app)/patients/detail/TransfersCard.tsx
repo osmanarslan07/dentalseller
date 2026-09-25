@@ -10,7 +10,9 @@ import { driverMessage, isWhatsAppable } from "@/lib/transfer-message";
 import { DriverMessagesOffHint, FallbackLink, sendLabel, useDriverMessages, WhatsAppDelivery } from "@/components/driver-messages";
 import { addTransfer, deleteTransfer, markTransferSent, setTransferStatus, suggestTransfers, updateTransfer } from "../transfer-actions";
 import { RowMenu } from "./Menu";
-import { gbp, Pill, PillTone, Section, Segmented } from "./bits";
+import { moneyIn, Pill, PillTone, Section, Segmented } from "./bits";
+import { useCurrencies } from "@/components/currency";
+import { currencySymbol } from "@/lib/money";
 import { shortDate, transfersWithoutDriver } from "./visits";
 import { useCan } from "@/components/permissions";
 
@@ -274,7 +276,9 @@ function TransferRow({
   const company = companies.find((c) => c.id === t.company_id);
   const driver = company?.drivers.find((d) => d.id === t.driver_id);
   const companyName = company ? (company.is_internal ? "Clinic car" : company.name) : null;
-  const meta = [t.flight_no ? `✈ ${t.flight_no}` : null, `${t.pax} pax`, t.cost != null ? `cost ${gbp(t.cost)}` : null, t.notes]
+  // a transfer's cost is the clinic's own, in its main currency
+  const main = useCurrencies().main;
+  const meta = [t.flight_no ? `✈ ${t.flight_no}` : null, `${t.pax} pax`, t.cost != null ? `cost ${moneyIn(main)(t.cost)}` : null, t.notes]
     .filter(Boolean)
     .join(" · ");
   const missingDriver = !driver && t.status !== "done";
@@ -392,6 +396,7 @@ function TransferForm({
   onCancel: () => void;
   onSave: (formData: FormData) => Promise<void>;
 }) {
+  const { main: mainCurrency } = useCurrencies();
   const hotel = travel.hotel || "Hotel";
   const [kind, setKind] = useState<TransferKind>(transfer?.kind ?? "arrival");
   const [status, setStatus] = useState<TransferStatus>(transfer?.status ?? "planned");
@@ -552,7 +557,7 @@ function TransferForm({
           </Select>
         </div>
         <div>
-          <Label>Cost (£)</Label>
+          <Label>Cost ({currencySymbol(mainCurrency)})</Label>
           {company?.is_internal ? (
             <p className="py-2 text-sm text-slate-500">Free — clinic car</p>
           ) : (

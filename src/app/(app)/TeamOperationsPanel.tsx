@@ -40,7 +40,9 @@ type UpcomingEvent = {
   time: string | null;
   flightNo: string | null;
   daysLeft: number;
+  /** In the patient's deal currency. */
   expected: number | null;
+  currency: string;
 };
 
 type LogisticsTarget =
@@ -82,7 +84,6 @@ export function TeamOperationsPanel({
   patients,
   showResponsible,
   sellers,
-  currency,
   todayIso,
   monthAheadIso,
 }: {
@@ -90,7 +91,6 @@ export function TeamOperationsPanel({
   patients: Patient[];
   showResponsible: boolean;
   sellers: Seller[];
-  currency: string;
   todayIso: string;
   monthAheadIso: string;
 }) {
@@ -148,6 +148,7 @@ export function TeamOperationsPanel({
         time: e.time,
         flightNo: e.flightNo,
         daysLeft,
+        currency: p.currency,
         // Departure shares the same expected amount as its arrival — showing it twice per visit
         // reads as double the money owed, so only the arrival (or self/extra) event carries it.
         // price + that visit's extras
@@ -323,7 +324,7 @@ export function TeamOperationsPanel({
                             </div>
                             {v.expected != null && (
                               <span className="text-right text-sm font-medium text-slate-700">
-                                {formatCurrency(v.expected, currency)}
+                                {formatCurrency(v.expected, v.currency)}
                               </span>
                             )}
                           </Link>
@@ -434,7 +435,7 @@ export function TeamOperationsPanel({
                     </div>
                     <div className="text-right">
                       <span className={`block text-sm font-medium ${m.due > 0 ? "text-slate-700" : "text-blue-700"}`}>
-                        {m.due > 0 ? `${formatCurrency(m.due, currency)} due` : `Overpaid ${formatCurrency(-m.due, currency)}`}
+                        {m.due > 0 ? `${formatCurrency(m.due, m.patient.currency)} due` : `Overpaid ${formatCurrency(-m.due, m.patient.currency)}`}
                       </span>
                       {m.daysSince != null && (
                         <span

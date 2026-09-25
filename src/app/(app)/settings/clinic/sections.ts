@@ -29,7 +29,7 @@ export const CLINIC_SECTIONS: ClinicSection[] = [
   {
     id: "money",
     label: "Money",
-    description: "Clinic-wide rules for how money is counted.",
+    description: "Currencies, and clinic-wide rules for how money is counted.",
     needs: ["settings.money"],
   },
   {
@@ -83,6 +83,8 @@ export const SETTINGS_INDEX: { label: string; section: ClinicSectionId; words?: 
   { label: "Roles", section: "roles", words: "permissions what can do access" },
   { label: "Costs before commission", section: "money", words: "deduct hotel transfer cost" },
   { label: "Card payment surcharge", section: "money", words: "fee percent card payments" },
+  { label: "Currencies", section: "money", words: "currency main euro pound dollar lira exchange rate gbp eur usd try" },
+  { label: "Usual currency per seller", section: "money", words: "seller default currency" },
   { label: "Transfer companies", section: "operations", words: "taxi vehicle company" },
   { label: "Drivers", section: "operations", words: "driver phone" },
   { label: "Default drivers", section: "operations", words: "airport local assigned" },

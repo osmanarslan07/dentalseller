@@ -1,7 +1,9 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatients, getProfiles, getTransferCompanies } from "@/lib/data";
+import { getClinicConfig, getPatients, getProfiles, getSellers, getTransferCompanies } from "@/lib/data";
+import { latestMarketRates } from "@/lib/rates";
+import { CurrenciesCard } from "../../CurrenciesCard";
 import { can, canAny, requirePagePermission } from "@/lib/permissions";
 import { getClinicRoles } from "@/lib/roles";
 import { getSecretsStatus } from "@/lib/whatsapp";
@@ -36,7 +38,7 @@ export default async function ClinicSectionPage({ params }: { params: Promise<{ 
 
       {section.id === "roles" && <RolesSection clinicId={viewer.clinicId} modules={viewer.modules} canEdit={can(viewer, "roles.edit")} canDelete={can(viewer, "roles.delete")} />}
 
-      {section.id === "money" && <SystemSettingsCard clinicConfig={await getClinicConfig(supabase)} />}
+      {section.id === "money" && <MoneySection clinicId={viewer.clinicId} canSetSellers={canAny(viewer, ["settings.money", "sellers.manage"])} />}
 
       {section.id === "operations" && (
         <OperationsSection isAdmin={can(viewer, "drivers.manage")} />
@@ -72,6 +74,28 @@ async function RolesSection({
   const memberCounts: Record<string, number> = {};
   for (const p of profiles) for (const r of p.roles ?? []) memberCounts[r] = (memberCounts[r] ?? 0) + 1;
   return <RolesCard roles={roles} memberCounts={memberCounts} modules={modules} canEdit={canEdit} canDelete={canDelete} />;
+}
+
+async function MoneySection({ clinicId, canSetSellers }: { clinicId: string; canSetSellers: boolean }) {
+  const supabase = await createClient();
+  const clinicConfig = await getClinicConfig(supabase);
+  const [sellers, market, { count }] = await Promise.all([
+    getSellers(supabase),
+    latestMarketRates(clinicConfig.mainCurrency),
+    supabase.from("patients").select("id", { count: "exact", head: true }).eq("clinic_id", clinicId),
+  ]);
+  return (
+    <>
+      <CurrenciesCard
+        config={clinicConfig}
+        hasPatients={(count ?? 0) > 0}
+        market={market}
+        sellers={sellers}
+        canSetSellers={canSetSellers}
+      />
+      <SystemSettingsCard clinicConfig={clinicConfig} />
+    </>
+  );
 }
 
 async function OperationsSection({ isAdmin }: { isAdmin: boolean }) {

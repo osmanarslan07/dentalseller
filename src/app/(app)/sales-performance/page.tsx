@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getSellers, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatients, getProfiles, getSellers, getSettings } from "@/lib/data";
 import {
   computeMonthlyAggregates,
   countPatientsWithCompletedVisitInMonth,
@@ -23,7 +23,7 @@ export default async function SalesPerformancePage({ searchParams }: { searchPar
   const { month: monthParam } = await searchParams;
   const selectedMonth = monthParam && MONTH_KEY_RE.test(monthParam) ? monthParam : currentMonthKey();
 
-  const [allPatients, sellers] = await Promise.all([getPatients(supabase), getSellers(supabase)]);
+  const [allPatients, sellers, clinicConfig] = await Promise.all([getPatients(supabase), getSellers(supabase), getClinicConfig(supabase)]);
   const roleById = new Map(profiles.map((p) => [p.id, p.role]));
 
   // Every seller, account or not — a seller without an account only once they have a patient
@@ -54,7 +54,8 @@ export default async function SalesPerformancePage({ searchParams }: { searchPar
           role: seller.profile_id ? (role === "admin" ? ("admin" as const) : ("seller" as const)) : null,
           isActive: seller.is_active,
         },
-        currency: settings.currency,
+        // commission and tiers are in the clinic's main currency, whatever the deals were in
+        currency: clinicConfig.mainCurrency,
         patientCount: sellerPatients.length,
         patientsSoldInMonth,
         patientsCameInMonth: countPatientsWithCompletedVisitInMonth(allPatients, selectedMonth, seller.id),

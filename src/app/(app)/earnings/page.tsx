@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatients, getSettings } from "@/lib/data";
+import { dealToMain, dealToMainOrNull } from "@/lib/money";
 import {
   addMonths,
   computeMonthlyAggregates,
@@ -43,10 +44,13 @@ export default async function EarningsPage() {
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const user = await getViewerUser();
-  const [allPatients, settings] = await Promise.all([
+  const [allPatients, settings, clinicConfig] = await Promise.all([
     getPatients(supabase),
     getSettings(supabase, user?.id ?? ""),
+    getClinicConfig(supabase),
   ]);
+  // everything on this page is in the clinic's main currency
+  const currency = clinicConfig.mainCurrency;
   // Earnings mirrors the old Dashboard money section: each seller's own commission only,
   // never a colleague's. Computed from ALL patients (not a pre-filtered list) so a seller
   // keeps credit for commission already earned on a patient that's since been reassigned
@@ -83,9 +87,9 @@ export default async function EarningsPage() {
   const upcoming: UpcomingVisit[] = [];
   for (const p of patients) {
     const visitEntries: readonly (readonly [string | null, "upcoming" | "completed", number | null])[] = [
-      [p.visit1_date, p.visit1_status, visitExpectedTotal(p, "visit1", p.visit1_expected)],
-      [p.visit2_date, p.visit2_status, visitExpectedTotal(p, "visit2", p.visit2_expected)],
-      ...p.extra_visits.map((v) => [v.visit_date, v.status, visitExpectedTotal(p, v.id, v.expected)] as const),
+      [p.visit1_date, p.visit1_status, dealToMainOrNull(p, visitExpectedTotal(p, "visit1", p.visit1_expected))],
+      [p.visit2_date, p.visit2_status, dealToMainOrNull(p, visitExpectedTotal(p, "visit2", p.visit2_expected))],
+      ...p.extra_visits.map((v) => [v.visit_date, v.status, dealToMainOrNull(p, visitExpectedTotal(p, v.id, v.expected))] as const),
     ];
     for (const [date, status, expected] of visitEntries) {
       if (!date || status !== "upcoming") continue;
@@ -108,12 +112,12 @@ export default async function EarningsPage() {
 
   const avgCommissionPerPatient = totalPatients > 0 ? totalActualCommission / totalPatients : 0;
   const avgTreatmentValue =
-    totalPatients > 0 ? patients.reduce((sum, p) => sum + treatmentTotal(p), 0) / totalPatients : 0;
+    totalPatients > 0 ? patients.reduce((sum, p) => sum + dealToMain(p, treatmentTotal(p)), 0) / totalPatients : 0;
 
   const highestValuePatient = patients
     .filter((p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === thisMonth)
     .reduce<{ name: string; value: number } | null>((best, p) => {
-      const value = treatmentTotal(p);
+      const value = dealToMain(p, treatmentTotal(p));
       return !best || value > best.value ? { name: p.name, value } : best;
     }, null);
 
@@ -121,7 +125,7 @@ export default async function EarningsPage() {
     total_earned: (
       <StatCard
         label="Total earned to date"
-        value={<Money value={totalActualCommission} currency={settings.currency} animate />}
+        value={<Money value={totalActualCommission} currency={currency} animate />}
         sublabel="Confirmed commission, actual payments"
         icon={<WalletIcon className="h-4 w-4" />}
       />
@@ -129,11 +133,11 @@ export default async function EarningsPage() {
     total_commission: (
       <StatCard
         label="Total commission (earned + expected)"
-        value={<Money value={totalActualCommission + totalExpectedCommission} currency={settings.currency} animate />}
+        value={<Money value={totalActualCommission + totalExpectedCommission} currency={currency} animate />}
         sublabel={
           <>
-            <Money value={totalActualCommission} currency={settings.currency} showConversion={false} /> earned +{" "}
-            <Money value={totalExpectedCommission} currency={settings.currency} showConversion={false} /> expected
+            <Money value={totalActualCommission} currency={currency} showConversion={false} /> earned +{" "}
+            <Money value={totalExpectedCommission} currency={currency} showConversion={false} /> expected
           </>
         }
         icon={<LayersIcon className="h-4 w-4" />}
@@ -142,15 +146,15 @@ export default async function EarningsPage() {
     month_earnings: (
       <StatCard
         label="This month's earnings so far"
-        value={<Money value={thisMonthAgg?.actualCommission ?? 0} currency={settings.currency} animate />}
-        sublabel={`From ${formatCurrency(thisMonthAgg?.actualTotal ?? 0, settings.currency)} received`}
+        value={<Money value={thisMonthAgg?.actualCommission ?? 0} currency={currency} animate />}
+        sublabel={`From ${formatCurrency(thisMonthAgg?.actualTotal ?? 0, currency)} received`}
         icon={<TrendingUpIcon className="h-4 w-4" />}
       />
     ),
     expected_earnings: (
       <StatCard
         label="Total expected earnings"
-        value={<Money value={outstandingExpected} currency={settings.currency} animate />}
+        value={<Money value={outstandingExpected} currency={currency} animate />}
         sublabel="Remaining commission across confirmed treatment plans"
         icon={<HourglassIcon className="h-4 w-4" />}
       />
@@ -158,7 +162,7 @@ export default async function EarningsPage() {
     upcoming_visits_value: (
       <StatCard
         label="Upcoming visits value (30 days)"
-        value={<Money value={upcomingValue} currency={settings.currency} animate />}
+        value={<Money value={upcomingValue} currency={currency} animate />}
         sublabel={`${upcoming.length} visit${upcoming.length === 1 ? "" : "s"} scheduled`}
         icon={<PlaneIcon className="h-4 w-4" />}
       />
@@ -166,7 +170,7 @@ export default async function EarningsPage() {
     avg_commission_patient: (
       <StatCard
         label="Average commission per patient"
-        value={<Money value={avgCommissionPerPatient} currency={settings.currency} animate />}
+        value={<Money value={avgCommissionPerPatient} currency={currency} animate />}
         sublabel={`Across ${totalPatients} patients`}
         icon={<PercentIcon className="h-4 w-4" />}
       />
@@ -174,7 +178,7 @@ export default async function EarningsPage() {
     avg_treatment_value: (
       <StatCard
         label="Average treatment value per patient"
-        value={<Money value={avgTreatmentValue} currency={settings.currency} animate />}
+        value={<Money value={avgTreatmentValue} currency={currency} animate />}
         sublabel="Visit 1 + visit 2 expected total"
         icon={<TagIcon className="h-4 w-4" />}
       />
@@ -185,7 +189,7 @@ export default async function EarningsPage() {
         value={highestValuePatient ? highestValuePatient.name : "—"}
         sublabel={
           highestValuePatient ? (
-            <Money value={highestValuePatient.value} currency={settings.currency} />
+            <Money value={highestValuePatient.value} currency={currency} />
           ) : (
             "No patients confirmed this month"
           )
@@ -243,11 +247,11 @@ export default async function EarningsPage() {
         </div>
         <p className="mt-1 text-sm text-slate-500">
           Commission is <Percent value={settings.tier1_rate} /> up to{" "}
-          <Money value={settings.tier1_threshold} currency={settings.currency} showConversion={false} />,{" "}
+          <Money value={settings.tier1_threshold} currency={currency} showConversion={false} />,{" "}
           <Percent value={settings.tier2_rate} /> up to{" "}
-          <Money value={settings.tier2_threshold} currency={settings.currency} showConversion={false} />, then{" "}
+          <Money value={settings.tier2_threshold} currency={currency} showConversion={false} />, then{" "}
           <Percent value={settings.tier3_rate} /> above. Plus{" "}
-          <Money value={settings.fixed_monthly_payment} currency={settings.currency} showConversion={false} /> fixed per month.
+          <Money value={settings.fixed_monthly_payment} currency={currency} showConversion={false} /> fixed per month.
         </p>
       </div>
 
@@ -264,7 +268,7 @@ export default async function EarningsPage() {
           <h2 className="text-base font-semibold text-slate-900">Earnings by month</h2>
           <span className="text-xs text-slate-400">Last 12 months</span>
         </div>
-        <PrivateEarningsChart data={chartData} currency={settings.currency} />
+        <PrivateEarningsChart data={chartData} currency={currency} />
         <p className="mt-3 text-xs text-slate-400">
           Updated <RelativeTime timestamp={updatedAt} />
         </p>
@@ -291,12 +295,12 @@ export default async function EarningsPage() {
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-400">Actual received</div>
-                  <div className="text-slate-600">{formatCurrency(r.actualTotal, settings.currency)}</div>
+                  <div className="text-slate-600">{formatCurrency(r.actualTotal, currency)}</div>
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-400">Actual commission</div>
                   <div className="font-medium text-slate-800">
-                    <Money value={r.actualCommission} currency={settings.currency} />
+                    <Money value={r.actualCommission} currency={currency} />
                   </div>
                   <Badge tone={tierTone(r.actualTotal, settings)}>
                     <Percent value={r.actualRate} />
@@ -304,12 +308,12 @@ export default async function EarningsPage() {
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-400">Expected (scheduled)</div>
-                  <div className="text-slate-600">{formatCurrency(r.expectedTotal, settings.currency)}</div>
+                  <div className="text-slate-600">{formatCurrency(r.expectedTotal, currency)}</div>
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-400">Expected commission</div>
                   <div className="font-medium text-slate-800">
-                    <Money value={r.expectedCommission} currency={settings.currency} />
+                    <Money value={r.expectedCommission} currency={currency} />
                   </div>
                   <Badge tone={tierTone(r.expectedTotal, settings)}>
                     <Percent value={r.expectedRate} />
@@ -352,7 +356,7 @@ export default async function EarningsPage() {
                       </div>
                     </td>
                     <td className="py-3 pr-4 text-slate-600">
-                      {formatCurrency(r.actualTotal, settings.currency)}
+                      {formatCurrency(r.actualTotal, currency)}
                     </td>
                     <td className="py-3 pr-4">
                       <Badge tone={tierTone(r.actualTotal, settings)}>
@@ -360,10 +364,10 @@ export default async function EarningsPage() {
                       </Badge>
                     </td>
                     <td className="py-3 pr-4 font-medium text-slate-800">
-                      <Money value={r.actualCommission} currency={settings.currency} />
+                      <Money value={r.actualCommission} currency={currency} />
                     </td>
                     <td className="py-3 pr-4 text-slate-600">
-                      {formatCurrency(r.expectedTotal, settings.currency)}
+                      {formatCurrency(r.expectedTotal, currency)}
                     </td>
                     <td className="py-3 pr-4">
                       <Badge tone={tierTone(r.expectedTotal, settings)}>
@@ -371,7 +375,7 @@ export default async function EarningsPage() {
                       </Badge>
                     </td>
                     <td className="py-3 pr-4 font-medium text-slate-800">
-                      <Money value={r.expectedCommission} currency={settings.currency} />
+                      <Money value={r.expectedCommission} currency={currency} />
                     </td>
                   </tr>
                 );

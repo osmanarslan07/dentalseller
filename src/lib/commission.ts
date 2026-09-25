@@ -1,5 +1,6 @@
 import { Celebration, CommissionSettings, DiscountType, Patient } from "@/types";
 import { formatCurrency } from "@/lib/format";
+import { dealToMainOrNull } from "@/lib/money";
 
 export function monthKey(dateStr: string): string {
   return dateStr.slice(0, 7); // 'YYYY-MM'
@@ -76,9 +77,11 @@ export function visitCosts(p: Patient, visitKey: string): { hotel: number; trans
   return { hotel: hotel ?? 0, transfers };
 }
 
-/** An amount as commission sees it: minus the visit's costs when the clinic deducts them
- * (see Patient.commission_costs), never below zero. */
-function afterCosts(p: Patient, visitKey: string, amount: number | null): number | null {
+/** An amount as commission sees it: in the main currency (at the rate the price was agreed
+ * at), minus the visit's costs when the clinic deducts them (see Patient.commission_costs —
+ * costs are already in the main currency), never below zero. */
+function afterCosts(p: Patient, visitKey: string, dealAmount: number | null): number | null {
+  const amount = dealToMainOrNull(p, dealAmount);
   if (amount == null || !p.commission_costs) return amount;
   return Math.max(0, amount - (p.commission_costs[visitKey] ?? 0));
 }
@@ -118,15 +121,16 @@ export function commissionForTotal(
   return total * rateForTotal(total, settings);
 }
 
-/** Human label for which tier a total falls into, e.g. "Up to £40,000". */
-export function tierLabel(total: number, settings: CommissionSettings): string {
+/** Human label for which tier a total falls into, e.g. "Up to £40,000". Tiers are in the
+ * clinic's main currency. */
+export function tierLabel(total: number, settings: CommissionSettings, currency: string): string {
   if (total <= settings.tier1_threshold) {
-    return `Up to ${formatCurrency(settings.tier1_threshold, settings.currency)}`;
+    return `Up to ${formatCurrency(settings.tier1_threshold, currency)}`;
   }
   if (total <= settings.tier2_threshold) {
-    return `${formatCurrency(settings.tier1_threshold, settings.currency)}–${formatCurrency(settings.tier2_threshold, settings.currency)}`;
+    return `${formatCurrency(settings.tier1_threshold, currency)}–${formatCurrency(settings.tier2_threshold, currency)}`;
   }
-  return `Above ${formatCurrency(settings.tier2_threshold, settings.currency)}`;
+  return `Above ${formatCurrency(settings.tier2_threshold, currency)}`;
 }
 
 export interface MonthTotals {
@@ -312,7 +316,7 @@ export function patientCommissionContribution(
 }
 
 /** Only meaningful the moment a payment is newly recorded — checks whether that specific
- * amount tipped this month's running total into a higher tier, which raises the rate on
+ * amount (in the main currency) tipped this month's running total into a higher tier, which raises the rate on
  * every pound still to come this month, not just the one just paid. `patientsAfterSave`
  * must already reflect the new amount (i.e. fetched after the DB write it came from). */
 export function detectTierJump(

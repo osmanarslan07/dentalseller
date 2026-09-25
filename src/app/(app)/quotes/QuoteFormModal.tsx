@@ -12,6 +12,7 @@ import {
   computeQuoteSplit,
 } from "@/lib/quote-templates";
 import { formatCurrency } from "@/lib/format";
+import { useCurrencies } from "@/components/currency";
 import { createQuote, updateQuote } from "./actions";
 
 export function QuoteFormModal({
@@ -26,6 +27,10 @@ export function QuoteFormModal({
   defaultCurrency: string;
 }) {
   const [pending, startTransition] = useTransition();
+  const currencies = useCurrencies();
+  const quoteCurrency = quote?.currency ?? defaultCurrency;
+  // the clinic's currencies, plus an older quote's own if it's no longer one of them
+  const currencyOptions = currencies.list.includes(quoteCurrency) ? currencies.list : [...currencies.list, quoteCurrency];
   const [error, setError] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [includeBoneGraft, setIncludeBoneGraft] = useState(quote?.include_bone_graft_note ?? false);
@@ -130,7 +135,20 @@ export function QuoteFormModal({
           </div>
           <div>
             <Label>Currency</Label>
-            <Input name="currency" defaultValue={quote?.currency ?? defaultCurrency} placeholder="GBP" />
+            {currencyOptions.length > 1 ? (
+              <Select name="currency" defaultValue={quoteCurrency}>
+                {currencyOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <>
+                <input type="hidden" name="currency" value={quoteCurrency} />
+                <p className="py-2 text-sm text-slate-700">{quoteCurrency}</p>
+              </>
+            )}
           </div>
         </div>
 

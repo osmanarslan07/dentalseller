@@ -16,6 +16,8 @@ import {
   setSellerRecordActive,
 } from "./seller-actions";
 import { useModule } from "@/components/permissions";
+import { useCurrencies } from "@/components/currency";
+import { currencySymbol } from "@/lib/money";
 
 export interface SellerRecordRow {
   seller: Seller;
@@ -34,6 +36,7 @@ export function SellersCard({ rows, allSellers, currentUserId }: { rows: SellerR
   const router = useRouter();
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
+  const { main: mainCurrency } = useCurrencies();
   // rates only mean something while the clinic has the Sales module
   const sales = useModule("sales");
   const [name, setName] = useState("");
@@ -94,7 +97,7 @@ export function SellersCard({ rows, allSellers, currentUserId }: { rows: SellerR
                       {sales && (
                         <>
                           {" "}· {pct(commission.tier1_rate)} / {pct(commission.tier2_rate)} / {pct(commission.tier3_rate)}
-                          {commission.fixed_monthly_payment > 0 && ` + ${formatCurrency(commission.fixed_monthly_payment, commission.currency)}/month`}
+                          {commission.fixed_monthly_payment > 0 && ` + ${formatCurrency(commission.fixed_monthly_payment, mainCurrency)}/month`}
                         </>
                       )}
                     </span>
@@ -197,6 +200,7 @@ function RenameForm({ seller, pending, onSubmit }: { seller: Seller; pending: bo
 
 function CommissionForm({ commission, pending, onSubmit }: { commission: CommissionSettings; pending: boolean; onSubmit: (fd: FormData) => void }) {
   const rate = (r: number) => Math.round(r * 10000) / 100;
+  const sym = currencySymbol(useCurrencies().main);
   return (
     <form
       className="mt-3 grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-3"
@@ -206,7 +210,7 @@ function CommissionForm({ commission, pending, onSubmit }: { commission: Commiss
       }}
     >
       <div>
-        <Label>Tier 1 up to (£)</Label>
+        <Label>Tier 1 up to ({sym})</Label>
         <Input type="number" name="tier1_threshold" min="0" step="1" defaultValue={commission.tier1_threshold} required />
       </div>
       <div>
@@ -214,7 +218,7 @@ function CommissionForm({ commission, pending, onSubmit }: { commission: Commiss
         <Input type="number" name="tier1_rate" min="0" max="99" step="0.01" defaultValue={rate(commission.tier1_rate)} required />
       </div>
       <div>
-        <Label>Tier 2 up to (£)</Label>
+        <Label>Tier 2 up to ({sym})</Label>
         <Input type="number" name="tier2_threshold" min="0" step="1" defaultValue={commission.tier2_threshold} required />
       </div>
       <div>
@@ -226,7 +230,7 @@ function CommissionForm({ commission, pending, onSubmit }: { commission: Commiss
         <Input type="number" name="tier3_rate" min="0" max="99" step="0.01" defaultValue={rate(commission.tier3_rate)} required />
       </div>
       <div>
-        <Label>Fixed monthly (£)</Label>
+        <Label>Fixed monthly ({sym})</Label>
         <Input type="number" name="fixed_monthly_payment" min="0" step="0.01" defaultValue={commission.fixed_monthly_payment} required />
       </div>
       <div className="col-span-2 flex justify-end sm:col-span-3">

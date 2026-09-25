@@ -13,7 +13,8 @@ import { downloadCsv, patientsToCsv } from "@/lib/csv";
 import { DEFAULT_CLINIC_CONFIG, DriverMessagesMode, Patient, PatientFile, Profile, Seller, Transfer, TransferCompany, TransferDefaults } from "@/types";
 import { addExtraVisit, deletePatient, getPatientActivity, sendPatientTelegramMessage, updatePatientFields } from "./actions";
 import { ChevronIcon, KebabIcon, Menu } from "./detail/Menu";
-import { gbp, Pill } from "./detail/bits";
+import { moneyIn, Pill } from "./detail/bits";
+import { currencySymbol } from "@/lib/money";
 import { currentVisitKey, forVisit, patientVisits, shortDate, transfersWithoutDriver, whatsappNumber } from "./detail/visits";
 import { VisitTab, visitStage } from "./detail/VisitTab";
 import { documentLinks, EDIT_SALE_EVENT, PatientInfoTab } from "./detail/PatientInfoTab";
@@ -159,6 +160,7 @@ export function PatientDetail({
   };
 
   const sellerName = sellerLabel(sellers.find((s) => s.id === patient.responsible_seller_id));
+  const fmt = moneyIn(patient.currency);
   const wa = patient.phone ? whatsappNumber(patient.phone) : "";
   const komoIsLink = !!patient.komo_reference && /^https?:\/\//i.test(patient.komo_reference);
   const docs = documentLinks(patient, visits);
@@ -186,7 +188,7 @@ export function PatientDetail({
               </Pill>
               {dueBadges.map((b) => (
                 <Pill key={b.key} tone={b.due > 0 ? "amber" : "blue"}>
-                  {b.label}: {b.due > 0 ? `${gbp(b.due)} due` : `overpaid ${gbp(-b.due)}`}
+                  {b.label}: {b.due > 0 ? `${fmt(b.due)} due` : `overpaid ${fmt(-b.due)}`}
                 </Pill>
               ))}
               {noDriver.length > 0 && (
@@ -372,6 +374,7 @@ export function PatientDetail({
         open={addingExtra}
         onClose={() => setAddingExtra(false)}
         patientId={patient.id}
+        currency={patient.currency}
         onAdded={(id) => {
           setAddingExtra(false);
           setTab(id);
@@ -385,11 +388,14 @@ function AddExtraVisitModal({
   open,
   onClose,
   patientId,
+  currency,
   onAdded,
 }: {
   open: boolean;
   onClose: () => void;
   patientId: string;
+  /** The patient's deal currency. */
+  currency: string;
   onAdded: (id: string) => void;
 }) {
   const router = useRouter();
@@ -429,7 +435,7 @@ function AddExtraVisitModal({
             <Input type="date" name="visit_date" />
           </div>
           <div>
-            <Label>Price (£)</Label>
+            <Label>Price ({currencySymbol(currency)})</Label>
             <Input type="number" min="0" step="0.01" name="expected" placeholder="Optional" />
           </div>
         </div>

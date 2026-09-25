@@ -8,28 +8,32 @@ import { tierLabel } from "@/lib/commission";
 import { CommissionSettings } from "@/types";
 import { setHideEarnings } from "@/lib/privacy-actions";
 
+/** `approx` is the viewer's "also show approx. in …": 1 unit of the clinic's main currency in
+ * their chosen currency. Null when it's off (or no rate is known). */
+interface Approx {
+  from: string;
+  currency: string;
+  rate: number;
+}
+
 const PrivacyContext = createContext<{
   hidden: boolean;
   toggle: () => void;
-  showTry: boolean;
-  tryRate: number | null;
+  approx: Approx | null;
 }>({
   hidden: false,
   toggle: () => {},
-  showTry: false,
-  tryRate: null,
+  approx: null,
 });
 
 export function PrivacyProvider({
   children,
   initialHidden,
-  showTry,
-  tryRate,
+  approx,
 }: {
   children: ReactNode;
   initialHidden: boolean;
-  showTry: boolean;
-  tryRate: number | null;
+  approx: Approx | null;
 }) {
   // Seeded from the settings row (read server-side) so the very first render — server and
   // client — already reflects the saved state. No post-mount flash of real numbers.
@@ -44,7 +48,7 @@ export function PrivacyProvider({
   }
 
   return (
-    <PrivacyContext.Provider value={{ hidden, toggle, showTry, tryRate }}>{children}</PrivacyContext.Provider>
+    <PrivacyContext.Provider value={{ hidden, toggle, approx }}>{children}</PrivacyContext.Provider>
   );
 }
 
@@ -62,12 +66,12 @@ export function Money({
 }: {
   value: number;
   currency: string;
-  /** Set false in cramped spots (per-row table cells) to skip the secondary ≈ TRY line. */
+  /** Set false in cramped spots (per-row table cells) to skip the secondary "≈ …" line. */
   showConversion?: boolean;
   /** Count up from 0 to value on mount — use for headline stat-card numbers, not per-row amounts. */
   animate?: boolean;
 }) {
-  const { hidden, showTry, tryRate } = usePrivacy();
+  const { hidden, approx } = usePrivacy();
   if (hidden) return <>{MASK}</>;
 
   const primary = animate ? (
@@ -75,13 +79,13 @@ export function Money({
   ) : (
     formatCurrency(value, currency)
   );
-  if (!showConversion || !showTry || !tryRate || currency === "TRY") return <>{primary}</>;
+  if (!showConversion || !approx || approx.from !== currency || approx.currency === currency) return <>{primary}</>;
 
   return (
     <>
       {primary}
       <span className="block text-xs font-normal text-slate-400">
-        ≈ {formatCurrency(value * tryRate, "TRY")}
+        ≈ {formatCurrency(value * approx.rate, approx.currency)}
       </span>
     </>
   );
@@ -92,9 +96,9 @@ export function Percent({ value }: { value: number }) {
   return <>{hidden ? MASK : formatPercent(value)}</>;
 }
 
-export function TierSublabel({ total, settings }: { total: number; settings: CommissionSettings }) {
+export function TierSublabel({ total, settings, currency }: { total: number; settings: CommissionSettings; currency: string }) {
   const { hidden } = usePrivacy();
-  return <>{hidden ? MASK : tierLabel(total, settings)}</>;
+  return <>{hidden ? MASK : tierLabel(total, settings, currency)}</>;
 }
 
 export function PrivateEarningsChart(props: { data: { label: string; actual: number; expected: number }[]; currency: string }) {

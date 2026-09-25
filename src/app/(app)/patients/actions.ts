@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { addMonths, format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPatient } from "@/lib/data";
+import { getClinicConfig, getPatient, getSellers } from "@/lib/data";
+import { plainAmount } from "@/lib/money";
+import { dealCurrencyFields } from "@/lib/deal-currency";
 import { normalizePhone } from "@/lib/phone";
 import { SellerChoice, resolveSellerChoice, sellerChoiceFromForm } from "@/lib/seller-choice";
 import { getEnvChatsClinicId, getFallbackChatId, sendTelegramMessageToMany } from "@/lib/telegram";
@@ -164,9 +166,9 @@ function formatDateTime(date: string | null, time: string | null) {
 }
 
 /** Actual takes priority — once a payment is received, that's the number that matters. */
-function paymentLine(label: string, actual: number | null, expected: number | null): string | null {
-  if (actual != null) return `<b>${label} (alındı):</b> £${actual}`;
-  if (expected != null) return `<b>${label} (beklenen):</b> £${expected}`;
+function paymentLine(label: string, actual: number | null, expected: number | null, currency: string): string | null {
+  if (actual != null) return `<b>${label} (alındı):</b> ${plainAmount(actual, currency)}`;
+  if (expected != null) return `<b>${label} (beklenen):</b> ${plainAmount(expected, currency)}`;
   return null;
 }
 
@@ -174,7 +176,8 @@ function amountOf(actual: number | null, expected: number | null): number {
   return actual ?? expected ?? 0;
 }
 
-function buildNewPatientMessage(input: PatientInput): string {
+function buildNewPatientMessage(input: PatientInput, currency: string): string {
+  const m = (n: number) => plainAmount(n, currency);
   const arrival = formatDateTime(input.visit1_arrival_date, input.visit1_arrival_time);
   const useVisit2Departure = input.needs_visit2 && !!input.visit2_departure_date;
   const departureDate = useVisit2Departure ? input.visit2_departure_date : input.visit1_departure_date;
@@ -196,9 +199,9 @@ function buildNewPatientMessage(input: PatientInput): string {
       : null,
     hotel ? `<b>Otel:</b> ${hotel}` : null,
     roomType ? `<b>Oda Türü:</b> ${roomType}` : null,
-    input.visit1_expected != null ? `<b>İlk visit ödeme:</b> £${input.visit1_expected}` : null,
-    input.needs_visit2 && input.visit2_expected != null ? `<b>İkinci visit ödeme:</b> £${input.visit2_expected}` : null,
-    total ? `<b>Toplam Ödeme:</b> £${total}` : null,
+    input.visit1_expected != null ? `<b>İlk visit ödeme:</b> ${m(input.visit1_expected)}` : null,
+    input.needs_visit2 && input.visit2_expected != null ? `<b>İkinci visit ödeme:</b> ${m(input.visit2_expected)}` : null,
+    total ? `<b>Toplam Ödeme:</b> ${m(total)}` : null,
   ].filter(Boolean);
 
   return lines.join("\n");
@@ -271,31 +274,33 @@ function buildVisitMessage(patient: Patient, visitKey: string): string {
   const visit1Expected = visitExpectedTotal(patient, "visit1", patient.visit1_expected);
   const visit2Expected = visitExpectedTotal(patient, "visit2", patient.visit2_expected);
 
+  const cur = patient.currency;
+  const m = (n: number) => plainAmount(n, cur);
   const paymentLines: (string | null)[] = extrasFor(patient, visitKey).map(
-    (e) => `<b>Ekstra:</b> ${extraLabel(e, "tr")} — £${e.total}`
+    (e) => `<b>Ekstra:</b> ${extraLabel(e, "tr")} — ${m(e.total)}`
   );
   const discount = visitDiscountSetting(patient, visitKey);
   if (discount) {
     const base = (rawExpected ?? 0) + extrasFor(patient, visitKey).reduce((sum, e) => sum + e.total, 0);
     const off = visitDiscount(patient, visitKey, base);
     paymentLines.push(
-      `<b>İndirim:</b> −£${off}${discount.type === "percent" ? ` (%${discount.value})` : ""}${discount.reason ? ` — ${discount.reason}` : ""}`
+      `<b>İndirim:</b> −${m(off)}${discount.type === "percent" ? ` (%${discount.value})` : ""}${discount.reason ? ` — ${discount.reason}` : ""}`
     );
   }
   if (visitKey === "visit1") {
-    paymentLines.push(paymentLine("İlk visit ödeme", actual, expected));
+    paymentLines.push(paymentLine("İlk visit ödeme", actual, expected, cur));
     if (patient.needs_visit2) {
-      paymentLines.push(paymentLine("İkinci visit ödeme", patient.visit2_actual, visit2Expected));
+      paymentLines.push(paymentLine("İkinci visit ödeme", patient.visit2_actual, visit2Expected, cur));
       const total = amountOf(actual, expected) + amountOf(patient.visit2_actual, visit2Expected);
-      if (total > 0) paymentLines.push(`<b>Toplam Ödeme:</b> £${total}`);
+      if (total > 0) paymentLines.push(`<b>Toplam Ödeme:</b> ${m(total)}`);
     }
   } else if (visitKey === "visit2") {
-    paymentLines.push(paymentLine("İlk visit ödeme", patient.visit1_actual, visit1Expected));
-    paymentLines.push(paymentLine("İkinci visit ödeme", actual, expected));
+    paymentLines.push(paymentLine("İlk visit ödeme", patient.visit1_actual, visit1Expected, cur));
+    paymentLines.push(paymentLine("İkinci visit ödeme", actual, expected, cur));
     const total = amountOf(patient.visit1_actual, visit1Expected) + amountOf(actual, expected);
-    if (total > 0) paymentLines.push(`<b>Toplam Ödeme:</b> £${total}`);
+    if (total > 0) paymentLines.push(`<b>Toplam Ödeme:</b> ${m(total)}`);
   } else {
-    paymentLines.push(paymentLine("Ödeme", actual, expected));
+    paymentLines.push(paymentLine("Ödeme", actual, expected, cur));
   }
 
   const lines = [
@@ -399,9 +404,19 @@ export async function createPatient(formData: FormData) {
         ? null
         : user.id;
 
+  // The deal currency: picked on the form when the clinic deals in several, else the seller's
+  // usual one, else the main currency — with the rate on the day it's agreed.
+  const clinicConfig = await getClinicConfig(supabase);
+  const picked = formData.get("currency");
+  const usual = (await getSellers(supabase)).find((s) => s.id === seller.id)?.default_currency;
+  const allowed = [clinicConfig.mainCurrency, ...clinicConfig.dealCurrencies];
+  const currency =
+    typeof picked === "string" && picked ? picked : usual && allowed.includes(usual) ? usual : clinicConfig.mainCurrency;
+  const deal = await dealCurrencyFields(clinicConfig, currency, input.confirmation_date);
+
   const { data: created, error } = await supabase
     .from("patients")
-    .insert({ ...input, responsible_seller_id: seller.id, coordinator_id: coordinatorId })
+    .insert({ ...input, ...deal, responsible_seller_id: seller.id, coordinator_id: coordinatorId })
     .select("id")
     .single();
   if (error) {
@@ -414,7 +429,7 @@ export async function createPatient(formData: FormData) {
 
   try {
     const chatIds = await getRecipientChatIds(supabase, [seller.id, coordinatorId]);
-    if (chatIds.length > 0) await sendTelegramMessageToMany(chatIds, buildNewPatientMessage(input));
+    if (chatIds.length > 0) await sendTelegramMessageToMany(chatIds, buildNewPatientMessage(input, deal.currency));
   } catch (err) {
     console.error("Telegram notify failed:", err);
   }

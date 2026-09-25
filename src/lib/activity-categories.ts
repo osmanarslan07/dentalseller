@@ -42,6 +42,7 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "extra_added",
     "extra_updated",
     "extra_deleted",
+    "deal_currency_updated",
   ],
   transfers: [
     "transfer_company_added",
@@ -72,6 +73,7 @@ export const ACTIVITY_CATEGORY_ACTIONS: Record<ActivityCategory, string[]> = {
     "seller_record_deleted",
     "seller_record_merged",
     "seller_commission_updated",
+    "seller_currency_updated",
   ],
   roles: [
     "member_roles_changed",

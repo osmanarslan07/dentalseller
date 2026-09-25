@@ -33,10 +33,11 @@ const num = (v: unknown): number | null => (v == null ? null : Number(v));
 /** Postgres numerics can arrive as strings — make the money fields plain numbers once, here.
  * `deductCosts` is the clinic's "deduct costs before commission" setting: when on, each
  * visit's hotel + external transfer costs are attached for the commission maths. */
-function normalizePatient(row: Record<string, unknown>, deductCosts: boolean): Patient {
+export function normalizePatient(row: Record<string, unknown>, deductCosts: boolean): Patient {
   const p = row as unknown as Patient;
   const normalized: Patient = {
     ...p,
+    deal_rate: Number(p.deal_rate ?? 1),
     visit1_hotel_cost: num(p.visit1_hotel_cost),
     visit2_hotel_cost: num(p.visit2_hotel_cost),
     transfer_costs: (p.transfer_costs ?? []).map((t) => ({ ...t, cost: num(t.cost) })),
@@ -48,6 +49,10 @@ function normalizePatient(row: Record<string, unknown>, deductCosts: boolean): P
       .map((x) => ({
         ...x,
         amount: Number(x.amount),
+        paid_amount: Number(x.paid_amount),
+        rate_to_deal: Number(x.rate_to_deal),
+        rate_to_main: Number(x.rate_to_main),
+        main_amount: Number(x.main_amount),
         surcharge_rate: x.surcharge_rate != null ? Number(x.surcharge_rate) : null,
         surcharge_amount: Number(x.surcharge_amount),
       }))
@@ -138,7 +143,7 @@ export async function getSettings(supabase: SupabaseClient, userId: string): Pro
     hide_earnings: Boolean(data.hide_earnings),
     celebration_sound: Boolean(data.celebration_sound ?? true),
     show_try: Boolean(data.show_try),
-    currency: data.currency,
+    approx_currency: data.approx_currency ?? DEFAULT_SETTINGS.approx_currency,
     dashboard_cards:
       Array.isArray(data.dashboard_cards) && data.dashboard_cards.length > 0
         ? data.dashboard_cards
@@ -178,6 +183,13 @@ export async function getClinicConfig(supabase: SupabaseClient): Promise<ClinicC
     clinicLogoUrl: data.clinic_logo_url ?? null,
     deductCostsFromCommission: data.deduct_costs_from_commission ?? false,
     cardSurchargeRate: data.card_surcharge_rate != null ? Number(data.card_surcharge_rate) : DEFAULT_CLINIC_CONFIG.cardSurchargeRate,
+    mainCurrency: data.main_currency ?? DEFAULT_CLINIC_CONFIG.mainCurrency,
+    dealCurrencies: Array.isArray(data.deal_currencies) ? data.deal_currencies : [],
+    fixedRates: Object.fromEntries(
+      Object.entries((data.fixed_rates ?? {}) as Record<string, unknown>)
+        .map(([c, r]) => [c, Number(r)] as const)
+        .filter(([, r]) => Number.isFinite(r) && r > 0)
+    ),
     transferDefaults: {
       airportCompanyId: data.default_airport_company_id ?? null,
       airportDriverId: data.default_airport_driver_id ?? null,
@@ -290,7 +302,7 @@ export async function getSellers(supabase: SupabaseClient): Promise<Seller[]> {
   const { data, error } = await withRetry(() =>
     supabase
       .from("sellers")
-      .select("id, name, profile_id, is_active, created_at")
+      .select("id, name, profile_id, is_active, default_currency, created_at")
       .eq("clinic_id", clinicId)
       .order("name", { ascending: true, nullsFirst: false })
   );
@@ -448,26 +460,6 @@ export async function getTasks(supabase: SupabaseClient): Promise<Task[]> {
 export interface ExchangeRatePoint {
   rate_date: string;
   rate: number;
-}
-
-export async function getRateHistory(
-  supabase: SupabaseClient,
-  base: string,
-  days = 90
-): Promise<ExchangeRatePoint[]> {
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
-  const { data, error } = await supabase
-    .from("exchange_rates")
-    .select("rate_date, rate")
-    .eq("base", base)
-    .eq("quote", "TRY")
-    .gte("rate_date", since.toISOString().slice(0, 10))
-    .order("rate_date", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []).map((d) => ({ rate_date: d.rate_date, rate: Number(d.rate) }));
 }
 
 /** A patient's files, newest first. */

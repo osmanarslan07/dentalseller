@@ -6,6 +6,9 @@ import { computeQuoteSplit } from "@/lib/quote-templates";
 import { diffFields, logActivity } from "@/lib/activity-log";
 import { Celebration, QuoteInput } from "@/types";
 import { requirePermission } from "@/lib/permissions";
+import { getClinicConfig } from "@/lib/data";
+import { dealCurrencyFields } from "@/lib/deal-currency";
+import { isSupportedCurrency } from "@/lib/money";
 
 const QUOTE_AUDIT_FIELDS: { key: keyof QuoteInput; label: string }[] = [
   { key: "name", label: "name" },
@@ -43,7 +46,11 @@ function parseInput(formData: FormData): QuoteInput {
     intro_text: str("intro_text"),
     inclusions: str("inclusions"),
     total_price: num("total_price"),
-    currency: String(formData.get("currency") ?? "GBP"),
+    currency: (() => {
+      const c = String(formData.get("currency") ?? "");
+      if (!isSupportedCurrency(c)) throw new Error("Pick a currency");
+      return c;
+    })(),
     split_mode: (formData.get("split_mode") as QuoteInput["split_mode"]) || "percent",
     deposit_percent: num("deposit_percent") ?? 60,
     first_visit_amount: num("first_visit_amount"),
@@ -162,6 +169,9 @@ export async function convertQuoteToPatient(id: string) {
     quote.deposit_percent,
     quote.first_visit_amount
   );
+  // the patient's prices are agreed in the quote's currency, at today's rate
+  const confirmationDate = new Date().toISOString().slice(0, 10);
+  const deal = await dealCurrencyFields(await getClinicConfig(supabase), quote.currency, confirmationDate);
   const letterItems = (quote.inclusions || "")
     .split("\n")
     .map((s: string) => s.replace(/^-\s*/, "").trim())
@@ -175,7 +185,8 @@ export async function convertQuoteToPatient(id: string) {
       name: quote.name,
       treatment: letterItems.split(",")[0]?.trim() || null,
       letter_treatment_items: letterItems || null,
-      confirmation_date: new Date().toISOString().slice(0, 10),
+      confirmation_date: confirmationDate,
+      ...deal,
       needs_visit2: second != null && second > 0,
       visit1_expected: first,
       visit2_expected: second,

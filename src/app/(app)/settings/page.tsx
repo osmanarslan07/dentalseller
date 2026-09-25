@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getProfiles, getRateHistory, getSettings } from "@/lib/data";
+import { getClinicConfig, getProfiles, getSettings } from "@/lib/data";
+import { getRateHistory } from "@/lib/rates";
 import { MySettingsClient } from "./MySettingsClient";
 import { getViewer } from "@/lib/viewer";
 import { ClinicSectionId, clinicSectionHref, firstClinicSection, visibleClinicSections } from "./clinic/sections";
@@ -32,9 +33,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   if (tab && tab in OLD_TAB_SECTIONS) redirect(oldTabTarget(tab, viewer?.permissions ?? []));
 
   const user = viewer ? { id: viewer.userId, email: viewer.email } : null;
-  const [settings, profiles] = await Promise.all([getSettings(supabase, user?.id ?? ""), getProfiles(supabase)]);
+  const [settings, profiles, clinicConfig] = await Promise.all([
+    getSettings(supabase, user?.id ?? ""),
+    getProfiles(supabase),
+    getClinicConfig(supabase),
+  ]);
+  const main = clinicConfig.mainCurrency;
   const rateHistory =
-    settings.show_try && settings.currency !== "TRY" ? await getRateHistory(supabase, settings.currency) : [];
+    settings.show_try && settings.approx_currency !== main ? await getRateHistory(main, settings.approx_currency) : [];
   const myProfile = profiles.find((p) => p.id === user?.id) ?? null;
 
   return (

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getPatient, getSettings } from "@/lib/data";
+import { getPatient } from "@/lib/data";
 import { extraLabel, extrasFor, visitAmount } from "@/lib/balance";
 import { visitDiscount, visitDiscountSetting, visitExpectedTotal } from "@/lib/commission";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -66,7 +66,6 @@ export default async function PatientDocumentPage({
 
   if (!patient) notFound();
 
-  const settings = await getSettings(supabase, patient.responsible_seller_id);
 
   const extraVisit = visit && visit !== "1" && visit !== "2" ? patient.extra_visits.find((v) => v.id === visit) : undefined;
   const visitNum: 1 | 2 = visit === "2" ? 2 : 1;
@@ -231,12 +230,12 @@ export default async function PatientDocumentPage({
                 label="Expected payment"
                 value={(() => {
                   const e = visitExpectedTotal(patient, extraVisit!.id, extraVisit!.expected);
-                  return e != null ? formatCurrency(e, settings.currency) : "";
+                  return e != null ? formatCurrency(e, patient.currency) : "";
                 })()}
               />
               <Field
                 label="Actual payment"
-                value={extraVisit!.actual != null ? formatCurrency(extraVisit!.actual, settings.currency) : ""}
+                value={extraVisit!.actual != null ? formatCurrency(extraVisit!.actual, patient.currency) : ""}
               />
               <Field label="Status" value={extraVisit!.status} strong />
             </div>
@@ -244,19 +243,19 @@ export default async function PatientDocumentPage({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field
                 label="First visit payment"
-                value={firstVisitPayment != null ? formatCurrency(firstVisitPayment, settings.currency) : ""}
+                value={firstVisitPayment != null ? formatCurrency(firstVisitPayment, patient.currency) : ""}
               />
               <Field
                 label="Second visit payment"
-                value={secondVisitPayment != null ? formatCurrency(secondVisitPayment, settings.currency) : ""}
+                value={secondVisitPayment != null ? formatCurrency(secondVisitPayment, patient.currency) : ""}
               />
-              <Field label="Total payment" value={formatCurrency(totalPayment, settings.currency)} strong />
+              <Field label="Total payment" value={formatCurrency(totalPayment, patient.currency)} strong />
             </div>
           )}
           {discount && (
             <p className="mt-4 border-t border-teal-100 pt-3 text-sm text-slate-800">
               <span className="font-semibold">Discount on this visit (taken off above):</span>{" "}
-              {formatCurrency(visitDiscount(patient, visitKey, discountBase), settings.currency)}
+              {formatCurrency(visitDiscount(patient, visitKey, discountBase), patient.currency)}
               {discount.type === "percent" && ` (${discount.value}%)`}
               {discount.reason && ` — ${discount.reason}`}
             </p>
@@ -270,7 +269,7 @@ export default async function PatientDocumentPage({
                 {extras.map((e) => (
                   <li key={e.id} className="flex justify-between gap-4">
                     <span>{extraLabel(e)}</span>
-                    <span className="font-semibold tabular-nums">{formatCurrency(e.total, settings.currency)}</span>
+                    <span className="font-semibold tabular-nums">{formatCurrency(e.total, patient.currency)}</span>
                   </li>
                 ))}
               </ul>

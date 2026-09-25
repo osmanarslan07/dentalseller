@@ -12,7 +12,9 @@ import { Patient, PatientFile, Profile, Seller } from "@/types";
 import { SellerPick, SellerPicker } from "@/components/SellerPicker";
 import { sellerLabel } from "@/lib/sellers";
 import { updatePatientFields, updatePatientSale } from "../actions";
-import { EditButton, EditingChip, Field, gbp, Pill, Section, Toggle } from "./bits";
+import { EditButton, EditingChip, Field, moneyIn, Pill, Section, Toggle } from "./bits";
+import { useCurrencies } from "@/components/currency";
+import { dealToMain, rateLabel } from "@/lib/money";
 import { forVisit, shortDate, VisitView } from "./visits";
 import { useCan } from "@/components/permissions";
 import { FilesCard } from "./FilesCard";
@@ -477,6 +479,8 @@ function SaleCard({
 
 function VisitsAtAGlance({ patient, visits, onOpenVisit }: { patient: Patient; visits: VisitView[]; onOpenVisit: (key: string) => void }) {
   const today = todayIsoLocal();
+  const gbp = moneyIn(patient.currency);
+  const { main } = useCurrencies();
   const rows = visits.map((v) => {
     const owed = Math.round((visitExpectedTotal(patient, v.key, v.expected) ?? 0) * 100) / 100;
     const paid = Math.round(forVisit(patient.payments, v.key).reduce((s, p) => s + p.amount, 0) * 100) / 100;
@@ -531,6 +535,11 @@ function VisitsAtAGlance({ patient, visits, onOpenVisit }: { patient: Patient; v
       {later.length > 0 && (
         <p className="text-xs text-slate-500">
           {later.map((r) => `${r.v.label}’s ${gbp(r.due)}`).join(", ")} {later.length === 1 ? "isn’t" : "aren’t"} due until the visit starts.
+        </p>
+      )}
+      {patient.currency !== main && totals.owed > 0 && (
+        <p className="text-xs text-slate-500">
+          Owed ≈ {moneyIn(main)(dealToMain(patient, totals.owed))} at the agreed rate ({rateLabel(patient.currency, main, patient.deal_rate)}).
         </p>
       )}
     </Section>

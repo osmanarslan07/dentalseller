@@ -10,7 +10,9 @@ import { visitCosts } from "@/lib/commission";
 import { DriverMessagesMode, Patient, Profile, Seller, Transfer, TransferCompany, TransferDefaults } from "@/types";
 import { deleteExtraVisit, sendPatientTelegramMessage, updatePatientFields, updateVisitFields } from "../actions";
 import { KebabIcon, Menu, MenuItem } from "./Menu";
-import { CheckIcon, EditButton, EditingChip, gbp, LABEL_CAPS, Pill, Section, Stepper, Toggle } from "./bits";
+import { CheckIcon, EditButton, EditingChip, LABEL_CAPS, moneyIn, Pill, Section, Stepper, Toggle } from "./bits";
+import { useCurrencies } from "@/components/currency";
+import { currencySymbol } from "@/lib/money";
 import { MoneyCard } from "./MoneyCard";
 import { TransfersCard } from "./TransfersCard";
 import { forVisit, nightsBetween, shortDate, travelOf, VisitView } from "./visits";
@@ -69,6 +71,8 @@ export function VisitTab(props: VisitTabProps) {
         {operations && <TravelCard {...props} />}
         <MoneyCard
           patientId={patient.id}
+          deal={patient}
+          patientHasPayments={patient.payments.length > 0}
           visit={visit}
           extras={extras}
           payments={payments}
@@ -130,6 +134,7 @@ function SummaryStrip({
   const { showToast } = useToast();
   const [pending, startTransition] = useTransition();
   const [editingDetails, setEditingDetails] = useState(false);
+  const fmt = moneyIn(patient.currency);
   const canEdit = useCan("patients.edit");
   const stage = visitStage(visit, today);
   const due = Math.round((owed - paid) * 100) / 100;
@@ -253,20 +258,20 @@ function SummaryStrip({
       <Divider />
       <div className="flex gap-7">
         <Stat label="Owed">
-          <span className="font-mono text-lg font-semibold text-slate-900">{gbp(owed)}</span>
+          <span className="font-mono text-lg font-semibold text-slate-900">{fmt(owed)}</span>
         </Stat>
         <Stat label="Paid">
-          <span className="font-mono text-lg font-semibold text-slate-900">{gbp(paid)}</span>
+          <span className="font-mono text-lg font-semibold text-slate-900">{fmt(paid)}</span>
         </Stat>
         <Stat label={due > 0 && dueNow ? "Due" : "Balance"}>
           {owed === 0 && paid === 0 ? (
             <span className="text-slate-400">—</span>
           ) : due > 0 && dueNow ? (
-            <span className="font-mono text-lg font-bold text-amber-700">{gbp(due)}</span>
+            <span className="font-mono text-lg font-bold text-amber-700">{fmt(due)}</span>
           ) : due > 0 ? (
             <Pill>Upcoming</Pill>
           ) : due < 0 ? (
-            <Pill tone="blue">Overpaid {gbp(-due)}</Pill>
+            <Pill tone="blue">Overpaid {fmt(-due)}</Pill>
           ) : (
             <Pill tone="green">Paid in full</Pill>
           )}
@@ -366,6 +371,8 @@ type TravelDraft = Partial<Record<(typeof TRAVEL_FIELDS)[number], string>>;
 
 function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTypeOptions }: VisitTabProps) {
   const router = useRouter();
+  // the hotel is the clinic's own cost, in its main currency
+  const fmt = moneyIn(useCurrencies().main);
   const { showToast } = useToast();
   const [editing, setEditing] = useState<TravelDraft | null>(null);
   const canEdit = useCan("patients.edit");
@@ -485,7 +492,7 @@ function TravelCard({ patient, visit, visit1, deductCosts, hotelOptions, roomTyp
                       ? `${shortDate(visit.arrival_date).replace(/^\w+ /, "")} → ${shortDate(visit.departure_date).replace(/^\w+ /, "")}`
                       : null,
                     nights ? `${nights} night${nights === 1 ? "" : "s"}` : null,
-                    visit.hotel_cost != null ? `clinic pays ${gbp(visit.hotel_cost)}` : "patient pays own hotel",
+                    visit.hotel_cost != null ? `clinic pays ${fmt(visit.hotel_cost)}` : "patient pays own hotel",
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -584,6 +591,7 @@ function TravelForm({
   onCancel: () => void;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
+  const { main: mainCurrency } = useCurrencies();
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -637,7 +645,7 @@ function TravelForm({
           </datalist>
         </div>
         <div>
-          <Label>Hotel cost (£)</Label>
+          <Label>Hotel cost ({currencySymbol(mainCurrency)})</Label>
           <Input type="number" step="0.01" min="0" name="hotel_cost" defaultValue={draft.hotel_cost} placeholder="Clinic's cost" />
         </div>
       </div>

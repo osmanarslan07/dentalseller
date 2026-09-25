@@ -120,6 +120,9 @@ export interface Seller {
   name: string | null;
   profile_id: string | null;
   is_active: boolean;
+  /** The currency this seller usually agrees prices in — their new patients start in it.
+   * Null = the clinic's main currency. */
+  default_currency: string | null;
   created_at: string;
 }
 
@@ -138,7 +141,7 @@ export interface PatientFile {
   created_at: string;
 }
 
-/** A visit's discount: a fixed £ amount or a % of the visit's price + extras. */
+/** A visit's discount: a fixed amount (in the patient's deal currency) or a % of the visit's price + extras. */
 export type DiscountType = "amount" | "percent";
 
 export interface PatientExtraVisit {
@@ -208,6 +211,15 @@ export interface Patient {
   coordinator_id: string | null;
   name: string;
   phone: string | null;
+  /** The currency the price was agreed in — every price, extra, discount and "still due" on
+   * this patient is in it. Locked once a payment is recorded. */
+  currency: string;
+  /** 1 unit of `currency` in the clinic's main currency, fixed on the day the price was agreed
+   * (1 for a main-currency patient). Commission and reports use it, so they don't move with
+   * the markets. */
+  deal_rate: number;
+  deal_rate_on: string | null;
+  deal_rate_source: "auto" | "clinic" | "manual" | null;
   treatment: string | null;
   letter_treatment_items: string | null;
   confirmation_date: string | null; // ISO date
@@ -298,6 +310,11 @@ export type PatientInput = Omit<
   | "payments"
   | "transfer_costs"
   | "commission_costs"
+  // set by the patient's own save logic (deal currency + rate), not typed in as-is
+  | "currency"
+  | "deal_rate"
+  | "deal_rate_on"
+  | "deal_rate_source"
   // the sum of the visit's payments, kept by a DB trigger — never typed in
   | "visit1_actual"
   | "visit2_actual"
@@ -365,13 +382,23 @@ export type PaymentMethod = "cash" | "card" | "bank";
 
 /** Money actually collected on a visit. `amount` is what counts (it sums into the visit's
  * actual); a card surcharge the patient paid on top is kept apart and never counts toward
- * commission. */
+ * commission. Handed over as `paid_amount` in `currency` (any the clinic deals in); `amount`
+ * is that in the patient's deal currency and `main_amount` in the clinic's main currency on
+ * the day it came in — both worked out by the database from the rates. */
 export interface PatientPayment {
   id: string;
   patient_id: string;
   visit_number: 1 | 2 | null;
   extra_visit_id: string | null;
+  /** In the patient's deal currency. */
   amount: number;
+  currency: string;
+  paid_amount: number;
+  /** 1 unit of `currency` in the deal currency / in the main currency. */
+  rate_to_deal: number;
+  rate_to_main: number;
+  main_amount: number;
+  rate_source: "auto" | "clinic" | "manual" | null;
   method: PaymentMethod;
   /** Card only: the clinic's surcharge rate at the time, e.g. 0.03 — null when none was added. */
   surcharge_rate: number | null;
@@ -483,8 +510,11 @@ export interface CommissionSettings {
   fixed_monthly_payment: number;
   hide_earnings: boolean;
   celebration_sound: boolean;
+  /** "Also show approx. in …" next to earnings. Money itself is always in the clinic's main
+   * currency. */
   show_try: boolean;
-  currency: string;
+  /** The currency of that approximate figure. */
+  approx_currency: string;
   dashboard_cards: DashboardCardId[];
 }
 
@@ -498,7 +528,7 @@ export const DEFAULT_SETTINGS: CommissionSettings = {
   hide_earnings: false,
   celebration_sound: true,
   show_try: false,
-  currency: "GBP",
+  approx_currency: "TRY",
   dashboard_cards: DEFAULT_DASHBOARD_CARDS,
 };
 
@@ -517,6 +547,12 @@ export interface ClinicConfig {
   deductCostsFromCommission: boolean;
   /** Optional card-payment surcharge, e.g. 0.03 = 3%. Never counts toward commission. */
   cardSurchargeRate: number;
+  /** Reporting currency: commission, tiers, totals. Fixed once the clinic has patients. */
+  mainCurrency: string;
+  /** Other currencies prices can be agreed / payments taken in. Empty = single-currency clinic. */
+  dealCurrencies: string[];
+  /** The clinic's own rates, 1 unit = x main currency; a currency not here uses the market rate. */
+  fixedRates: Record<string, number>;
   /** Settings → Transfers: who new airport (arrival/departure) and local transfers start with. */
   transferDefaults: TransferDefaults;
   driverMessages: DriverMessagesConfig;
@@ -562,6 +598,9 @@ export const DEFAULT_CLINIC_CONFIG: ClinicConfig = {
   clinicLogoUrl: null,
   deductCostsFromCommission: false,
   cardSurchargeRate: 0.03,
+  mainCurrency: "GBP",
+  dealCurrencies: [],
+  fixedRates: {},
   transferDefaults: { airportCompanyId: null, airportDriverId: null, localCompanyId: null, localDriverId: null },
   driverMessages: {
     mode: "app",

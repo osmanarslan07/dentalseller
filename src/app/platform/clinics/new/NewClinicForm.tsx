@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Button, Card, Input, Label } from "@/components/ui";
+import { Button, Card, Input, Label, Select } from "@/components/ui";
+import { CURRENCY_NAMES, SUPPORTED_CURRENCIES } from "@/lib/money";
 import { createClinic, CreateClinicResult } from "../../actions";
 import { CredentialNotice } from "@/components/CredentialNotice";
 
@@ -89,6 +90,20 @@ export function NewClinicForm() {
               placeholder="smile-istanbul"
             />
             <p className="mt-1 text-xs text-slate-400">Short unique ID, lowercase letters, numbers and dashes.</p>
+          </div>
+          <div>
+            <Label>Main currency</Label>
+            <Select name="main_currency" defaultValue="GBP">
+              {SUPPORTED_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c} — {CURRENCY_NAMES[c]}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-slate-400">
+              What the clinic reports in (commission, totals). The clinic can add other currencies itself; this one is
+              fixed once it has patients.
+            </p>
           </div>
         </fieldset>
 

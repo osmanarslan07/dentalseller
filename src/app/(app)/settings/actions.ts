@@ -8,6 +8,7 @@ import { getClinicConfig, getSettings } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
 import { assertViewerCanWrite, getActingUser } from "@/lib/viewer";
 import { requirePermission } from "@/lib/permissions";
+import { isSupportedCurrency } from "@/lib/money";
 
 export async function saveSettings(formData: FormData) {
   const supabase = await createClient();
@@ -20,7 +21,8 @@ export async function saveSettings(formData: FormData) {
   const tier3_rate = Number(formData.get("tier3_rate")) / 100;
   const fixed_monthly_payment = Number(formData.get("fixed_monthly_payment"));
   const show_try = formData.get("show_try") === "on";
-  const currency = String(formData.get("currency") ?? "GBP");
+  const approx_currency = String(formData.get("approx_currency") ?? "TRY");
+  if (!isSupportedCurrency(approx_currency)) throw new Error("Pick a currency");
 
   if (!Number.isFinite(tier1_threshold) || tier1_threshold < 0 || !Number.isFinite(tier2_threshold) || tier2_threshold < 0) {
     throw new Error("Thresholds must be positive numbers");
@@ -46,7 +48,7 @@ export async function saveSettings(formData: FormData) {
     tier3_rate,
     fixed_monthly_payment,
     show_try,
-    currency,
+    approx_currency,
   });
 
   if (error) throw new Error(error.message);
@@ -60,8 +62,8 @@ export async function saveSettings(formData: FormData) {
   if (before.fixed_monthly_payment !== fixed_monthly_payment) {
     changes.push(`fixed monthly payment ${before.fixed_monthly_payment} → ${fixed_monthly_payment}`);
   }
-  if (before.show_try !== show_try) changes.push(`show TRY ${before.show_try} → ${show_try}`);
-  if (before.currency !== currency) changes.push(`currency ${before.currency} → ${currency}`);
+  if (before.show_try !== show_try) changes.push(`show approx. ${before.show_try} → ${show_try}`);
+  if (before.approx_currency !== approx_currency) changes.push(`approx. currency ${before.approx_currency} → ${approx_currency}`);
   if (changes.length > 0) {
     await logActivity(supabase, user.actorId, "commission_settings_updated", "settings", user.id, changes.join(", "));
   }

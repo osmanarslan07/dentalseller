@@ -368,7 +368,7 @@ plus the coordinator filters noted earlier), put in the order that avoids doing 
 | 2 | **I — Settings, regrouped** | "My settings" vs "Clinic settings", each clinic area on its own page, a settings search | M | H |
 | 3 | **J — Users, profiles, performance, activity** | A profile for every user (with phone), a Users page for admins, Sales performance and Activity as their own pages | L | H, I |
 | 4 | **K — Coordinators & filters** | Coordinator column and picker; Seller + Coordinator filters on Patients, Dashboard, Calendar, Transfers; saved personal defaults | M | H |
-| 5 | **L — Currency** | Each clinic works in its own currency (not only £); personal "approx. in …" display | M | I |
+| 5 | **L — Currency** | One main currency per clinic (Thera: GBP) plus optional deal currencies per patient (e.g. EUR), converted with the rate used; GBP-only clinics see no change | L | I |
 | 6 | **M — Notifications on WhatsApp** | Reminders and visit info to each person's own WhatsApp; Telegram removed | L | I, J, K + Meta approval |
 
 ```mermaid
@@ -550,34 +550,75 @@ To do:
 - ☐ Workload per coordinator
 - ☐ Type-check + lint; test checklist
 
-### Step L — Currency ☐
+### Step L — Currency: one main currency, deals in several ☐
 
 Today: every amount is shown in **£** (hard-coded in about 50 places); the only currency setting
 is each user's "Currency display" plus "approx. in ₺" on earnings.
 
-**Concept**
-- **Clinic currency** (Clinic settings → Money): GBP, EUR, USD, TRY, … One currency for the
-  clinic's prices, extras, discounts, payments, commission tiers, quotes and accounting. All
-  stored amounts are in it; every "£" becomes the clinic's symbol and format.
-- Chosen when the clinic is set up (platform onboarding asks for it). Changing it later with
-  data already in is blocked for the clinic and needs support — amounts would otherwise
-  silently mean a different currency.
-- **Personal "also show approx. in …"** (My settings): each user can see an approximate second
-  currency next to earnings (today's ₺ option, generalised), using the daily rate job.
-- Telegram / WhatsApp messages, confirmation letters, quote offers and CSV exports use the
-  clinic currency.
+**The situation (user, 2026-09-25)**: clinics treat patients from different countries, so one
+seller agrees a price in **GBP** and another in **EUR** — but the clinic still needs **one
+main currency** for its totals. A clinic that only works in GBP (Thera today) must not see any
+of this complexity. Thera stays on GBP.
 
-**Open question for you (answer before building)**: do patients ever pay a clinic in a
-*different* currency (e.g. a GBP clinic taking a EUR cash payment)? If yes, add "paid in another
-currency" on a payment with the rate used, converted into the clinic currency. If no, one
-currency per clinic is enough.
+**Concept**
+- **Main currency** (Clinic settings → Money → Currencies): the clinic's reporting currency —
+  commission, commission tiers, Accounting totals, dashboard figures, Sales performance, CSV
+  totals. Thera: **GBP**. Chosen at clinic setup; changing it once data exists needs support.
+- **Other currencies the clinic deals in** (optional, off by default): e.g. EUR, USD.
+  **None ticked = a single-currency clinic**: no currency pickers anywhere, everything in the
+  main currency, exactly like today.
+- **Deal currency per patient**: when other currencies are on, a patient's price is agreed in
+  one currency (picker on the patient / new patient form, defaulting to the seller's usual
+  currency — see below). The visit price, extras, discounts, the Money card, the confirmation
+  letter, the quote and the WhatsApp messages all show that currency.
+- **Converting into the main currency** — every money amount stores both: the amount in its own
+  currency and its value in the main currency **with the rate used**:
+  - the **agreed price** is converted at the rate on the day it is agreed (so commission and
+    reports don't drift every day with the markets);
+  - a **payment** is converted at the rate on the day it is received;
+  - the difference between the two shows up in Accounting as an exchange-rate gain / loss line,
+    instead of disappearing.
+- **Paying in a different currency than agreed** (price in EUR, patient pays part in GBP cash):
+  a payment has its own currency (any the clinic deals in), converted into the patient's deal
+  currency for "still due" and into the main currency for reports.
+- **Rates**: automatic daily rates (the rate job that already fetches TRY, generalised) **or**
+  the clinic's own fixed rate per currency (clinics often use their own). Every converted amount
+  shows the rate used, and someone with `money.edit` can correct the rate on a price or payment
+  (logged).
+- **Per-seller default currency** (Clinic settings → Sales & commission, per seller): e.g. Ahmet
+  usually agrees in EUR → his new patients start in EUR. Changeable per patient.
+- **Commission** is always calculated on the main-currency value, tiers are in the main
+  currency — so sellers who deal in different currencies are compared fairly.
+- **Showing money**: amounts appear in their own currency with the main-currency value
+  alongside where it helps ("€2,000 · ≈ £1,712"); lists and totals are in the main currency.
+- **Personal "also show approx. in …"** (My settings): each user can see an approximate extra
+  currency next to earnings (today's ₺ option, generalised).
+
+**Scenarios this covers**
+
+| Clinic | Settings | What people see |
+|---|---|---|
+| GBP only (Thera today) | Main GBP, no others | Exactly today's app, £ everywhere |
+| EUR only | Main EUR, no others | Same app in € |
+| GBP main, some EUR deals | Main GBP + EUR | EUR patients priced in €, reports in £ with the rates used |
+| Paid in a different currency | + EUR, payment in £ on a € deal | "still due" in €, payment converted, rate shown |
+
+**Still to decide with you before building**
+- Which rate to use by default: automatic market rate, or the clinic's own rate?
+- Can a patient's deal currency change after payments exist (e.g. re-quoted in GBP)? Suggested:
+  only before the first payment.
 
 To do:
-- ☐ `clinics.currency` (+ onboarding field); one money formatter replacing the £ helper
-- ☐ Replace every hard-coded £ (screens, letters, offers, messages, CSV)
+- ☐ Clinic settings → Money → Currencies: main currency, other currencies, rate source / own rates
+- ☐ Data: currency + main-currency value + rate on prices, extras, discounts, payments;
+      backfill every existing amount as GBP at rate 1 (Thera unchanged)
+- ☐ One money formatter replacing every hard-coded £ (screens, letters, offers, messages, CSV)
+- ☐ Deal currency on patient / new patient form; per-seller default currency
+- ☐ Payments in another currency; exchange gain / loss in Accounting
+- ☐ Commission, dashboard, Accounting, Sales performance on main-currency values
 - ☐ Personal "approx. in …" setting; rate job for any pair
-- ☐ Guard on changing currency when data exists
-- ☐ Test checklist (a TEST clinic in EUR end to end)
+- ☐ Snapshot commission attribution before / after (must be identical for Thera)
+- ☐ Test checklist: a GBP-only clinic (no visible change), a TEST clinic with GBP main + EUR deals
 
 ### Step M — Notifications on WhatsApp (Telegram removed) ☐
 

@@ -17,7 +17,7 @@ Status legend: ☐ to do · ◐ in progress · ☑ done
 
 ## NOW
 
-### Step A — Sellers as records, not accounts ◐ (built 2026-09-24, waiting for your test)
+### Step A — Sellers as records, not accounts ◐ (built 2026-09-24, live on master since 2026-09-25 — waiting for your test)
 
 A seller is someone who gets credit (and commission) for a sale. A login account is someone
 who uses the app. Until now these were the same thing; this step separates them.
@@ -75,7 +75,7 @@ To do:
 | Discount | **Per visit, £ or %**, optional reason. Comes off that visit's total (treatment + extras). **Anyone who can edit money** may give one, no cap; always logged. |
 | Files | **Plain list** per patient (no categories, not tied to visits). Private storage, clinic-only, expiring links, 20 MB per file. |
 
-### Step B — Roles and permissions ◐ (built 2026-09-24, SQL not applied yet — waiting for your test)
+### Step B — Roles and permissions ◐ (built 2026-09-24, live on master since 2026-09-25 — waiting for your test)
 Built as designed below. Notes:
 - Catalog in `permissions` / `role_permissions`; `has_permission()`, `my_permissions()`,
   `member_roles()` (support mode → viewed-as member's roles, admin when viewing as nobody).
@@ -112,7 +112,7 @@ Built as designed below. Notes:
 - Settings → Team: role checkboxes per member instead of Promote/Demote; roles chosen when
   adding a member. Guards: a clinic can never lose its last admin; nobody edits their own roles.
 
-### Step C — Modules per clinic ◐ (built 2026-09-24, SQL not applied yet — waiting for your test)
+### Step C — Modules per clinic ◐ (built 2026-09-24, live on master since 2026-09-25 — waiting for your test)
 Built as designed below. Notes: `sellers.manage` is core (the seller list stays with Sales
 off; only the rates hide). Module switches sit in /platform → clinic → Plan & billing, next
 to the plan picker that prefills them. Operations off also hides the flights/hotel card and
@@ -126,13 +126,13 @@ the dashboard's "Logistics not arranged" card.
   the seller list; the Seller field stays (reports by seller). Operations off: no Transfers
   page, driver settings or transfer/hotel cards. Accounting off: no Accounting page.
 
-### Step D — Activity log gaps ◐ (built 2026-09-24, waiting for your test)
+### Step D — Activity log gaps ◐ (built 2026-09-24, live on master since 2026-09-25 — waiting for your test)
 Most gaps had already been closed on master (quotes, tasks, settings, profile, Telegram code).
 Added: the first-sign-in name, Telegram link completed (webhook), role changes. TODO.md trimmed.
 - Close every gap listed in `TODO.md` (quote lifecycle, commission/branding/system/dashboard
   settings, tasks, profile name/password, Telegram send + link code), then trim TODO.md.
 
-### Step E — Discounts ◐ (built 2026-09-24, SQL not applied yet — waiting for your test)
+### Step E — Discounts ◐ (built 2026-09-24, live on master since 2026-09-25 — waiting for your test)
 Built as designed below: `visitDiscount()` / `visitExpectedTotal()` in `src/lib/commission.ts`
 are the one place a discount becomes money. Money card: Price → Extras → Discount → Owed.
 Also on the operations sheet, the Telegram visit message ("İndirim") and the CSV export.
@@ -149,7 +149,7 @@ Changing a discount needs `money.edit` (DB trigger); set/remove is logged.
   operations sheet; "mark completed" mismatch check; History / activity log.
 - Paid commission is unaffected by design (actual = sum of payments).
 
-### Step F — Patient files ◐ (built 2026-09-24, SQL not applied yet — waiting for your test)
+### Step F — Patient files ◐ (built 2026-09-24, live on master since 2026-09-25 — waiting for your test)
 Built as designed below. Uploads go browser → Storage through signed upload URLs issued by a
 server action (Vercel's request-size limit rules out uploading through the app), then the
 action records the rows after checking the files arrived. Support opening a file is written
@@ -162,7 +162,7 @@ to the support access log (`record_file_opened`).
 - Patient info tab: "Files" card — upload (several at once; phone camera works), list with
   name / size / who / when, open, rename, delete (uploader or admin). Logged in History.
 
-### Finish ◐ — apply the SQL, test, then merge
+### Finish ◐ — SQL applied, merged; your test remaining
 - ☑ **Apply the SQL** — applied 2026-09-25 through the Management API (dry run, then twice);
   verified roles, seller records, 43 role permissions, modules, `my_permissions()` per role,
   RLS patient counts, identical commission attribution, `patient-files` bucket, discount
@@ -177,7 +177,7 @@ to the support access log (`record_file_opened`).
   re-run: the oldest sections use plain `create policy`.)
 - ☐ Your test — the checklist below, on the Vercel preview of `feature/roles-modules`, with
   TEST patients only (the preview uses the production database).
-- ☐ Merge to master after approval.
+- ☑ Merged to master 2026-09-25 (fast-forward to 25bcbab) and deployed to production.
 
 #### Consolidated test checklist (steps A–F)
 
@@ -243,9 +243,9 @@ Patient files (F)
 
 ---
 
-## NEXT (after A–F are tested and merged)
+## Step G — roles page (live on master)
 
-### Step G — Roles page: see, then customise, what each role can do ◐ (built 2026-09-25 on branch `feature/roles-page`, SQL applied — waiting for your test)
+### Step G — Roles page: see, then customise, what each role can do ◐ (built 2026-09-25, live on master since 2026-09-25 — waiting for your test)
 
 Built on its own branch, stacked on `feature/roles-modules`: merge A–F first, then this.
 
@@ -323,7 +323,7 @@ To do:
 - ☑ G2 tables, functions, trigger, no-wipe seeding, UI, activity log, /platform templates
 - ☑ Snapshot `my_permissions()` before/after; type-check + lint (only the two old errors)
 - ☐ Your test — checklist below
-- ☐ Merge after A–F: `feature/roles-page` into master
+- ☑ Merged to master after A–F (fast-forward to 5bdda5f) and deployed
 - ☐ After both are on master: drop the legacy `settings.clinic` key
 
 #### Test checklist (step G)
@@ -351,6 +351,275 @@ To do:
 37. /platform → **Roles**: change the Accountant template (e.g. untick Tasks) → a clinic that
     hasn't customised Accountant follows it at once; the audit log shows "Changed role
     template". Put it back.
+
+---
+
+## NEXT — the plan (ordered 2026-09-25)
+
+Seven notes from the user (profiles, WhatsApp instead of Telegram, a new menu, a clearer
+settings page, a users page apart from seller performance, a real activity page, currency,
+plus the coordinator filters noted earlier), put in the order that avoids doing work twice.
+
+### At a glance
+
+| # | Step | What you get | Size | Needs |
+|---|---|---|---|---|
+| 1 | **H — Page map & new menu** | Left sidebar with icons that opens on hover; every page and setting has a decided home | M | — |
+| 2 | **I — Settings, regrouped** | "My settings" vs "Clinic settings", each clinic area on its own page, a settings search | M | H |
+| 3 | **J — Users, profiles, performance, activity** | A profile for every user (with phone), a Users page for admins, Sales performance and Activity as their own pages | L | H, I |
+| 4 | **K — Coordinators & filters** | Coordinator column and picker; Seller + Coordinator filters on Patients, Dashboard, Calendar, Transfers; saved personal defaults | M | H |
+| 5 | **L — Currency** | Each clinic works in its own currency (not only £); personal "approx. in …" display | M | I |
+| 6 | **M — Notifications on WhatsApp** | Reminders and visit info to each person's own WhatsApp; Telegram removed | L | I, J, K + Meta approval |
+
+```mermaid
+flowchart LR
+  H[H · Page map & menu] --> I[I · Settings regrouped]
+  H --> J[J · Users & profiles]
+  I --> J
+  H --> K[K · Coordinators & filters]
+  I --> L[L · Currency]
+  J --> M[M · WhatsApp notifications]
+  K --> M
+  I --> M
+  META([Meta template approval — start during H]) -.-> M
+```
+
+**Why this order**
+- **Menu and page map first.** Four of the notes are about *where things live* (settings,
+  users, performance, activity, currency, notification settings). Deciding that once, up front,
+  means no page gets built in one place and then moved.
+- **Settings before the features that add settings.** Currency and WhatsApp notifications both
+  add settings; they should land in the new structure, not the old tabs.
+- **Profiles before WhatsApp.** Messages go to each person's phone number — that lives in the
+  profile.
+- **Coordinators before WhatsApp.** "Send it to the coordinator" needs the coordinator to be
+  visible and correct on every patient.
+- **Currency before a second, non-£ clinic signs up** — can move earlier if one does.
+- **WhatsApp last, but its paperwork first.** Every business-initiated WhatsApp message must be
+  a Meta-approved template, and approval can take days to weeks — draft and submit the templates
+  while H–L are being built.
+
+Every step keeps the rules that worked for A–G: its own branch, SQL applied to production only
+if it keeps master working, one consolidated test checklist at the end, merge after your test.
+
+---
+
+### Step H — Page map & new menu ☐
+
+**The page map** (decided in this step, reviewed by you before building):
+
+| Group | Pages | Who sees it |
+|---|---|---|
+| Work | Home · Patients · Calendar · Transfers · Tasks | by permission, as today |
+| Sales | Quotes · Earnings (mine) · **Sales performance** (every seller) | `quotes.use`, `earnings.own`, `earnings.all` |
+| Money | Accounting | `accounting.view` |
+| Admin | **Users** · **Activity** · **Settings** | `team.view` / `activity.view` / settings permissions |
+| You (bottom of the menu) | **My profile** · My settings · Sign out | everyone |
+
+(Today's Team page splits into **Sales performance** and **Users**; Activity gets its own menu
+entry — step J builds those pages, this step gives them their place.)
+
+**The menu (desktop / tablet)**
+- A slim **icon rail on the left** (about 64 px). Hovering (or keyboard focus) **opens it over
+  the page** to about 240 px with the names and group labels — the page doesn't jump.
+- When the pointer leaves, the names **fold away after a short delay** (the note says 3 s — we'll
+  try 3 s and tune it by feel), so a quick pass over the menu doesn't make it flicker.
+- A **pin** at the bottom keeps it open for people who prefer names; remembered per user.
+- Active page highlighted; small badges where useful (e.g. overdue tasks).
+- Clinic name / logo at the top; global patient search moves to a top bar with the profile
+  avatar menu on the right.
+- Every link still follows permissions and modules, exactly as the current menu does.
+
+**Phone**: the bottom bar stays (Home, Patients, Transfers, Tasks + More); "More" becomes a
+sheet with the same groups as the sidebar.
+
+To do:
+- ☐ Page map written out (every page and every setting → its home) — you approve it first
+- ☐ Sidebar: rail, hover-open overlay, delayed fold, pin (saved per user), groups, badges
+- ☐ Top bar: clinic, search, profile menu; phone "More" sheet grouped the same way
+- ☐ Accessibility: keyboard, focus, tooltips on the rail, reduced-motion
+- ☐ Test checklist
+
+### Step I — Settings, regrouped ☐
+
+Problem: one long page of tabs where personal and clinic-wide settings sit side by side, and
+every new feature adds another card.
+
+**Concept**
+- **Two places, clearly named:**
+  - **My settings** (everyone; from the profile menu): display (privacy, celebrations,
+    dashboard cards, "approx. in …" currency), my notifications (from step M).
+  - **Clinic settings** (Admin area; each section needs its own permission from step G).
+- **Clinic settings get a left-hand section list** (vertical, like the menu), one page per
+  section instead of stacked cards:
+
+  | Section | Contains | Permission |
+  |---|---|---|
+  | Clinic | name, logo, contact details (letters and quotes) | `settings.branding` |
+  | Team & roles | roles grid and editor (users themselves move to the Users page) | `roles.*` |
+  | Sales & commission | commission tiers, sellers without an account and their rates | `sellers.manage` |
+  | Money | **currency** (step L), card surcharge, costs before commission | `settings.money` |
+  | Operations | transfer companies, drivers, default drivers | `transfers.manage` / `drivers.manage` |
+  | Messaging | WhatsApp connection + notification rules (step M) | `messaging.manage` |
+  | Data | export | `patients.export` |
+
+- A section the clinic's modules don't include isn't listed; a section someone has no
+  permission for isn't listed either (same rule as the menu).
+- **Search box** at the top of Clinic settings ("surcharge", "logo", "WhatsApp") jumps to the
+  right section — this is what keeps it usable as settings grow.
+- Each section saves on its own with a clear "Saved" state; nothing half-saved across tabs.
+- Old links (`/settings?tab=…`) redirect to the new sections.
+
+To do:
+- ☐ My settings page; Clinic settings with section list, one route per section
+- ☐ Move every existing card to its section; redirects from old tab links
+- ☐ Settings search (static index of section + setting names)
+- ☐ Test checklist
+
+### Step J — Users, profiles, sales performance, activity ☐
+
+**My profile** (every user, from the profile menu)
+- Name, email (change with confirmation), **phone number** (international format — used for
+  WhatsApp in step M), password, photo (optional).
+- My roles (read-only) and "What I can do" (moves here from Settings → Account).
+
+**Users** (admin area, `team.view` to see, `team.manage` / `team.delete` to change)
+- A table of every account: name, email, phone, roles, status (active / invited / inactive),
+  last active. Search and filter by role and status.
+- Click a user → their page: profile details, roles (tick-buttons), reset password,
+  deactivate, delete, their recent activity, their patients as seller and as coordinator.
+- Add user moves here from Settings. Sellers without an account get a tab here too.
+
+**Sales performance** (was the Team page; `earnings.all`)
+- Every seller's sales and commission by month, including sellers without an account —
+  unchanged content, clearer name, no activity feed mixed in.
+
+**Activity** (own menu entry; `activity.view`)
+- Filters: **person**, **category** (patients, money, transfers, team, settings, roles…),
+  **patient**, **date range**, **done by support**; free-text search in details.
+- Filters live in the URL (shareable), paging instead of a fixed limit, export to CSV.
+- A user's page and a patient's History tab reuse the same feed, pre-filtered.
+
+To do:
+- ☐ Profile page (+ phone, stored in international format)
+- ☐ Users list + user detail page; move add/deactivate/delete/reset here
+- ☐ Sales performance page (from Team); Team route redirects
+- ☐ Activity page: filters, URL state, paging, CSV
+- ☐ Test checklist
+
+### Step K — Coordinators you can see, and seller / coordinator filters with saved defaults ☐ (noted 2026-09-25)
+
+Why: some clinics have several coordinators (and several admins), and admins want to see who
+coordinates what. The patient's Coordinator field exists since step A, but it only shows on
+Patient → Patient info, and lists / the dashboard only filter by seller ("Mine / Whole team").
+
+**Coordinator field**
+- Patients list: a **Coordinator** column next to Seller.
+- New patient form: a **Coordinator** picker — default: whoever enters the patient (as today).
+- Coordinator picker lists only members who can edit patients (`patients.edit`), not e.g.
+  accountants; a deactivated coordinator stays shown on their existing patients.
+- Handover: **move all of X's patients to Y** in one step (a coordinator leaves / is on holiday),
+  logged.
+- Workload overview (Users page or dashboard card): active patients and upcoming arrivals per
+  coordinator.
+
+**Filters — patients list, dashboard, calendar and transfers (replaces "Mine / Whole team")**
+- Two separate filters side by side: **Seller** (All · Me · each seller, incl. sellers without
+  an account) and **Coordinator** (All · Me · each coordinator · None).
+- Default: **All / All** — every patient, whoever sells or coordinates it.
+- They combine: e.g. Seller = Leo and Coordinator = Me.
+- Everything on the page follows them (list, counts, dashboard cards, upcoming events, tasks
+  like "needs follow-up").
+- Someone without `earnings.all` still only sees their own commission figures, whatever the
+  filter — the filter is about *which patients*, not *whose money*.
+
+**Saved default filter — per user**
+- "Save as my default" on each page (patients list, dashboard, calendar, transfers separately):
+  e.g. dashboard = Seller: Me, patients list = All / All.
+- Stored per user **in the database** (follows them to phone and laptop), never shared: one
+  person's default doesn't change anyone else's view. A "Reset to All" link next to it.
+- In support mode the viewed-as member's defaults apply (read-only unless editing is unlocked).
+
+To do:
+- ☐ Patients list: Coordinator column; Seller + Coordinator filters; saved default
+- ☐ Dashboard: Seller + Coordinator filters replacing Mine / Whole team; saved default
+- ☐ Calendar and Transfers: the same two filters; saved default each
+- ☐ Per-user saved filters (DB column or small table, own-row RLS)
+- ☐ New patient form: Coordinator picker; picker limited to `patients.edit`
+- ☐ Handover: move all patients from one coordinator to another (logged)
+- ☐ Workload per coordinator
+- ☐ Type-check + lint; test checklist
+
+### Step L — Currency ☐
+
+Today: every amount is shown in **£** (hard-coded in about 50 places); the only currency setting
+is each user's "Currency display" plus "approx. in ₺" on earnings.
+
+**Concept**
+- **Clinic currency** (Clinic settings → Money): GBP, EUR, USD, TRY, … One currency for the
+  clinic's prices, extras, discounts, payments, commission tiers, quotes and accounting. All
+  stored amounts are in it; every "£" becomes the clinic's symbol and format.
+- Chosen when the clinic is set up (platform onboarding asks for it). Changing it later with
+  data already in is blocked for the clinic and needs support — amounts would otherwise
+  silently mean a different currency.
+- **Personal "also show approx. in …"** (My settings): each user can see an approximate second
+  currency next to earnings (today's ₺ option, generalised), using the daily rate job.
+- Telegram / WhatsApp messages, confirmation letters, quote offers and CSV exports use the
+  clinic currency.
+
+**Open question for you (answer before building)**: do patients ever pay a clinic in a
+*different* currency (e.g. a GBP clinic taking a EUR cash payment)? If yes, add "paid in another
+currency" on a payment with the rate used, converted into the clinic currency. If no, one
+currency per clinic is enough.
+
+To do:
+- ☐ `clinics.currency` (+ onboarding field); one money formatter replacing the £ helper
+- ☐ Replace every hard-coded £ (screens, letters, offers, messages, CSV)
+- ☐ Personal "approx. in …" setting; rate job for any pair
+- ☐ Guard on changing currency when data exists
+- ☐ Test checklist (a TEST clinic in EUR end to end)
+
+### Step M — Notifications on WhatsApp (Telegram removed) ☐
+
+Today Telegram sends: new-patient messages, "send visit info" (button on the patient),
+arrival/departure and hotel/transfer reminders, task reminders — to each person's linked chat
+and a clinic group. The WhatsApp Business API is already connected for driver messages.
+
+**Concept**
+- **Recipients are people, by their profile phone** (step J): the seller, the patient's
+  **coordinator** (step K), and anyone the clinic adds to a rule. No group chats — the
+  WhatsApp API can't post to groups.
+- **Clinic settings → Messaging** (one section for all WhatsApp):
+  - **Connection card** — Connected ✓ / Not connected. The API setup that's under Transfers
+    today moves here (driver messages keep using it).
+  - **Notification rules** — one row per message type: new patient · visit info · arrival
+    reminder · departure reminder · hotel / transfer not arranged · task reminder. For each:
+    on/off, and who gets it (seller · coordinator · specific people).
+  - Shown only when connected. **Not connected → the rules are greyed with a hint**: "Connect
+    the WhatsApp Business API to send reminders and visit info" + a button to set it up.
+- **My settings → Notifications**: each user can mute message types for themselves; shows the
+  phone number messages go to (and "add your phone in your profile" if it's missing).
+- **Patient page**: "Send visit info" sends to the coordinator's WhatsApp (or asks whom to send
+  to). Not connected → the button explains why it can't send, with a link for admins.
+- Each message type is a **Meta-approved template** with the clinic's language; free text
+  isn't allowed outside WhatsApp's 24-hour window. Business-initiated messages are **paid per
+  conversation** — the Messaging section shows a note about it.
+- Every send is logged (who, what, delivered / failed) and failures show to admins.
+
+**Switching over**
+1. Build WhatsApp notifications alongside Telegram.
+2. Thera connects, turns the rules on, checks messages arrive for a week.
+3. Telegram switched off for Thera, then **removed**: webhook, link codes, the Telegram cards in
+   settings, `telegram_chat_id` / group chat columns, env vars, the cron's Telegram path.
+
+To do:
+- ☐ **Early (during H):** draft the templates (Turkish + English) and submit them to Meta
+- ☐ Messaging section: connection card (moved from Transfers), rules table, not-connected hint
+- ☐ Personal mute settings; phone-missing hint
+- ☐ Senders: new patient, visit info, reminders crons, task reminders → WhatsApp by rule
+- ☐ Send log + failure alerts
+- ☐ Switch-over for Thera, then remove Telegram
+- ☐ Test checklist
 
 ---
 

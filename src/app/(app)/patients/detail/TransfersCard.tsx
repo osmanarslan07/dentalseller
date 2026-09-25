@@ -16,6 +16,7 @@ import { useCurrencies } from "@/components/currency";
 import { currencySymbol } from "@/lib/money";
 import { shortDate, transfersWithoutDriver } from "./visits";
 import { useCan } from "@/components/permissions";
+import { useLocale, useT } from "@/i18n/client";
 
 /** What the visit already knows — used to prefill new transfers and by "Suggest transfers". */
 export interface VisitTravel {
@@ -37,8 +38,8 @@ const STATUS_TONES: Record<TransferStatus, PillTone> = { planned: "slate", sent:
 
 const GRID = "lg:grid lg:grid-cols-[130px_100px_minmax(0,1fr)_210px_120px_170px] lg:items-center lg:gap-3";
 
-function sentAt(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+function sentAt(iso: string, locale: string): string {
+  return new Date(iso).toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 export function TransfersCard({
@@ -69,6 +70,8 @@ export function TransfersCard({
   driverMessages: DriverMessagesMode;
 }) {
   const router = useRouter();
+  const tx = useT();
+  const locale = useLocale();
   const { showToast } = useToast();
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [pending, startTransition] = useTransition();
@@ -89,7 +92,7 @@ export function TransfersCard({
         if (done) showToast(done);
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Something went wrong", "error");
+        showToast(e instanceof Error ? e.message : tx("Something went wrong"), "error");
       }
     });
   }
@@ -100,12 +103,14 @@ export function TransfersCard({
         const { created } = await suggestTransfers(patientId, visitKey);
         showToast(
           created === 0
-            ? "Nothing to add — this visit already has those transfers, or no flight/visit dates yet"
-            : `${created} transfer${created === 1 ? "" : "s"} added — check the drivers`
+            ? tx("Nothing to add — this visit already has those transfers, or no flight/visit dates yet")
+            : created === 1
+              ? tx("1 transfer added — check the driver")
+              : tx("{n} transfers added — check the drivers", { n: created })
         );
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Failed to suggest transfers", "error");
+        showToast(e instanceof Error ? e.message : tx("Failed to suggest transfers"), "error");
       }
     });
   }
@@ -124,8 +129,8 @@ export function TransfersCard({
   }
 
   function handleDelete(t: Transfer) {
-    if (!confirm(`Delete the ${KIND_LABELS[t.kind].toLowerCase()} transfer ${t.from_place ?? ""} → ${t.to_place ?? ""}?`)) return;
-    run(() => deleteTransfer(t.id), "Transfer deleted");
+    if (!confirm(tx("Delete the {kind} transfer {route}?", { kind: tx(KIND_LABELS[t.kind]).toLocaleLowerCase(locale), route: `${t.from_place ?? ""} → ${t.to_place ?? ""}` }))) return;
+    run(() => deleteTransfer(t.id), tx("Transfer deleted"));
   }
 
   const form = (t?: Transfer) => (
@@ -140,7 +145,7 @@ export function TransfersCard({
         onSave={async (fd) => {
           if (t) await updateTransfer(t.id, fd);
           else await addTransfer(patientId, visitKey, fd);
-          showToast(t ? "Transfer saved ✓" : "Transfer added ✓");
+          showToast(t ? tx("Transfer saved ✓") : tx("Transfer added ✓"));
           setEditing(null);
           router.refresh();
         }}
@@ -150,15 +155,15 @@ export function TransfersCard({
 
   return (
     <Section
-      title="Transfers"
+      title={tx("Transfers")}
       aside={
         <>
           {transfers.length > 0 && (
             <span className="text-xs text-slate-500">
-              {transfers.length} journey{transfers.length === 1 ? "" : "s"} · {travel.pax} pax
+              {transfers.length === 1 ? tx("1 journey") : tx("{n} journeys", { n: transfers.length })} · {tx("{n} pax", { n: travel.pax })}
             </span>
           )}
-          {noDriver > 0 && <Pill tone="amber">{noDriver} without driver</Pill>}
+          {noDriver > 0 && <Pill tone="amber">{tx("{n} without driver", { n: noDriver })}</Pill>}
         </>
       }
       actions={
@@ -170,12 +175,12 @@ export function TransfersCard({
             variant="secondary"
             onClick={handleSuggest}
             disabled={pending || !canSuggest}
-            title={canSuggest ? "Adds arrival, clinic and departure from the flights and hotel" : "Add the flights or a visit date first"}
+            title={canSuggest ? tx("Adds arrival, clinic and departure from the flights and hotel") : tx("Add the flights or a visit date first")}
           >
-            Suggest transfers
+            {tx("Suggest transfers")}
           </Button>
           <Button type="button" size="sm" onClick={() => setEditing("new")} disabled={editing === "new"}>
-            + Add transfer
+            + {tx("Add transfer")}
           </Button>
         </>
         )
@@ -185,10 +190,10 @@ export function TransfersCard({
 
       {transfers.length === 0 && editing !== "new" ? (
         <p className="rounded-xl border-[1.5px] border-dashed border-slate-300 p-4 text-center text-[13px] text-slate-500">
-          No transfers yet.{" "}
+          {tx("No transfers yet.")}{" "}
           {canSuggest
-            ? "“Suggest transfers” fills in arrival, clinic and departure with your default drivers."
-            : "Add the flights and hotel above, then “Suggest transfers” fills in arrival, clinic and departure."}
+            ? tx("“Suggest transfers” fills in arrival, clinic and departure with your default drivers.")
+            : tx("Add the flights and hotel above, then “Suggest transfers” fills in arrival, clinic and departure.")}
         </p>
       ) : (
         transfers.length > 0 && (
@@ -196,12 +201,12 @@ export function TransfersCard({
           // rows round their own corners instead.
           <div className="flex flex-col gap-2 lg:gap-0 lg:rounded-xl lg:border lg:border-slate-100 lg:[&>*:first-child]:rounded-t-xl lg:[&>*:last-child]:rounded-b-xl">
             <div className={`hidden bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500 ${GRID}`}>
-              <span>Pickup</span>
-              <span>Type</span>
-              <span>Route</span>
-              <span>Driver</span>
-              <span>Status</span>
-              <span className="text-right">Actions</span>
+              <span>{tx("Pickup")}</span>
+              <span>{tx("Type")}</span>
+              <span>{tx("Route")}</span>
+              <span>{tx("Driver")}</span>
+              <span>{tx("Status")}</span>
+              <span className="text-right">{tx("Actions")}</span>
             </div>
             {sorted.map((t) =>
               editing === t.id ? (
@@ -225,7 +230,7 @@ export function TransfersCard({
                   }}
                   onCopy={() => messages.copy(driverMessage(t, patientName, patientPhone))}
                   onEdit={() => setEditing(t.id)}
-                  onStatus={(s) => run(() => setTransferStatus(t.id, s), s === "done" ? "Marked as done ✓" : "Marked as not sent")}
+                  onStatus={(s) => run(() => setTransferStatus(t.id, s), s === "done" ? tx("Marked as done ✓") : tx("Marked as not sent"))}
                   onDelete={() => handleDelete(t)}
                   readOnly={!canBook}
                 />
@@ -238,10 +243,10 @@ export function TransfersCard({
         canSetUpDriverMessages && <DriverMessagesOffHint />
       ) : (
         <p className="text-xs text-slate-500">
-          Arrival and departure count as arranged once a driver is picked.{" "}
+          {tx("Arrival and departure count as arranged once a driver is picked.")}{" "}
           {driverMessages === "api"
-            ? "Driver messages are sent in Turkish from the clinic’s WhatsApp Business number."
-            : "Driver messages open in WhatsApp in Turkish, ready to send."}
+            ? tx("Driver messages are sent in Turkish from the clinic’s WhatsApp Business number.")
+            : tx("Driver messages open in WhatsApp in Turkish, ready to send.")}
         </p>
       )}
     </Section>
@@ -274,12 +279,14 @@ function TransferRow({
   onStatus: (s: TransferStatus) => void;
   onDelete: () => void;
 }) {
+  const tx = useT();
+  const locale = useLocale();
   const company = companies.find((c) => c.id === t.company_id);
   const driver = company?.drivers.find((d) => d.id === t.driver_id);
-  const companyName = company ? (company.is_internal ? "Clinic car" : company.name) : null;
+  const companyName = company ? (company.is_internal ? tx("Clinic car") : company.name) : null;
   // a transfer's cost is the clinic's own, in its main currency
   const main = useCurrencies().main;
-  const meta = [t.flight_no ? `✈ ${t.flight_no}` : null, `${t.pax} pax`, t.cost != null ? `cost ${moneyIn(main)(t.cost)}` : null, t.notes]
+  const meta = [t.flight_no ? `✈ ${t.flight_no}` : null, tx("{n} pax", { n: t.pax }), t.cost != null ? tx("cost {amount}", { amount: moneyIn(main)(t.cost) }) : null, t.notes]
     .filter(Boolean)
     .join(" · ");
   const missingDriver = !driver && t.status !== "done";
@@ -290,7 +297,7 @@ function TransferRow({
   } else if (missingDriver) {
     action = (
       <button type="button" onClick={onEdit} className="rounded-lg bg-amber-700 px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-amber-800">
-        Assign driver
+        {tx("Assign driver")}
       </button>
     );
   } else if (driver && t.status !== "done" && messages.mode !== "off") {
@@ -304,14 +311,14 @@ function TransferRow({
         disabled={!isWhatsAppable(driver.phone) || messages.busyKey === t.id}
         title={
           !driver.phone
-            ? `${driver.name} has no phone number — add it in Settings → Transfers`
+            ? tx("{name} has no phone number — add it in Settings → Transfers", { name: driver.name })
             : messages.mode === "api"
-            ? `Send the transfer details to ${driver.name} from the clinic's WhatsApp number`
-            : `Open WhatsApp with the transfer details for ${driver.name}`
+            ? tx("Send the transfer details to {name} from the clinic's WhatsApp number", { name: driver.name })
+            : tx("Open WhatsApp with the transfer details for {name}", { name: driver.name })
         }
         className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[13px] font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {messages.busyKey === t.id ? "Sending…" : sendLabel(messages.mode, t.status !== "planned")}
+        {messages.busyKey === t.id ? tx("Sending…") : tx(sendLabel(messages.mode, t.status !== "planned"))}
       </button>
     );
   }
@@ -324,15 +331,15 @@ function TransferRow({
     >
       <div className="flex items-center justify-between gap-2 lg:block">
         <div className="flex items-baseline gap-2 lg:flex-col lg:gap-0">
-          <span className="font-semibold">{t.transfer_date ? shortDate(t.transfer_date) : "No date"}</span>
-          <span className="font-mono text-[15px] font-semibold">{t.transfer_time || "time TBC"}</span>
+          <span className="font-semibold">{t.transfer_date ? shortDate(t.transfer_date, false, locale) : tx("No date")}</span>
+          <span className="font-mono text-[15px] font-semibold">{t.transfer_time || tx("time TBC")}</span>
         </div>
         <span className="lg:hidden">
-          <Pill tone={KIND_TONES[t.kind]}>{KIND_LABELS[t.kind]}</Pill>
+          <Pill tone={KIND_TONES[t.kind]}>{tx(KIND_LABELS[t.kind])}</Pill>
         </span>
       </div>
       <div className="hidden lg:block">
-        <Pill tone={KIND_TONES[t.kind]}>{KIND_LABELS[t.kind]}</Pill>
+        <Pill tone={KIND_TONES[t.kind]}>{tx(KIND_LABELS[t.kind])}</Pill>
       </div>
       <div className="flex min-w-0 flex-col">
         <span className="font-semibold">
@@ -350,28 +357,28 @@ function TransferRow({
           <span className="text-slate-500">{companyName ?? "—"}</span>
         ) : (
           <>
-            <span className="font-bold text-amber-700">No driver yet</span>
+            <span className="font-bold text-amber-700">{tx("No driver yet")}</span>
             {companyName && <span className="text-xs text-slate-500">{companyName}</span>}
           </>
         )}
       </div>
       <div className="flex items-center gap-2 lg:flex-col lg:items-start lg:gap-0.5">
-        <Pill tone={STATUS_TONES[t.status]}>{STATUS_LABELS[t.status]}</Pill>
-        {t.status === "sent" && t.sent_at && <span className="text-xs text-slate-500">{sentAt(t.sent_at)}</span>}
+        <Pill tone={STATUS_TONES[t.status]}>{tx(STATUS_LABELS[t.status])}</Pill>
+        {t.status === "sent" && t.sent_at && <span className="text-xs text-slate-500">{sentAt(t.sent_at, locale)}</span>}
         <WhatsAppDelivery transfer={t} />
       </div>
       <div className="flex items-center justify-end gap-2">
         {action}
         {!readOnly && (
         <RowMenu
-          label="Transfer actions"
+          label={tx("Transfer actions")}
           items={[
-            { label: "Edit", onSelect: onEdit },
-            { label: "Copy driver message", hint: "to paste anywhere", onSelect: onCopy },
+            { label: tx("Edit"), onSelect: onEdit },
+            { label: tx("Copy driver message"), hint: tx("to paste anywhere"), onSelect: onCopy },
             t.status === "done"
-              ? { label: "Mark as not done", onSelect: () => onStatus(driver && t.sent_at ? "sent" : "planned"), disabled: busy }
-              : { label: "Mark as done", hint: "the journey has happened", onSelect: () => onStatus("done"), disabled: busy },
-            { label: "Delete transfer…", danger: true, divider: true, onSelect: onDelete, disabled: busy },
+              ? { label: tx("Mark as not done"), onSelect: () => onStatus(driver && t.sent_at ? "sent" : "planned"), disabled: busy }
+              : { label: tx("Mark as done"), hint: tx("the journey has happened"), onSelect: () => onStatus("done"), disabled: busy },
+            { label: tx("Delete transfer…"), danger: true, divider: true, onSelect: onDelete, disabled: busy },
           ]}
         />
         )}
@@ -398,6 +405,8 @@ function TransferForm({
   onSave: (formData: FormData) => Promise<void>;
 }) {
   const { main: mainCurrency } = useCurrencies();
+  const tx = useT();
+  const locale = useLocale();
   const hotel = travel.hotel || "Hotel";
   const [kind, setKind] = useState<TransferKind>(transfer?.kind ?? "arrival");
   const [status, setStatus] = useState<TransferStatus>(transfer?.status ?? "planned");
@@ -462,7 +471,7 @@ function TransferForm({
       try {
         await onSave(formData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(err instanceof Error ? err.message : tx("Something went wrong"));
       }
     });
   }
@@ -479,7 +488,7 @@ function TransferForm({
       </datalist>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-slate-900">
-          {transfer ? `Editing the ${KIND_LABELS[transfer.kind].toLowerCase()} transfer` : "New transfer"}
+          {transfer ? tx("Editing the {kind} transfer", { kind: tx(KIND_LABELS[transfer.kind]).toLocaleLowerCase(locale) }) : tx("New transfer")}
         </p>
         <Segmented
           name="kind"
@@ -487,19 +496,19 @@ function TransferForm({
           value={kind}
           onChange={changeKind}
           options={[
-            { value: "arrival", label: "Arrival" },
-            { value: "local", label: "Local" },
-            { value: "departure", label: "Departure" },
+            { value: "arrival", label: tx("Arrival") },
+            { value: "local", label: tx("Local") },
+            { value: "departure", label: tx("Departure") },
           ]}
         />
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
-          <Label>Date</Label>
+          <Label>{tx("Date")}</Label>
           <DateInput name="transfer_date" value={date} onChange={setDate} />
         </div>
         <div>
-          <Label>Pickup (24h)</Label>
+          <Label>{tx("Pickup (24h)")}</Label>
           <Input
             name="transfer_time"
             value={time}
@@ -507,27 +516,27 @@ function TransferForm({
             placeholder="14:30"
             inputMode="numeric"
             pattern="([01]\d|2[0-3]):[0-5]\d"
-            title="Use 24-hour format, e.g. 14:30"
+            title={tx("Use 24-hour format, e.g. 14:30")}
           />
         </div>
         <div>
-          <Label>Flight no.</Label>
+          <Label>{tx("Flight no.")}</Label>
           <Input name="flight_no" value={flight} onChange={(e) => setFlight(e.target.value)} placeholder="TK1234" />
         </div>
         <div>
-          <Label>Pax</Label>
+          <Label>{tx("Pax")}</Label>
           <Input type="number" name="pax" min="1" max="50" step="1" defaultValue={transfer?.pax ?? travel.pax} />
         </div>
         <div className="col-span-2">
-          <Label>From</Label>
+          <Label>{tx("From")}</Label>
           <Input name="from_place" value={from} onChange={(e) => setFrom(e.target.value)} list={listId} autoComplete="off" />
         </div>
         <div className="col-span-2">
-          <Label>To</Label>
+          <Label>{tx("To")}</Label>
           <Input name="to_place" value={to} onChange={(e) => setTo(e.target.value)} list={listId} autoComplete="off" />
         </div>
         <div className="col-span-2 sm:col-span-1">
-          <Label>Company</Label>
+          <Label>{tx("Company")}</Label>
           <Select
             name="company_id"
             value={companyId}
@@ -536,19 +545,19 @@ function TransferForm({
               setDriverId("");
             }}
           >
-            <option value="">Not assigned</option>
+            <option value="">{tx("Not assigned")}</option>
             {visibleCompanies.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.is_internal ? "Clinic (internal)" : c.name}
-                {c.id === defaults.airportCompanyId || c.id === defaults.localCompanyId ? " · default" : ""}
+                {c.is_internal ? tx("Clinic (internal)") : c.name}
+                {c.id === defaults.airportCompanyId || c.id === defaults.localCompanyId ? ` · ${tx("default")}` : ""}
               </option>
             ))}
           </Select>
         </div>
         <div className="col-span-2 sm:col-span-1">
-          <Label>Driver</Label>
+          <Label>{tx("Driver")}</Label>
           <Select name="driver_id" value={driverId} onChange={(e) => setDriverId(e.target.value)} disabled={!company}>
-            <option value="">{company ? "Pick a driver" : "Pick a company first"}</option>
+            <option value="">{company ? tx("Pick a driver") : tx("Pick a company first")}</option>
             {visibleDrivers.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
@@ -558,9 +567,9 @@ function TransferForm({
           </Select>
         </div>
         <div>
-          <Label>Cost ({currencySymbol(mainCurrency)})</Label>
+          <Label>{tx("Cost ({sym})", { sym: currencySymbol(mainCurrency) })}</Label>
           {company?.is_internal ? (
-            <p className="py-2 text-sm text-slate-500">Free — clinic car</p>
+            <p className="py-2 text-sm text-slate-500">{tx("Free — clinic car")}</p>
           ) : (
             <Input
               type="number"
@@ -574,46 +583,46 @@ function TransferForm({
           )}
         </div>
         <div>
-          <Label>Status</Label>
+          <Label>{tx("Status")}</Label>
           <Segmented
             name="status"
             size="sm"
             value={status}
             onChange={setStatus}
             options={[
-              { value: "planned", label: "Not sent" },
-              { value: "sent", label: "Sent" },
-              { value: "done", label: "Done" },
+              { value: "planned", label: tx("Not sent") },
+              { value: "sent", label: tx("Sent") },
+              { value: "done", label: tx("Done") },
             ]}
           />
         </div>
         <div className="col-span-2 sm:col-span-4">
-          <Label>Notes</Label>
-          <Input name="notes" defaultValue={transfer?.notes ?? ""} placeholder="Wheelchair, extra luggage, meet at reception…" />
+          <Label>{tx("Notes")}</Label>
+          <Input name="notes" defaultValue={transfer?.notes ?? ""} placeholder={tx("Wheelchair, extra luggage, meet at reception…")} />
         </div>
       </div>
 
       {deductCosts && company && !company.is_internal && (
         <p className="text-xs text-slate-500">
-          The cost is deducted before commission.
+          {tx("The cost is deducted before commission.")}
           {date && date.slice(0, 7) < new Date().toISOString().slice(0, 7) && (
-            <span className="text-amber-700"> ⚠ Past month — changes that month&apos;s commission.</span>
+            <span className="text-amber-700"> ⚠ {tx("Past month — changes that month's commission.")}</span>
           )}
         </p>
       )}
       {company && visibleDrivers.length === 0 && (
         <p className="text-xs text-amber-700">
-          {company.is_internal ? "The clinic" : company.name} has no drivers yet — add them in Settings → Transfers.
+          {tx("{name} has no drivers yet — add them in Settings → Transfers.", { name: company.is_internal ? tx("The clinic") : company.name })}
         </p>
       )}
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
-          Cancel
+          {tx("Cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "Saving…" : transfer ? "Save transfer" : "Add transfer"}
+          {pending ? tx("Saving…") : transfer ? tx("Save transfer") : tx("Add transfer")}
         </Button>
       </div>
     </form>

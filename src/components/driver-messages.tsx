@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { waLink } from "@/lib/transfer-message";
 import { sendTransfersWhatsApp } from "@/app/(app)/patients/whatsapp-actions";
 import { DriverMessagesMode, Transfer } from "@/types";
+import { useT } from "@/i18n/client";
 
 function without(map: Record<string, string>, key: string): Record<string, string> {
   const next = { ...map };
@@ -32,6 +33,7 @@ export interface DriverSend {
  * page offers to open WhatsApp on the device instead, so nobody is stuck. */
 export function useDriverMessages(mode: DriverMessagesMode) {
   const router = useRouter();
+  const t = useT();
   const { showToast } = useToast();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [fallback, setFallback] = useState<Record<string, string>>({});
@@ -43,7 +45,7 @@ export function useDriverMessages(mode: DriverMessagesMode) {
         await s.markSent();
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Couldn't mark it as sent", "error");
+        showToast(e instanceof Error ? e.message : t("Couldn't mark it as sent"), "error");
       }
     });
   }
@@ -62,14 +64,14 @@ export function useDriverMessages(mode: DriverMessagesMode) {
         const result = await sendTransfersWhatsApp(s.transferIds);
         if (result.ok) {
           setFallback((f) => without(f, s.key));
-          showToast(`Sent to ${s.driverName} on WhatsApp ✓`);
+          showToast(t("Sent to {name} on WhatsApp ✓", { name: s.driverName }));
         } else {
           setFallback((f) => ({ ...f, [s.key]: waLink(s.driverPhone, s.text) }));
           showToast(`WhatsApp API: ${result.error}`, "error");
         }
         router.refresh();
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Sending failed", "error");
+        showToast(e instanceof Error ? e.message : t("Sending failed"), "error");
       } finally {
         setBusyKey(null);
       }
@@ -85,9 +87,9 @@ export function useDriverMessages(mode: DriverMessagesMode) {
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      showToast("Message copied — paste it anywhere");
+      showToast(t("Message copied — paste it anywhere"));
     } catch {
-      showToast("Couldn't copy — your browser blocked the clipboard", "error");
+      showToast(t("Couldn't copy — your browser blocked the clipboard"), "error");
     }
   }
 
@@ -102,6 +104,7 @@ export function sendLabel(mode: DriverMessagesMode, alreadySent: boolean): strin
 
 /** Shown after an API failure: open WhatsApp on this device with the same message. */
 export function FallbackLink({ url, onUse }: { url: string; onUse: () => void }) {
+  const t = useT();
   return (
     <a
       href={url}
@@ -109,9 +112,9 @@ export function FallbackLink({ url, onUse }: { url: string; onUse: () => void })
       rel="noopener noreferrer"
       onClick={onUse}
       className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[13px] font-semibold text-amber-800 hover:bg-amber-100"
-      title="Sending from the clinic's number failed — open WhatsApp on this device with the same message"
+      title={t("Sending from the clinic's number failed — open WhatsApp on this device with the same message")}
     >
-      Open in WhatsApp app
+      {t("Open in WhatsApp app")}
     </a>
   );
 }
@@ -126,11 +129,12 @@ const STATUS_TEXT: Record<NonNullable<Transfer["wa_status"]>, { label: string; c
 
 /** Where the last API message about a transfer got to (API mode only). */
 export function WhatsAppDelivery({ transfer }: { transfer: Pick<Transfer, "wa_status" | "wa_error" | "wa_status_at"> }) {
+  const t = useT();
   if (!transfer.wa_status) return null;
   const s = STATUS_TEXT[transfer.wa_status];
   return (
     <span className={`text-xs font-medium ${s.className}`} title={transfer.wa_error ?? (transfer.wa_status_at ? new Date(transfer.wa_status_at).toLocaleString("en-GB") : undefined)}>
-      {s.label}
+      {t(s.label)}
       {transfer.wa_status === "failed" && transfer.wa_error ? ` — ${transfer.wa_error}` : ""}
     </span>
   );
@@ -138,11 +142,12 @@ export function WhatsAppDelivery({ transfer }: { transfer: Pick<Transfer, "wa_st
 
 /** For admins only: driver messages are off, and where to turn them on. */
 export function DriverMessagesOffHint() {
+  const t = useT();
   return (
     <p className="text-xs text-slate-500">
-      Driver messages are off ·{" "}
+      {t("Driver messages are off")} ·{" "}
       <Link href="/settings/clinic/messaging" className="font-semibold text-teal-700 hover:text-teal-800">
-        Turn on in Settings
+        {t("Turn on in Settings")}
       </Link>
     </p>
   );

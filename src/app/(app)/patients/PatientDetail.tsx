@@ -111,7 +111,7 @@ export function PatientDetail({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, history, historyError, patient.id]);
+  }, [activeTab, history, historyError, patient.id, t]);
 
   function run(action: () => Promise<unknown>, done: string) {
     startTransition(async () => {

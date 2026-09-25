@@ -16,6 +16,7 @@ import { TelegramGroupCard } from "../../TelegramGroupCard";
 import { TransfersCard } from "../../TransfersCard";
 import { MOVED_SECTIONS, getClinicSection } from "../sections";
 import { ClinicModule } from "@/types";
+import { getT } from "@/i18n/server";
 
 /** One section of Clinic settings. The section's own permission is checked here (not just
  * in the list), and only the data that section needs is loaded. */
@@ -26,12 +27,13 @@ export default async function ClinicSectionPage({ params }: { params: Promise<{ 
   if (!section) notFound();
   const viewer = await requirePagePermission(section.needs);
   const supabase = await createClient();
+  const t = await getT();
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-slate-900">{section.label}</h2>
-        <p className="mt-1 text-sm text-slate-500">{section.description}</p>
+        <h2 className="text-xl font-semibold text-slate-900">{t(section.label)}</h2>
+        <p className="mt-1 text-sm text-slate-500">{t(section.description)}</p>
       </div>
 
       {section.id === "clinic" && <BrandingCard clinicConfig={await getClinicConfig(supabase)} />}

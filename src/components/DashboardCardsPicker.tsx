@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
+import { useT } from "@/i18n/client";
 
 const CARD_LABELS = new Map(DASHBOARD_CARDS.map((c) => [c.id, c.label]));
 
@@ -42,6 +43,7 @@ export function DashboardCardsPicker({
     });
   }
 
+  const t = useT();
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <input type="hidden" name="category" value={category} />
@@ -51,7 +53,7 @@ export function DashboardCardsPicker({
             <SortableRow
               key={id}
               id={id}
-              label={CARD_LABELS.get(id) ?? id}
+              label={t(CARD_LABELS.get(id) ?? id)}
               defaultChecked={initialEnabled.has(id)}
             />
           ))}
@@ -72,6 +74,7 @@ function SortableRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition };
+  const t = useT();
 
   return (
     <label
@@ -85,7 +88,7 @@ function SortableRow({
         {...attributes}
         {...listeners}
         className="cursor-grab select-none px-1 text-slate-300 hover:text-slate-400 active:cursor-grabbing"
-        title="Drag to reorder"
+        title={t("Drag to reorder")}
       >
         ⠿
       </span>

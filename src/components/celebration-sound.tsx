@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, ReactNode } from "react";
 import { setCelebrationSound } from "@/lib/privacy-actions";
+import { useT } from "@/i18n/client";
 
 const CelebrationSoundContext = createContext<{ enabled: boolean; toggle: () => void }>({
   enabled: true,
@@ -30,6 +31,7 @@ export function useCelebrationSound() {
 
 export function CelebrationSoundToggle() {
   const { enabled, toggle } = useCelebrationSound();
+  const t = useT();
   return (
     <label className="flex items-center gap-2 text-sm text-slate-600">
       <input
@@ -38,7 +40,7 @@ export function CelebrationSoundToggle() {
         onChange={toggle}
         className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500/20"
       />
-      Play a sound with payment/sale celebrations
+      {t("Play a sound with payment/sale celebrations")}
     </label>
   );
 }

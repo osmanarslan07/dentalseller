@@ -13,6 +13,8 @@ import {
   updateMyPhone,
   uploadMyAvatar,
 } from "@/lib/profile-actions";
+import { useT } from "@/i18n/client";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 /** My profile: who I am to the clinic — name, photo, sign-in email, phone, password. In
  * support mode it is shown read-only (the actions refuse support anyway). */
@@ -33,8 +35,22 @@ export function ProfileClient({
     <div className="space-y-6">
       <NameAndPhotoCard displayName={displayName} email={email} avatarUrl={avatarUrl} readOnly={readOnly} />
       <ContactCard email={email} phone={phone} readOnly={readOnly} />
+      {!readOnly && <LanguageCard />}
       {!readOnly && <PasswordCard />}
     </div>
+  );
+}
+
+function LanguageCard() {
+  const t = useT();
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-3 p-6">
+      <div>
+        <h2 className="text-base font-semibold text-slate-900">{t("Language")}</h2>
+        <p className="text-sm text-slate-500">{t("The language the app is shown in, on every device you sign in on.")}</p>
+      </div>
+      <LanguageSwitch />
+    </Card>
   );
 }
 
@@ -91,6 +107,7 @@ function NameAndPhotoCard({
   readOnly: boolean;
 }) {
   const { showToast } = useToast();
+  const t = useT();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(displayName);
@@ -104,9 +121,9 @@ function NameAndPhotoCard({
     startName(async () => {
       try {
         await updateDisplayName(name);
-        showToast("Name updated ✓");
+        showToast(t("Name updated ✓"));
       } catch (err) {
-        setError(message(err, "Failed to update name"));
+        setError(message(err, t("Failed to update name")));
       }
     });
   }
@@ -122,24 +139,24 @@ function NameAndPhotoCard({
         const fd = new FormData();
         fd.set("photo", new File([blob], "photo", { type: blob.type }));
         await uploadMyAvatar(fd);
-        showToast("Photo updated ✓");
+        showToast(t("Photo updated ✓"));
         router.refresh();
       } catch (err) {
-        setError(message(err, "Failed to upload the photo"));
+        setError(message(err, t("Failed to upload the photo")));
       }
     });
   }
 
   function handleRemovePhoto() {
-    if (!confirm("Remove your photo?")) return;
+    if (!confirm(t("Remove your photo?"))) return;
     setError(null);
     startPhoto(async () => {
       try {
         await removeMyAvatar();
-        showToast("Photo removed ✓");
+        showToast(t("Photo removed ✓"));
         router.refresh();
       } catch (err) {
-        setError(message(err, "Failed to remove the photo"));
+        setError(message(err, t("Failed to remove the photo")));
       }
     });
   }
@@ -153,11 +170,11 @@ function NameAndPhotoCard({
             <div className="flex gap-1">
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
               <Button type="button" size="sm" variant="ghost" disabled={photoPending} onClick={() => fileRef.current?.click()}>
-                {photoPending ? "Saving…" : avatarUrl ? "Change" : "Add photo"}
+                {photoPending ? t("Saving…") : avatarUrl ? t("Change") : t("Add photo")}
               </Button>
               {avatarUrl && (
                 <Button type="button" size="sm" variant="ghost" disabled={photoPending} onClick={handleRemovePhoto}>
-                  Remove
+                  {t("Remove")}
                 </Button>
               )}
             </div>
@@ -166,12 +183,12 @@ function NameAndPhotoCard({
 
         <form onSubmit={handleName} className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <Label>Your name</Label>
+            <Label>{t("Your name")}</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required disabled={readOnly} />
           </div>
           {!readOnly && (
             <Button type="submit" disabled={namePending || name.trim() === displayName}>
-              {namePending ? "Saving…" : "Save name"}
+              {namePending ? t("Saving…") : t("Save name")}
             </Button>
           )}
         </form>
@@ -185,6 +202,7 @@ function NameAndPhotoCard({
 
 function ContactCard({ email, phone, readOnly }: { email: string; phone: string | null; readOnly: boolean }) {
   const { showToast } = useToast();
+  const t = useT();
   const router = useRouter();
   const [phoneValue, setPhoneValue] = useState(phone ?? "");
   const [phonePending, startPhone] = useTransition();
@@ -203,9 +221,9 @@ function ContactCard({ email, phone, readOnly }: { email: string; phone: string 
       try {
         const saved = await updateMyPhone(phoneValue);
         setPhoneValue(saved ?? "");
-        showToast(saved ? "Phone saved ✓" : "Phone removed ✓");
+        showToast(saved ? t("Phone saved ✓") : t("Phone removed ✓"));
       } catch (err) {
-        setPhoneError(message(err, "Failed to save the phone"));
+        setPhoneError(message(err, t("Failed to save the phone")));
       }
     });
   }
@@ -219,10 +237,10 @@ function ContactCard({ email, phone, readOnly }: { email: string; phone: string 
         setEditingEmail(false);
         setNewEmail("");
         setPassword("");
-        showToast(`Email changed to ${saved} ✓`);
+        showToast(t("Email changed to {email} ✓", { email: saved }));
         router.refresh();
       } catch (err) {
-        setEmailError(message(err, "Failed to change the email"));
+        setEmailError(message(err, t("Failed to change the email")));
       }
     });
   }
@@ -230,24 +248,24 @@ function ContactCard({ email, phone, readOnly }: { email: string; phone: string 
   return (
     <Card className="space-y-6 p-6">
       <div>
-        <h2 className="mb-1 text-base font-semibold text-slate-900">Sign-in email</h2>
+        <h2 className="mb-1 text-base font-semibold text-slate-900">{t("Sign-in email")}</h2>
         <p className="mb-3 text-sm text-slate-500">
-          You sign in with <span className="font-medium text-slate-700">{email}</span>.
+          {t("You sign in with {email}.", { email })}
         </p>
         {!readOnly && !editingEmail && (
           <Button type="button" size="sm" variant="secondary" onClick={() => setEditingEmail(true)}>
-            Change email
+            {t("Change email")}
           </Button>
         )}
         {editingEmail && (
           <form onSubmit={handleEmail} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <Label>New email</Label>
+                <Label>{t("New email")}</Label>
                 <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="email" required />
               </div>
               <div>
-                <Label>Your current password (to confirm)</Label>
+                <Label>{t("Your current password (to confirm)")}</Label>
                 <Input
                   type="password"
                   value={password}
@@ -260,10 +278,10 @@ function ContactCard({ email, phone, readOnly }: { email: string; phone: string 
             <ErrorLine error={emailError} />
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => setEditingEmail(false)}>
-                Cancel
+                {t("Cancel")}
               </Button>
               <Button type="submit" disabled={emailPending}>
-                {emailPending ? "Changing…" : "Change email"}
+                {emailPending ? t("Changing…") : t("Change email")}
               </Button>
             </div>
           </form>
@@ -271,13 +289,13 @@ function ContactCard({ email, phone, readOnly }: { email: string; phone: string 
       </div>
 
       <form onSubmit={handlePhone} className="border-t border-slate-100 pt-5">
-        <h2 className="mb-1 text-base font-semibold text-slate-900">Phone</h2>
+        <h2 className="mb-1 text-base font-semibold text-slate-900">{t("Phone")}</h2>
         <p className="mb-3 text-sm text-slate-500">
-          With the country code. WhatsApp notifications for you will go to this number.
+          {t("With the country code. WhatsApp notifications for you will go to this number.")}
         </p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <Label>Mobile number</Label>
+            <Label>{t("Mobile number")}</Label>
             <Input
               type="tel"
               value={phoneValue}
@@ -289,7 +307,7 @@ function ContactCard({ email, phone, readOnly }: { email: string; phone: string 
           </div>
           {!readOnly && (
             <Button type="submit" disabled={phonePending || phoneValue.trim() === (phone ?? "")}>
-              {phonePending ? "Saving…" : "Save phone"}
+              {phonePending ? t("Saving…") : t("Save phone")}
             </Button>
           )}
         </div>
@@ -304,6 +322,7 @@ function ContactCard({ email, phone, readOnly }: { email: string; phone: string 
 /** Re-authenticates with the current password before the change (see changePassword). */
 function PasswordCard() {
   const { showToast } = useToast();
+  const t = useT();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -314,7 +333,7 @@ function PasswordCard() {
     e.preventDefault();
     setError(null);
     if (newPassword !== confirmPassword) {
-      setError("New passwords don't match");
+      setError(t("New passwords don't match"));
       return;
     }
     startTransition(async () => {
@@ -323,9 +342,9 @@ function PasswordCard() {
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
-        showToast("Password changed ✓");
+        showToast(t("Password changed ✓"));
       } catch (err) {
-        setError(message(err, "Failed to change password"));
+        setError(message(err, t("Failed to change password")));
       }
     });
   }
@@ -333,9 +352,9 @@ function PasswordCard() {
   return (
     <Card className="p-6">
       <form onSubmit={handleSubmit} className="space-y-3">
-        <h2 className="text-base font-semibold text-slate-900">Change password</h2>
+        <h2 className="text-base font-semibold text-slate-900">{t("Change password")}</h2>
         <div>
-          <Label>Current password</Label>
+          <Label>{t("Current password")}</Label>
           <Input
             type="password"
             value={currentPassword}
@@ -346,7 +365,7 @@ function PasswordCard() {
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label>New password</Label>
+            <Label>{t("New password")}</Label>
             <Input
               type="password"
               value={newPassword}
@@ -357,7 +376,7 @@ function PasswordCard() {
             />
           </div>
           <div>
-            <Label>Confirm new password</Label>
+            <Label>{t("Confirm new password")}</Label>
             <Input
               type="password"
               value={confirmPassword}
@@ -373,7 +392,7 @@ function PasswordCard() {
 
         <div className="flex justify-end pt-2">
           <Button type="submit" disabled={pending}>
-            {pending ? "Changing…" : "Change password"}
+            {pending ? t("Changing…") : t("Change password")}
           </Button>
         </div>
       </form>

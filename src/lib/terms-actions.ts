@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
@@ -15,7 +16,7 @@ export async function acceptTerms(formData: FormData): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  if (formData.get("confirm") !== "on") throw new Error("Tick the box to confirm");
+  if (formData.get("confirm") !== "on") throw new Error(await st("Tick the box to confirm"));
   const language = parseTermsLanguage(String(formData.get("language") ?? ""));
 
   const { error } = await supabase.from("terms_acceptances").insert({

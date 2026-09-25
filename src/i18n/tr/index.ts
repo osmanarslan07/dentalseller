@@ -11,6 +11,7 @@ import { settings } from "./settings";
 import { settings2 } from "./settings2";
 import { users } from "./users";
 import { auth } from "./auth";
+import { server } from "./server";
 
 /**
  * Turkish dictionary: English text → Turkish. One file per area of the app; later files win on
@@ -31,4 +32,5 @@ export const TR: Record<string, string> = {
   ...settings2,
   ...users,
   ...auth,
+  ...server,
 };

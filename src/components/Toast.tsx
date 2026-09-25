@@ -1,5 +1,6 @@
 "use client";
 
+import { useT } from "@/i18n/client";
 import { createContext, useCallback, useContext, useRef, useState, ReactNode } from "react";
 
 type ToastTone = "success" | "error";
@@ -27,6 +28,8 @@ const EXIT_DURATION = 200;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const idRef = useRef(0);
+  // a message still in English (e.g. a server error) is translated here too
+  const tr = useT();
 
   const showToast = useCallback((message: string, tone: ToastTone = "success") => {
     const id = idRef.current++;
@@ -50,7 +53,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               t.tone === "success" ? "bg-slate-900" : "bg-red-600"
             } ${t.leaving ? "translate-y-1 opacity-0" : "translate-y-0 opacity-100"}`}
           >
-            {t.message}
+            {tr(t.message)}
           </div>
         ))}
       </div>

@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -23,7 +24,7 @@ export interface UploadTicket {
 /** The patient, if the caller can see it (RLS), with its clinic. */
 async function visiblePatient(supabase: Awaited<ReturnType<typeof createClient>>, patientId: string) {
   const { data } = await supabase.from("patients").select("id, clinic_id").eq("id", patientId).maybeSingle();
-  if (!data) throw new Error("Patient not found");
+  if (!data) throw new Error(await st("Patient not found"));
   return data as { id: string; clinic_id: string };
 }
 
@@ -40,8 +41,8 @@ export async function createPatientFileUploads(
   await requirePermission("files.manage");
   const supabase = await createClient();
   const patient = await visiblePatient(supabase, patientId);
-  if (files.length === 0) throw new Error("Choose a file");
-  if (files.length > 20) throw new Error("Up to 20 files at a time");
+  if (files.length === 0) throw new Error(await st("Choose a file"));
+  if (files.length > 20) throw new Error(await st("Up to 20 files at a time"));
 
   for (const f of files) {
     if (f.size > PATIENT_FILE_MAX_BYTES) throw new Error(`${f.name} is over 20 MB`);
@@ -85,7 +86,7 @@ export async function recordPatientFiles(
       mime: u.mime,
       uploaded_by: user.actorId,
     }));
-  if (rows.length === 0) throw new Error("The upload didn't arrive — try again");
+  if (rows.length === 0) throw new Error(await st("The upload didn't arrive — try again"));
 
   const { error } = await supabase.from("patient_files").insert(rows);
   if (error) {
@@ -110,7 +111,7 @@ export async function getPatientFileLink(fileId: string, download = false): Prom
   const { viewer } = await requirePermission("files.view", { forRead: true });
   const supabase = await createClient();
   const { data: file } = await supabase.from("patient_files").select("path, name, patient_id").eq("id", fileId).maybeSingle();
-  if (!file) throw new Error("File not found");
+  if (!file) throw new Error(await st("File not found"));
 
   if (viewer.support) {
     await recordSupportEvent({
@@ -133,14 +134,14 @@ export async function getPatientFileLink(fileId: string, download = false): Prom
 export async function renamePatientFile(fileId: string, rawName: string): Promise<void> {
   const user = await requirePermission(["files.manage", "files.delete"]);
   const name = rawName.trim().slice(0, 200);
-  if (!name) throw new Error("Give the file a name");
+  if (!name) throw new Error(await st("Give the file a name"));
   const supabase = await createClient();
 
   const { data: before } = await supabase.from("patient_files").select("name, patient_id").eq("id", fileId).maybeSingle();
-  if (!before) throw new Error("File not found");
+  if (!before) throw new Error(await st("File not found"));
   const { data, error } = await supabase.from("patient_files").update({ name }).eq("id", fileId).select("id");
   if (error) throw new Error(error.message);
-  if (!data?.length) throw new Error("Only whoever uploaded it, or someone who can delete anyone's files, can rename this file");
+  if (!data?.length) throw new Error(await st("Only whoever uploaded it, or someone who can delete anyone's files, can rename this file"));
 
   await logActivity(supabase, user.actorId, "file_renamed", "patient", before.patient_id, `${before.name} → ${name}`);
   revalidatePath(`/patients/${before.patient_id}`);
@@ -153,7 +154,7 @@ export async function deletePatientFile(fileId: string): Promise<void> {
   const { data, error } = await supabase.from("patient_files").delete().eq("id", fileId).select("name, path, patient_id");
   if (error) throw new Error(error.message);
   const file = data?.[0];
-  if (!file) throw new Error("Only whoever uploaded it, or someone who can delete anyone's files, can delete this file");
+  if (!file) throw new Error(await st("Only whoever uploaded it, or someone who can delete anyone's files, can delete this file"));
 
   const { error: removeError } = await createAdminClient().storage.from(PATIENT_FILE_BUCKET).remove([file.path]);
   if (removeError) console.error("Patient file removal failed:", removeError.message);

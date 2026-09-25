@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getPatient } from "@/lib/data";
@@ -27,14 +28,14 @@ export async function setVisitDiscount(patientId: string, visitKey: string, form
   let value: number | null = null;
   if (rawValue) {
     value = Number(rawValue);
-    if (!Number.isFinite(value) || value < 0) throw new Error("The discount must be 0 or more");
-    if (type === "percent" && value > 100) throw new Error("A percentage discount can't be more than 100%");
+    if (!Number.isFinite(value) || value < 0) throw new Error(await st("The discount must be 0 or more"));
+    if (type === "percent" && value > 100) throw new Error(await st("A percentage discount can't be more than 100%"));
     value = Math.round(value * 100) / 100;
     if (value === 0) value = null;
   }
 
   const patient = await getPatient(supabase, patientId);
-  if (!patient) throw new Error("Patient not found");
+  if (!patient) throw new Error(await st("Patient not found"));
   const before = visitDiscountSetting(patient, visitKey);
 
   const fields = value == null ? { type: null, value: null, reason: null } : { type, value, reason };
@@ -51,7 +52,7 @@ export async function setVisitDiscount(patientId: string, visitKey: string, form
       .select("id")
       .single());
   } else {
-    if (!patient.extra_visits.some((v) => v.id === visitKey)) throw new Error("Visit not found");
+    if (!patient.extra_visits.some((v) => v.id === visitKey)) throw new Error(await st("Visit not found"));
     ({ error } = await supabase
       .from("patient_visits")
       .update({ discount_type: fields.type, discount_value: fields.value, discount_reason: fields.reason })

@@ -1,5 +1,7 @@
 "use server";
 
+import { msg } from "@/i18n";
+import { st } from "@/i18n/server";
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -36,8 +38,8 @@ export interface CreateClinicResult extends CredentialResult {
 function parseClinicFields(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
-  if (!name) throw new Error("Clinic name is required");
-  if (!SLUG_RE.test(slug)) throw new Error("Slug may only use lowercase letters, numbers and single dashes");
+  if (!name) throw new Error(msg("Clinic name is required"));
+  if (!SLUG_RE.test(slug)) throw new Error(msg("Slug may only use lowercase letters, numbers and single dashes"));
   return { name, slug };
 }
 
@@ -53,10 +55,10 @@ export async function createClinic(formData: FormData): Promise<CreateClinicResu
   const { name, slug } = parseClinicFields(formData);
   const adminName = String(formData.get("admin_name") ?? "").trim();
   const adminEmail = String(formData.get("admin_email") ?? "").trim().toLowerCase();
-  if (!adminName) throw new Error("Admin name is required");
-  if (!EMAIL_RE.test(adminEmail)) throw new Error("Enter a valid admin email address");
+  if (!adminName) throw new Error(await st("Admin name is required"));
+  if (!EMAIL_RE.test(adminEmail)) throw new Error(await st("Enter a valid admin email address"));
   const mainCurrency = String(formData.get("main_currency") ?? "GBP");
-  if (!isSupportedCurrency(mainCurrency)) throw new Error("Pick the clinic's main currency");
+  if (!isSupportedCurrency(mainCurrency)) throw new Error(await st("Pick the clinic's main currency"));
 
   const admin = createAdminClient();
   const { data: clinic, error: clinicError } = await admin.from("clinics").insert({ name, slug }).select("id").single();
@@ -145,17 +147,17 @@ export async function setClinicActive(clinicId: string, active: boolean): Promis
  * admin). Same temp-password handoff as adminResetPassword. */
 export async function resetClinicUserPassword(userId: string): Promise<CredentialResult> {
   const { user } = await assertSuperadmin();
-  if (userId === user.id) throw new Error("Change your own password from your account instead");
+  if (userId === user.id) throw new Error(await st("Change your own password from your account instead"));
 
   const admin = createAdminClient();
   const { data: target } = await admin.from("profiles").select("clinic_id").eq("id", userId).maybeSingle();
-  if (!target?.clinic_id) throw new Error("Only clinic users can be reset from here");
+  if (!target?.clinic_id) throw new Error(await st("Only clinic users can be reset from here"));
 
   const {
     data: { user: targetUser },
     error: fetchError,
   } = await admin.auth.admin.getUserById(userId);
-  if (fetchError || !targetUser?.email) throw new Error("User not found");
+  if (fetchError || !targetUser?.email) throw new Error(await st("User not found"));
 
   const tempPassword = generateTempPassword();
   const { error } = await admin.auth.admin.updateUserById(userId, { password: tempPassword });
@@ -170,8 +172,8 @@ export async function addSuperadmin(rawEmail: string, rawName: string): Promise<
   const { user } = await assertSuperadmin();
   const email = rawEmail.trim().toLowerCase();
   const displayName = rawName.trim();
-  if (!EMAIL_RE.test(email)) throw new Error("Enter a valid email address");
-  if (!displayName) throw new Error("Name is required");
+  if (!EMAIL_RE.test(email)) throw new Error(await st("Enter a valid email address"));
+  if (!displayName) throw new Error(await st("Name is required"));
 
   const tempPassword = generateTempPassword();
   const admin = createAdminClient();
@@ -212,16 +214,16 @@ export async function updateClinicBilling(clinicId: string, formData: FormData):
   const { user } = await assertSuperadmin();
 
   const plan = String(formData.get("plan") ?? "") as Plan;
-  if (!PLANS.includes(plan)) throw new Error("Choose a plan");
+  if (!PLANS.includes(plan)) throw new Error(await st("Choose a plan"));
   const currency = String(formData.get("currency") ?? "");
-  if (!(BILLING_CURRENCIES as readonly string[]).includes(currency)) throw new Error("Choose a currency");
+  if (!(BILLING_CURRENCIES as readonly string[]).includes(currency)) throw new Error(await st("Choose a currency"));
 
   const seatLimit = optionalNumber(formData, "seat_limit", "Seat limit", { integer: true });
-  if (seatLimit === 0) throw new Error("Seat limit must be at least 1, or blank for unlimited");
+  if (seatLimit === 0) throw new Error(await st("Seat limit must be at least 1, or blank for unlimited"));
   const monthlyPrice = optionalNumber(formData, "monthly_price", "Monthly price");
   // A trial end date only means something on the trial plan — don't leave a stale one behind.
   const trialEndsAt = plan === "trial" ? String(formData.get("trial_ends_at") ?? "").trim() || null : null;
-  if (trialEndsAt && !/^\d{4}-\d{2}-\d{2}$/.test(trialEndsAt)) throw new Error("Enter a valid trial end date");
+  if (trialEndsAt && !/^\d{4}-\d{2}-\d{2}$/.test(trialEndsAt)) throw new Error(await st("Enter a valid trial end date"));
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const modules = CLINIC_MODULES.filter((m) => formData.getAll("modules").includes(m));
 
@@ -273,22 +275,22 @@ export async function createAnnouncement(formData: FormData): Promise<void> {
   const { supabase, user } = await assertSuperadmin();
 
   const message = String(formData.get("message") ?? "").trim();
-  if (!message) throw new Error("Write a message");
+  if (!message) throw new Error(await st("Write a message"));
   if (message.length > ANNOUNCEMENT_MAX_LENGTH) throw new Error(`Keep it under ${ANNOUNCEMENT_MAX_LENGTH} characters`);
 
   const level = String(formData.get("level") ?? "") as AnnouncementLevel;
-  if (!ANNOUNCEMENT_LEVELS.includes(level)) throw new Error("Choose a level");
+  if (!ANNOUNCEMENT_LEVELS.includes(level)) throw new Error(await st("Choose a level"));
 
   let clinicIds: string[] | null = null;
   if (formData.get("audience") === "selected") {
     clinicIds = formData.getAll("clinic_ids").map(String).filter(Boolean);
-    if (clinicIds.length === 0) throw new Error("Pick at least one clinic, or send it to all clinics");
+    if (clinicIds.length === 0) throw new Error(await st("Pick at least one clinic, or send it to all clinics"));
   }
 
   const startsAt = optionalIso(formData, "starts_at", "start time") ?? new Date().toISOString();
   const endsAt = optionalIso(formData, "ends_at", "end time");
-  if (endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) throw new Error("The end time must be after the start time");
-  if (endsAt && Date.parse(endsAt) <= Date.now()) throw new Error("The end time is already in the past");
+  if (endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) throw new Error(await st("The end time must be after the start time"));
+  if (endsAt && Date.parse(endsAt) <= Date.now()) throw new Error(await st("The end time is already in the past"));
 
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -322,7 +324,7 @@ export async function endAnnouncement(id: string): Promise<void> {
     .eq("id", id)
     .maybeSingle();
   if (fetchError) throw new Error(fetchError.message);
-  if (!existing) throw new Error("Announcement not found");
+  if (!existing) throw new Error(await st("Announcement not found"));
 
   const now = Date.now();
   // A scheduled one that never started gets its start pulled back just before the end, so
@@ -345,7 +347,7 @@ export async function deleteAnnouncement(id: string): Promise<void> {
   const admin = createAdminClient();
   const { data, error } = await admin.from("announcements").delete().eq("id", id).select("message").maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) throw new Error("Announcement not found");
+  if (!data) throw new Error(await st("Announcement not found"));
 
   await logActivity(createAdminClient(), user.id, "announcement_deleted", "announcement", id, `"${excerpt(data.message)}"`);
 
@@ -357,7 +359,7 @@ export async function deleteAnnouncement(id: string): Promise<void> {
  * though a permission added to the catalog later still reaches them with its default. */
 export async function updateRoleTemplate(role: string, permissions: string[]): Promise<void> {
   const { user } = await assertSuperadmin();
-  if (!["sales", "coordinator", "accountant"].includes(role)) throw new Error("Only Sales, Coordinator and Accountant have templates");
+  if (!["sales", "coordinator", "accountant"].includes(role)) throw new Error(await st("Only Sales, Coordinator and Accountant have templates"));
   const perms = grantablePermissions(permissions);
 
   const admin = createAdminClient();

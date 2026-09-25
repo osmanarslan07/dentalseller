@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getPatient } from "@/lib/data";
@@ -40,11 +41,11 @@ export async function setDealCurrency(patientId: string, currency: string, rate:
   const supabase = await createClient();
   const user = await requirePermission("money.edit");
   const [patient, config] = await Promise.all([getPatient(supabase, patientId), getClinicConfig(supabase)]);
-  if (!patient) throw new Error("Patient not found");
+  if (!patient) throw new Error(await st("Patient not found"));
 
   let fields;
   if (rate != null) {
-    if (!Number.isFinite(rate) || rate <= 0) throw new Error("The rate must be a number above 0");
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error(await st("The rate must be a number above 0"));
     if (currency !== patient.currency && !clinicCurrencyList({ main: config.mainCurrency, deal: config.dealCurrencies }).includes(currency)) {
       throw new Error(`The clinic doesn't deal in ${currency}`);
     }

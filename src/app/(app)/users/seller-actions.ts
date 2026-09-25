@@ -1,5 +1,7 @@
 "use server";
 
+import { msg } from "@/i18n";
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSellers } from "@/lib/data";
@@ -14,8 +16,8 @@ import { requirePermission } from "@/lib/permissions";
 
 function cleanName(raw: string): string {
   const name = raw.trim().replace(/\s+/g, " ");
-  if (!name) throw new Error("Enter a name");
-  if (name.length > 80) throw new Error("That name is too long");
+  if (!name) throw new Error(msg("Enter a name"));
+  if (name.length > 80) throw new Error(msg("That name is too long"));
   return name;
 }
 
@@ -38,7 +40,7 @@ export async function addSellerRecord(rawName: string): Promise<void> {
   const name = cleanName(rawName);
 
   const existing = findSellerByName(await getSellers(supabase), name);
-  if (existing) throw new Error(`“${sellerLabel(existing)}” is already on the seller list`);
+  if (existing) throw new Error(await st("“{name}” is already on the seller list", { name: sellerLabel(existing) }));
 
   const { data, error } = await supabase.from("sellers").insert({ name }).select("id").single();
   if (error) throw new Error(friendly(error.message));
@@ -54,9 +56,9 @@ export async function renameSellerRecord(id: string, rawName: string): Promise<v
 
   const sellers = await getSellers(supabase);
   const current = sellers.find((s) => s.id === id);
-  if (!current) throw new Error("Seller not found");
+  if (!current) throw new Error(await st("Seller not found"));
   const clash = findSellerByName(sellers, name);
-  if (clash && clash.id !== id) throw new Error(`“${sellerLabel(clash)}” is already on the list — merge instead`);
+  if (clash && clash.id !== id) throw new Error(await st("“{name}” is already on the list — merge instead", { name: sellerLabel(clash) }));
 
   const { error } = await supabase.from("sellers").update({ name }).eq("id", id).is("profile_id", null);
   if (error) throw new Error(friendly(error.message));
@@ -83,7 +85,7 @@ export async function deleteSellerRecord(id: string): Promise<void> {
   const user = await requirePermission("sellers.manage");
 
   const current = (await getSellers(supabase)).find((s) => s.id === id);
-  if (!current || current.profile_id) throw new Error("Seller not found");
+  if (!current || current.profile_id) throw new Error(await st("Seller not found"));
 
   const { error } = await supabase.from("sellers").delete().eq("id", id);
   if (error) throw new Error(friendly(error.message));
@@ -102,7 +104,7 @@ export async function mergeSellerRecord(fromId: string, intoId: string): Promise
   const sellers = await getSellers(supabase);
   const from = sellers.find((s) => s.id === fromId);
   const into = sellers.find((s) => s.id === intoId);
-  if (!from || !into) throw new Error("Seller not found");
+  if (!from || !into) throw new Error(await st("Seller not found"));
 
   const { error } = await supabase.rpc("merge_sellers", { from_id: fromId, into_id: intoId });
   if (error) throw new Error(friendly(error.message));
@@ -125,14 +127,14 @@ export async function saveSellerCommission(id: string, formData: FormData): Prom
   const fixed_monthly_payment = n("fixed_monthly_payment");
 
   if (![tier1_threshold, tier2_threshold].every((v) => Number.isFinite(v) && v >= 0)) {
-    throw new Error("Thresholds must be positive numbers");
+    throw new Error(await st("Thresholds must be positive numbers"));
   }
-  if (tier2_threshold <= tier1_threshold) throw new Error("Tier 2 threshold must be greater than tier 1 threshold");
+  if (tier2_threshold <= tier1_threshold) throw new Error(await st("Tier 2 threshold must be greater than tier 1 threshold"));
   if (![tier1_rate, tier2_rate, tier3_rate].every((v) => Number.isFinite(v) && v >= 0 && v < 1)) {
-    throw new Error("Rates must be between 0 and 100%");
+    throw new Error(await st("Rates must be between 0 and 100%"));
   }
   if (!Number.isFinite(fixed_monthly_payment) || fixed_monthly_payment < 0) {
-    throw new Error("Fixed monthly payment must be a positive number");
+    throw new Error(await st("Fixed monthly payment must be a positive number"));
   }
 
   const { error } = await supabase.from("settings").upsert({

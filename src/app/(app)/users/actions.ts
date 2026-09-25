@@ -1,5 +1,7 @@
 "use server";
 
+import { msg } from "@/i18n";
+import { st } from "@/i18n/server";
 import { randomBytes } from "crypto";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
@@ -43,9 +45,9 @@ async function customRoleNames(supabase: SupabaseClient): Promise<Record<string,
  * from the client is refused (the database checks it again). */
 function cleanRoles(roles: MemberRole[], custom: Record<string, string>): MemberRole[] {
   const known = [...MEMBER_ROLES, ...Object.keys(custom)] as MemberRole[];
-  if (roles.some((r) => !known.includes(r))) throw new Error("Unknown role");
+  if (roles.some((r) => !known.includes(r))) throw new Error(msg("Unknown role"));
   const clean = known.filter((r) => roles.includes(r));
-  if (clean.length === 0) throw new Error("Pick at least one role");
+  if (clean.length === 0) throw new Error(msg("Pick at least one role"));
   return clean;
 }
 
@@ -55,7 +57,7 @@ const rolesText = (roles: string[], custom: Record<string, string>) => roles.map
 export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sales"]): Promise<AddSellerResult> {
   const email = rawEmail.trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error("Enter a valid email address");
+    throw new Error(await st("Enter a valid email address"));
   }
 
   const supabase = await createClient();
@@ -69,7 +71,7 @@ export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sal
     .eq("id", user.id)
     .maybeSingle();
   if (profileError) throw new Error(profileError.message);
-  if (!myProfile?.is_active) throw new Error("Your account isn't active");
+  if (!myProfile?.is_active) throw new Error(await st("Your account isn't active"));
   // creating the login uses the service role, which the DB's read-only rule can't see
   assertViewerCanWrite(user.viewer);
   await assertSeatAvailable(myProfile.clinic_id);
@@ -84,7 +86,7 @@ export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sal
 
   if (error) {
     if (/already.*registered/i.test(error.message)) {
-      throw new Error("A seller with that email already exists");
+      throw new Error(await st("A seller with that email already exists"));
     }
     throw new Error(error.message);
   }
@@ -112,7 +114,7 @@ export async function addSeller(rawEmail: string, rawRoles: MemberRole[] = ["sal
 export async function setSellerActive(sellerId: string, active: boolean): Promise<void> {
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
-  if (sellerId === user.id) throw new Error("You can't deactivate your own account");
+  if (sellerId === user.id) throw new Error(await st("You can't deactivate your own account"));
   // the login block below uses the service role
   await assertAdminOfSameClinic(supabase, user.id, sellerId);
   assertViewerCanWrite(user.viewer);
@@ -143,12 +145,12 @@ export async function setSellerActive(sellerId: string, active: boolean): Promis
 export async function setMemberRoles(memberId: string, rawRoles: MemberRole[]): Promise<void> {
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
-  if (memberId === user.id) throw new Error("You can't change your own roles");
+  if (memberId === user.id) throw new Error(await st("You can't change your own roles"));
   const custom = await customRoleNames(supabase);
   const roles = cleanRoles(rawRoles, custom);
 
   const { data: before } = await supabase.from("profiles").select("roles").eq("id", memberId).maybeSingle();
-  if (!before) throw new Error("Team member not found");
+  if (!before) throw new Error(await st("Team member not found"));
 
   const { error } = await supabase.from("profiles").update({ roles }).eq("id", memberId);
   if (error) throw new Error(error.message);
@@ -171,20 +173,20 @@ export async function setMemberRoles(memberId: string, rawRoles: MemberRole[]): 
 export async function updateMemberProfile(memberId: string, rawName: string, rawPhone: string): Promise<void> {
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
-  if (memberId === user.id) throw new Error("Change your own details on My profile");
+  if (memberId === user.id) throw new Error(await st("Change your own details on My profile"));
   const name = rawName.trim();
-  if (name.length > 60) throw new Error("Name must be 60 characters or fewer");
+  if (name.length > 60) throw new Error(await st("Name must be 60 characters or fewer"));
   const phone = normalizePhone(rawPhone);
 
   const { data: before } = await supabase.from("profiles").select("display_name, phone").eq("id", memberId).maybeSingle();
-  if (!before) throw new Error("Team member not found");
+  if (!before) throw new Error(await st("Team member not found"));
   // an invited member keeps an empty name until they choose one at first sign-in
   const displayName = name || before.display_name;
-  if (before.display_name && !name) throw new Error("Please enter a name");
+  if (before.display_name && !name) throw new Error(await st("Please enter a name"));
 
   const { error } = await supabase.from("profiles").update({ display_name: displayName, phone }).eq("id", memberId);
   if (error) {
-    if (error.code === "23505") throw new Error("Someone else in this clinic already has that phone number");
+    if (error.code === "23505") throw new Error(await st("Someone else in this clinic already has that phone number"));
     throw new Error(error.message);
   }
 
@@ -205,11 +207,11 @@ export async function updateMemberProfile(memberId: string, rawName: string, raw
  * found", so ids from other clinics can't even be probed for existence. Returns the clinic. */
 async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: string, targetId: string): Promise<string> {
   const { data: me } = await supabase.from("profiles").select("clinic_id").eq("id", callerId).maybeSingle();
-  if (!me?.clinic_id) throw new Error("Admin only");
+  if (!me?.clinic_id) throw new Error(await st("Admin only"));
 
   const admin = createAdminClient();
   const { data: target } = await admin.from("profiles").select("clinic_id").eq("id", targetId).maybeSingle();
-  if (!target || target.clinic_id !== me.clinic_id) throw new Error("Seller not found");
+  if (!target || target.clinic_id !== me.clinic_id) throw new Error(await st("Seller not found"));
   return me.clinic_id as string;
 }
 
@@ -219,7 +221,7 @@ async function assertAdminOfSameClinic(supabase: SupabaseClient, callerId: strin
 export async function adminResetPassword(sellerId: string): Promise<AddSellerResult> {
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
-  if (sellerId === user.id) throw new Error("Change your own password on My profile");
+  if (sellerId === user.id) throw new Error(await st("Change your own password on My profile"));
 
   await assertAdminOfSameClinic(supabase, user.id, sellerId);
   assertViewerCanWrite(user.viewer);
@@ -229,7 +231,7 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
     data: { user: targetUser },
     error: fetchError,
   } = await admin.auth.admin.getUserById(sellerId);
-  if (fetchError || !targetUser?.email) throw new Error("Seller not found");
+  if (fetchError || !targetUser?.email) throw new Error(await st("Seller not found"));
 
   const tempPassword = generateTempPassword();
   const { error } = await admin.auth.admin.updateUserById(sellerId, { password: tempPassword });
@@ -255,7 +257,7 @@ export async function adminResetPassword(sellerId: string): Promise<AddSellerRes
 export async function deleteSeller(sellerId: string, coordinatorHandoverTo: string | null = null): Promise<void> {
   const supabase = await createClient();
   const user = await requirePermission("team.delete");
-  if (sellerId === user.id) throw new Error("You can't delete your own account");
+  if (sellerId === user.id) throw new Error(await st("You can't delete your own account"));
 
   const clinicId = await assertAdminOfSameClinic(supabase, user.id, sellerId);
   assertViewerCanWrite(user.viewer);
@@ -267,11 +269,11 @@ export async function deleteSeller(sellerId: string, coordinatorHandoverTo: stri
   ]);
   // the database guards this for updates only; a delete has to check it here
   if (target?.role === "admin" && target.is_active && (otherAdmins ?? []).length === 0) {
-    throw new Error("A clinic needs at least one active admin");
+    throw new Error(await st("A clinic needs at least one active admin"));
   }
 
   if (coordinatorHandoverTo) {
-    if (coordinatorHandoverTo === sellerId) throw new Error("Pick someone else to take over their patients");
+    if (coordinatorHandoverTo === sellerId) throw new Error(await st("Pick someone else to take over their patients"));
     const { data: heir } = await admin
       .from("profiles")
       .select("clinic_id, is_active")
@@ -279,7 +281,7 @@ export async function deleteSeller(sellerId: string, coordinatorHandoverTo: stri
       .maybeSingle();
     const { data: heirCanEdit } = await admin.rpc("has_permission", { uid: coordinatorHandoverTo, perm: "patients.edit" });
     if (!heir || heir.clinic_id !== clinicId || !heir.is_active || !heirCanEdit) {
-      throw new Error("That team member can't take over their patients");
+      throw new Error(await st("That team member can't take over their patients"));
     }
   }
 
@@ -349,9 +351,9 @@ export async function handOverCoordinatedPatients(
 ): Promise<number> {
   const supabase = await createClient();
   const user = await requirePermission("team.manage");
-  if (!can(user.viewer, "patients.edit")) throw new Error("You don't have permission to do that");
-  if (!UUID_RE.test(fromId) || (toId !== null && !UUID_RE.test(toId))) throw new Error("Team member not found");
-  if (toId === fromId) throw new Error("Pick someone else to take over");
+  if (!can(user.viewer, "patients.edit")) throw new Error(await st("You don't have permission to do that"));
+  if (!UUID_RE.test(fromId) || (toId !== null && !UUID_RE.test(toId))) throw new Error(await st("Team member not found"));
+  if (toId === fromId) throw new Error(await st("Pick someone else to take over"));
 
   const { data: people } = await supabase
     .from("profiles")
@@ -360,7 +362,7 @@ export async function handOverCoordinatedPatients(
   const nameOf = (id: string | null) =>
     id ? ((people ?? []).find((p) => p.id === id)?.display_name as string | null) || "Unnamed member" : "nobody";
   if (!(people ?? []).some((p) => p.id === fromId) || (toId && !(people ?? []).some((p) => p.id === toId))) {
-    throw new Error("Team member not found");
+    throw new Error(await st("Team member not found"));
   }
 
   const { data: patients, error: readError } = await supabase

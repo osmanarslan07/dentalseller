@@ -1,5 +1,7 @@
 "use server";
 
+import { msg } from "@/i18n";
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { computeQuoteSplit } from "@/lib/quote-templates";
@@ -48,7 +50,7 @@ function parseInput(formData: FormData): QuoteInput {
     total_price: num("total_price"),
     currency: (() => {
       const c = String(formData.get("currency") ?? "");
-      if (!isSupportedCurrency(c)) throw new Error("Pick a currency");
+      if (!isSupportedCurrency(c)) throw new Error(msg("Pick a currency"));
       return c;
     })(),
     split_mode: (formData.get("split_mode") as QuoteInput["split_mode"]) || "percent",
@@ -66,7 +68,7 @@ export async function createQuote(formData: FormData) {
   const user = await requirePermission("quotes.use");
 
   const input = parseInput(formData);
-  if (!input.name) throw new Error("Name is required");
+  if (!input.name) throw new Error(await st("Name is required"));
 
   const { data, error } = await supabase
     .from("quotes")
@@ -86,7 +88,7 @@ export async function updateQuote(id: string, formData: FormData) {
   const user = await requirePermission("quotes.use");
 
   const input = parseInput(formData);
-  if (!input.name) throw new Error("Name is required");
+  if (!input.name) throw new Error(await st("Name is required"));
 
   const { data: before } = await supabase.from("quotes").select("*").eq("id", id).maybeSingle();
 
@@ -220,6 +222,6 @@ export async function convertQuoteToPatient(id: string) {
   revalidatePath("/");
   revalidatePath("/earnings");
 
-  const celebration: Celebration = { kind: "confetti", message: `🎉 ${quote.name} converted into a confirmed patient!` };
+  const celebration: Celebration = { kind: "confetti", message: await st("🎉 {name} converted into a confirmed patient!", { name: quote.name }) };
   return { patientId: patient.id as string, celebration };
 }

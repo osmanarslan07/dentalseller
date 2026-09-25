@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig } from "@/lib/data";
@@ -20,7 +21,7 @@ export async function saveCurrencySettings(formData: FormData) {
   const before = await getClinicConfig(supabase);
 
   const main = String(formData.get("main_currency") ?? before.mainCurrency);
-  if (!isSupportedCurrency(main)) throw new Error("Pick a main currency");
+  if (!isSupportedCurrency(main)) throw new Error(await st("Pick a main currency"));
 
   const deal = SUPPORTED_CURRENCIES.filter((c) => c !== main && formData.get(`deal_${c}`) === "on");
 
@@ -28,7 +29,7 @@ export async function saveCurrencySettings(formData: FormData) {
   for (const c of deal) {
     if (formData.get(`source_${c}`) !== "clinic") continue;
     const rate = Number(formData.get(`rate_${c}`));
-    if (!Number.isFinite(rate) || rate <= 0) throw new Error(`Enter the clinic's own rate for ${c}, or use the market rate`);
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error(await st("Enter the clinic's own rate for {currency}, or use the market rate", { currency: c }));
     fixed[c] = rate;
   }
 

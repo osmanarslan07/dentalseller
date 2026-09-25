@@ -1,5 +1,7 @@
 "use server";
 
+import { msg } from "@/i18n";
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getPatient } from "@/lib/data";
@@ -18,15 +20,15 @@ const KIND_NAMES: Record<PatientExtraKind, string> = {
 
 function parseExtra(formData: FormData) {
   const kind = String(formData.get("kind") ?? "") as PatientExtraKind;
-  if (!KINDS.includes(kind)) throw new Error("Pick what was sold");
+  if (!KINDS.includes(kind)) throw new Error(msg("Pick what was sold"));
 
   const description = String(formData.get("description") ?? "").trim() || null;
-  if (kind !== "night" && !description) throw new Error("Describe the extra, e.g. “2x zirconium crown”");
+  if (kind !== "night" && !description) throw new Error(msg("Describe the extra, e.g. “2x zirconium crown”"));
 
   const quantity = Number(formData.get("quantity"));
-  if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Quantity must be more than 0");
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(msg("Quantity must be more than 0"));
   const unit_price = Number(formData.get("unit_price"));
-  if (!Number.isFinite(unit_price) || unit_price < 0) throw new Error("Price must be a positive number");
+  if (!Number.isFinite(unit_price) || unit_price < 0) throw new Error(msg("Price must be a positive number"));
 
   return { kind, description, quantity, unit_price };
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -26,13 +27,13 @@ function revalidate() {
 /** WhatsApp app / off switch straight away. The API needs a successful test message first
  * (saveWhatsAppApi), so switching back to it is only allowed once that has happened. */
 export async function setDriverMessagesMode(mode: DriverMessagesMode) {
-  if (!(mode in MODE_NAMES)) throw new Error("Unknown option");
+  if (!(mode in MODE_NAMES)) throw new Error(await st("Unknown option"));
   const { supabase, user, clinicId } = await requireAdmin();
 
   if (mode === "api") {
     const { data } = await supabase.from("clinic_config").select("whatsapp_verified_at").eq("clinic_id", clinicId).maybeSingle();
     const settings = await loadApiSettings(clinicId);
-    if (!data?.whatsapp_verified_at || "error" in settings) throw new Error("Fill in the API details and send a test message first");
+    if (!data?.whatsapp_verified_at || "error" in settings) throw new Error(await st("Fill in the API details and send a test message first"));
   }
 
   const { error } = await supabase.from("clinic_config").update({ driver_messages_mode: mode }).eq("clinic_id", clinicId);

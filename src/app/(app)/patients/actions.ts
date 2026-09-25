@@ -1,5 +1,7 @@
 "use server";
 
+import { msg } from "@/i18n";
+import { st } from "@/i18n/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { addMonths, format } from "date-fns";
@@ -247,7 +249,7 @@ function buildVisitMessage(patient: Patient, visitKey: string): string {
     roomType = patient.visit2_room_type;
   } else {
     const extra = patient.extra_visits.find((v) => v.id === visitKey);
-    if (!extra) throw new Error("Visit not found");
+    if (!extra) throw new Error(msg("Visit not found"));
     label = extra.label;
     treatment = extra.treatment ?? patient.treatment;
     expected = extra.expected;
@@ -384,12 +386,12 @@ export async function createPatient(formData: FormData) {
   const user = await requirePermission("patients.edit");
 
   const input = parseInput(formData);
-  if (!input.name) throw new Error("Name is required");
+  if (!input.name) throw new Error(await st("Name is required"));
 
   // Entering a patient for someone else makes you its coordinator — the one who follows up.
   const choice = sellerChoiceFromForm(formData);
   if ((choice.newSellerName || (choice.sellerId && choice.sellerId !== user.id)) && !can(user.viewer, "sellers.assign")) {
-    throw new Error("You can only add patients as yourself");
+    throw new Error(await st("You can only add patients as yourself"));
   }
   const seller = await resolveSellerChoice(supabase, choice, user.id);
   // The form's Coordinator picker; without one (older clients), whoever enters a patient for
@@ -445,8 +447,8 @@ export async function createPatient(formData: FormData) {
     .eq("responsible_seller_id", seller.id);
   const celebration: Celebration =
     seller.id === user.id && (count ?? 0) <= 1
-      ? { kind: "confetti", message: `🌟 ${input.name} is your first patient — welcome aboard!` }
-      : { kind: "confetti", message: `🎉 ${input.name} confirmed!` };
+      ? { kind: "confetti", message: await st("🌟 {name} is your first patient — welcome aboard!", { name: input.name }) }
+      : { kind: "confetti", message: await st("🎉 {name} confirmed!", { name: input.name }) };
 
   return { id: (created?.id as string | undefined) ?? null, celebration };
 }
@@ -460,7 +462,7 @@ function cleanField(kind: FieldKind, v: unknown): unknown {
     case "text":
     case "requiredText": {
       const s = typeof v === "string" ? v.trim() : "";
-      if (kind === "requiredText" && !s) throw new Error("This field can't be empty");
+      if (kind === "requiredText" && !s) throw new Error(msg("This field can't be empty"));
       return s || null;
     }
     case "phone":
@@ -470,14 +472,14 @@ function cleanField(kind: FieldKind, v: unknown): unknown {
     case "time": {
       if (v == null || v === "") return null;
       if (typeof v !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(v.trim())) {
-        throw new Error("Use 24-hour times, e.g. 14:30");
+        throw new Error(msg("Use 24-hour times, e.g. 14:30"));
       }
       return v.trim();
     }
     case "money": {
       if (v == null || v === "") return null;
       const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) throw new Error("Amounts must be 0 or more");
+      if (!Number.isFinite(n) || n < 0) throw new Error(msg("Amounts must be 0 or more"));
       return n;
     }
     case "pax":
@@ -500,7 +502,7 @@ function cleanPatch(patch: Record<string, unknown>, allowed: Record<string, Fiel
     if (!kind) throw new Error(`Unknown field: ${key}`);
     out[key] = cleanField(kind, value);
   }
-  if (Object.keys(out).length === 0) throw new Error("Nothing to save");
+  if (Object.keys(out).length === 0) throw new Error(msg("Nothing to save"));
   return out;
 }
 
@@ -550,11 +552,11 @@ export async function updatePatientFields(id: string, patch: Record<string, unkn
 
   const input = cleanPatch(patch, PATIENT_FIELD_KINDS);
   const before = await getPatient(supabase, id);
-  if (!before) throw new Error("Patient not found");
+  if (!before) throw new Error(await st("Patient not found"));
   if (input.needs_visit2 === false && before.needs_visit2) {
     const v2 = (x: { visit_number: 1 | 2 | null }) => x.visit_number === 2;
     if (before.payments.some(v2) || before.extras.some(v2)) {
-      throw new Error("Visit 2 has payments or extras — move or delete them first");
+      throw new Error(await st("Visit 2 has payments or extras — move or delete them first"));
     }
   }
 
@@ -581,7 +583,7 @@ export async function updateVisitFields(patientId: string, visitKey: string, pat
     const cleaned = cleanPatch(patch, VISIT_FIELD_KINDS);
     const input = Object.fromEntries(Object.entries(cleaned).map(([k, v]) => [`${visitKey}_${k}`, v]));
     const before = await getPatient(supabase, patientId);
-    if (!before) throw new Error("Patient not found");
+    if (!before) throw new Error(await st("Patient not found"));
 
     const { error } = await supabase.from("patients").update(input).eq("id", patientId);
     if (error) throw new Error(error.message);
@@ -601,7 +603,7 @@ export async function updateVisitFields(patientId: string, visitKey: string, pat
       .eq("id", visitKey)
       .eq("patient_id", patientId)
       .maybeSingle<PatientExtraVisit>();
-    if (!before) throw new Error("Visit not found");
+    if (!before) throw new Error(await st("Visit not found"));
 
     const { error } = await supabase.from("patient_visits").update(input).eq("id", visitKey);
     if (error) throw new Error(error.message);
@@ -624,10 +626,10 @@ export async function sendPatientTelegramMessage(id: string, visitKey: string) {
   const user = await requirePermission("patients.view");
 
   const patient = await getPatient(supabase, id);
-  if (!patient) throw new Error("Patient not found");
+  if (!patient) throw new Error(await st("Patient not found"));
 
   const chatIds = await getRecipientChatIds(supabase, [patient.responsible_seller_id, patient.coordinator_id]);
-  if (chatIds.length === 0) throw new Error("No Telegram chat linked for this patient's seller or coordinator");
+  if (chatIds.length === 0) throw new Error(await st("No Telegram chat linked for this patient's seller or coordinator"));
   await sendTelegramMessageToMany(chatIds, buildVisitMessage(patient, visitKey));
 
   await logActivity(supabase, user.actorId, "patient_telegram_sent", "patient", id, visitKey);
@@ -654,7 +656,7 @@ export async function updatePatientSale(
   const user = await requirePermission("patients.edit");
 
   const before = await getPatient(supabase, id);
-  if (!before) throw new Error("Patient not found");
+  if (!before) throw new Error(await st("Patient not found"));
   const update: Record<string, unknown> = cleanPatch(
     { confirmation_date: input.confirmation_date, komo_reference: input.komo_reference },
     PATIENT_FIELD_KINDS
@@ -664,7 +666,7 @@ export async function updatePatientSale(
   const choice = input.seller;
   if (choice && (choice.newSellerName || (choice.sellerId && choice.sellerId !== before.responsible_seller_id))) {
     if (!can(user.viewer, "sellers.assign") && before.responsible_seller_id !== user.id) {
-      throw new Error("Only the patient's seller or a coordinator can reassign it");
+      throw new Error(await st("Only the patient's seller or a coordinator can reassign it"));
     }
     const seller = await resolveSellerChoice(supabase, choice, "");
     if (seller.id !== before.responsible_seller_id) {
@@ -676,7 +678,7 @@ export async function updatePatientSale(
   let coordinatorChanged = false;
   if (input.coordinatorId !== undefined) {
     const next = input.coordinatorId && UUID_RE.test(input.coordinatorId) ? input.coordinatorId : null;
-    if (input.coordinatorId && !next) throw new Error("Team member not found");
+    if (input.coordinatorId && !next) throw new Error(await st("Team member not found"));
     if (next !== before.coordinator_id) {
       update.coordinator_id = next;
       coordinatorChanged = true;
@@ -709,9 +711,9 @@ export async function deletePatient(id: string) {
   // Grab the name before it's gone — the log has to be self-contained since the patient
   // row (and any later name lookup by id) won't exist anymore.
   const patient = await getPatient(supabase, id);
-  if (!patient) throw new Error("Patient not found");
+  if (!patient) throw new Error(await st("Patient not found"));
   if (!can(user.viewer, "patients.delete") && patient.responsible_seller_id !== user.id) {
-    throw new Error("Only the patient's own seller or an admin can delete this patient");
+    throw new Error(await st("Only the patient's own seller or an admin can delete this patient"));
   }
 
   // their files go with them: rows cascade, the stored files are removed here
@@ -772,7 +774,7 @@ export async function addExtraVisit(patientId: string, formData: FormData) {
   const user = await requirePermission("patients.edit");
 
   const input = parseExtraVisitInput(formData);
-  if (!input.label) throw new Error("Reason is required");
+  if (!input.label) throw new Error(await st("Reason is required"));
 
   const { data, error } = await supabase
     .from("patient_visits")
@@ -811,7 +813,7 @@ const EXTRA_VISIT_LOGISTICS_FIELD_LABELS: Record<ExtraVisitLogisticsField, strin
  * dashboard doesn't have loaded. `field` is validated against an allowlist since it crosses
  * the server-action boundary as a plain string, not a type the client can be trusted to respect. */
 export async function setPatientLogisticsFlag(patientId: string, field: PatientLogisticsField, value: boolean) {
-  if (!PATIENT_LOGISTICS_FIELDS.includes(field)) throw new Error("Invalid field");
+  if (!PATIENT_LOGISTICS_FIELDS.includes(field)) throw new Error(await st("Invalid field"));
   const supabase = await createClient();
   const user = await requirePermission("patients.edit");
 
@@ -837,7 +839,7 @@ export async function setExtraVisitLogisticsFlag(
   field: ExtraVisitLogisticsField,
   value: boolean
 ) {
-  if (!EXTRA_VISIT_LOGISTICS_FIELDS.includes(field)) throw new Error("Invalid field");
+  if (!EXTRA_VISIT_LOGISTICS_FIELDS.includes(field)) throw new Error(await st("Invalid field"));
   const supabase = await createClient();
   const user = await requirePermission("patients.edit");
 
@@ -880,7 +882,7 @@ export async function deleteExtraVisit(id: string) {
     .from("patient_payments")
     .select("id", { count: "exact", head: true })
     .eq("extra_visit_id", id);
-  if (count) throw new Error("This visit has payments — move or delete them first");
+  if (count) throw new Error(await st("This visit has payments — move or delete them first"));
 
   const { error } = await supabase.from("patient_visits").delete().eq("id", id);
   if (error) throw new Error(error.message);
@@ -905,7 +907,7 @@ export async function getPatientActivity(patientId: string): Promise<ActivityLog
   const { viewer } = await requirePermission("patients.view", { forRead: true });
 
   const { data: patient } = await supabase.from("patients").select("clinic_id").eq("id", patientId).maybeSingle();
-  if (!patient) throw new Error("Patient not found");
+  if (!patient) throw new Error(await st("Patient not found"));
 
   // Reading a patient's history in support mode is part of the support access log.
   if (viewer.support) {

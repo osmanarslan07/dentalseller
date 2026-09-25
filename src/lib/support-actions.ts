@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -24,7 +25,7 @@ async function getOpenSession(superadminId: string) {
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (!data) throw new Error("No open support session");
+  if (!data) throw new Error(await st("No open support session"));
   return data;
 }
 
@@ -60,7 +61,7 @@ export async function startSupportSession(clinicId: string): Promise<void> {
   const admin = createAdminClient();
 
   const { data: clinic } = await admin.from("clinics").select("id").eq("id", clinicId).maybeSingle();
-  if (!clinic) throw new Error("Clinic not found");
+  if (!clinic) throw new Error(await st("Clinic not found"));
 
   await closeOpenSessions(user.id);
 
@@ -108,7 +109,7 @@ export async function setSupportViewAs(userId: string): Promise<void> {
     .select("clinic_id, display_name, role")
     .eq("id", userId)
     .maybeSingle();
-  if (!member || member.clinic_id !== session.clinic_id) throw new Error("Not a member of this clinic");
+  if (!member || member.clinic_id !== session.clinic_id) throw new Error(await st("Not a member of this clinic"));
 
   const { error } = await admin.from("support_sessions").update({ view_as_user_id: userId }).eq("id", session.id);
   if (error) throw new Error(error.message);

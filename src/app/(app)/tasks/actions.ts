@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { diffFields, logActivity } from "@/lib/activity-log";
@@ -37,8 +38,8 @@ export async function createTask(formData: FormData) {
   const user = await requirePermission("tasks.use");
 
   const input = parseInput(formData);
-  if (!input.title) throw new Error("Title is required");
-  if (!input.due_date) throw new Error("Due date is required");
+  if (!input.title) throw new Error(await st("Title is required"));
+  if (!input.due_date) throw new Error(await st("Due date is required"));
 
   const { data, error } = await supabase.from("tasks").insert({ ...input, user_id: user.id }).select("id").single();
   if (error) throw new Error(error.message);
@@ -53,8 +54,8 @@ export async function updateTask(id: string, formData: FormData) {
   const user = await requirePermission("tasks.use");
 
   const input = parseInput(formData);
-  if (!input.title) throw new Error("Title is required");
-  if (!input.due_date) throw new Error("Due date is required");
+  if (!input.title) throw new Error(await st("Title is required"));
+  if (!input.due_date) throw new Error(await st("Due date is required"));
 
   const { data: before } = await supabase
     .from("tasks")

@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity } from "@/lib/activity-log";
@@ -28,7 +29,7 @@ export async function saveRole(key: string | null, name: string, permissions: st
   const supabase = await createClient();
   const perms = grantablePermissions(permissions);
   const before = key ? (await getClinicRoles(supabase, user.viewer.clinicId)).find((r) => r.key === key) ?? null : null;
-  if (key && !before) throw new Error("Role not found");
+  if (key && !before) throw new Error(await st("Role not found"));
 
   const { data, error } = await supabase.rpc("save_clinic_role", {
     p_key: key,
@@ -58,7 +59,7 @@ export async function saveRole(key: string | null, name: string, permissions: st
 /** roles.edit — a built-in role back to the platform's default. */
 export async function resetRole(key: string): Promise<void> {
   const user = await requirePermission("roles.edit");
-  if (!isBuiltinRole(key) || key === "admin") throw new Error("Only a built-in role can be reset");
+  if (!isBuiltinRole(key) || key === "admin") throw new Error(await st("Only a built-in role can be reset"));
   const supabase = await createClient();
   const before = (await getClinicRoles(supabase, user.viewer.clinicId)).find((r) => r.key === key);
 

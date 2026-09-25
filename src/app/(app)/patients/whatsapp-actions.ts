@@ -8,6 +8,7 @@ import { loadApiSettings, recordApiError, sendTemplate } from "@/lib/whatsapp";
 import { dayParams, singleParams, TransferForMessage } from "@/lib/whatsapp-templates";
 import { Transfer } from "@/types";
 import { requirePermission } from "@/lib/permissions";
+import { st } from "@/i18n/server";
 
 type Row = Transfer & {
   clinic_id: string;
@@ -40,7 +41,7 @@ export async function sendTransfersWhatsApp(transferIds: string[]): Promise<Send
 
   const driver = rows[0].driver;
   if (!driver || rows.some((r) => r.driver_id !== rows[0].driver_id)) return { ok: false, error: "Pick a driver for the transfer first" };
-  if (!driver.phone) return { ok: false, error: `${driver.name} has no phone number — add it in Settings → Transfers` };
+  if (!driver.phone) return { ok: false, error: await st("{name} has no phone number — add it in Settings → Transfers", { name: driver.name }) };
   const date = rows[0].transfer_date;
   if (rows.length > 1 && (!date || rows.some((r) => r.transfer_date !== date))) {
     return { ok: false, error: "A day list can only hold one day's transfers" };

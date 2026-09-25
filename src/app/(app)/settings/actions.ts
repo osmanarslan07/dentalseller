@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -22,19 +23,19 @@ export async function saveSettings(formData: FormData) {
   const fixed_monthly_payment = Number(formData.get("fixed_monthly_payment"));
   const show_try = formData.get("show_try") === "on";
   const approx_currency = String(formData.get("approx_currency") ?? "TRY");
-  if (!isSupportedCurrency(approx_currency)) throw new Error("Pick a currency");
+  if (!isSupportedCurrency(approx_currency)) throw new Error(await st("Pick a currency"));
 
   if (!Number.isFinite(tier1_threshold) || tier1_threshold < 0 || !Number.isFinite(tier2_threshold) || tier2_threshold < 0) {
-    throw new Error("Thresholds must be positive numbers");
+    throw new Error(await st("Thresholds must be positive numbers"));
   }
   if (tier2_threshold <= tier1_threshold) {
-    throw new Error("Tier 2 threshold must be greater than tier 1 threshold");
+    throw new Error(await st("Tier 2 threshold must be greater than tier 1 threshold"));
   }
   if (!Number.isFinite(tier1_rate) || !Number.isFinite(tier2_rate) || !Number.isFinite(tier3_rate)) {
-    throw new Error("Rates must be numbers");
+    throw new Error(await st("Rates must be numbers"));
   }
   if (!Number.isFinite(fixed_monthly_payment) || fixed_monthly_payment < 0) {
-    throw new Error("Fixed monthly payment must be a positive number");
+    throw new Error(await st("Fixed monthly payment must be a positive number"));
   }
 
   const before = await getSettings(supabase, user.id);
@@ -92,7 +93,7 @@ export async function saveClinicBranding(formData: FormData) {
   const clinic_email = String(formData.get("clinic_email") ?? "").trim();
 
   if (!clinic_name || !clinic_short_name) {
-    throw new Error("Clinic name is required");
+    throw new Error(await st("Clinic name is required"));
   }
 
   const logoFile = formData.get("clinic_logo") as File | null;
@@ -100,7 +101,7 @@ export async function saveClinicBranding(formData: FormData) {
 
   if (logoFile && logoFile.size > 0) {
     if (logoFile.size > 2 * 1024 * 1024) {
-      throw new Error("Logo must be under 2MB");
+      throw new Error(await st("Logo must be under 2MB"));
     }
     const admin = createAdminClient();
     const ext = logoFile.name.split(".").pop() || "png";
@@ -190,7 +191,7 @@ export async function saveSystemSettings(formData: FormData) {
   const deduct_costs_from_commission = formData.get("deduct_costs_from_commission") === "on";
   const card_surcharge_rate = Number(formData.get("card_surcharge_rate")) / 100;
   if (!Number.isFinite(card_surcharge_rate) || card_surcharge_rate < 0 || card_surcharge_rate > 1) {
-    throw new Error("Card surcharge must be between 0 and 100%");
+    throw new Error(await st("Card surcharge must be between 0 and 100%"));
   }
 
   const before = await getClinicConfig(supabase);

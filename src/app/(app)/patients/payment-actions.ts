@@ -1,5 +1,7 @@
 "use server";
 
+import { msg } from "@/i18n";
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getPatient, getPatients, getSettings } from "@/lib/data";
@@ -35,12 +37,12 @@ async function paymentRates(
     const v = String(formData.get(key) ?? "").trim();
     if (!v) return null;
     const n = Number(v);
-    if (!Number.isFinite(n) || n <= 0) throw new Error("An exchange rate must be a number above 0");
+    if (!Number.isFinite(n) || n <= 0) throw new Error(msg("An exchange rate must be a number above 0"));
     return n;
   };
   const manualDeal = currency === deal ? null : typed("rate_to_deal");
   const manualMain = currency === main || deal === main ? null : typed("rate_to_main");
-  if ((manualDeal != null || manualMain != null) && !mayCorrect) throw new Error("You don't have permission to set an exchange rate");
+  if ((manualDeal != null || manualMain != null) && !mayCorrect) throw new Error(await st("You don't have permission to set an exchange rate"));
 
   const kept = existing && existing.currency === currency && existing.paid_on === paidOn ? existing : null;
   let toDeal: { rate: number; source: RateSource | null } | null = { rate: 1, source: null };
@@ -77,13 +79,13 @@ async function paymentRates(
 
 async function parsePayment(formData: FormData, patient: Patient, mayCorrect: boolean, existing?: ExistingRates | null) {
   const paid_amount = Number(formData.get("amount"));
-  if (!Number.isFinite(paid_amount) || paid_amount <= 0) throw new Error("Amount must be more than 0");
+  if (!Number.isFinite(paid_amount) || paid_amount <= 0) throw new Error(await st("Amount must be more than 0"));
 
   const method = String(formData.get("method") ?? "") as PaymentMethod;
-  if (!METHODS.includes(method)) throw new Error("Pick how it was paid");
+  if (!METHODS.includes(method)) throw new Error(await st("Pick how it was paid"));
 
   const paid_on = String(formData.get("paid_on") ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(paid_on)) throw new Error("Pick the payment date");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paid_on)) throw new Error(await st("Pick the payment date"));
 
   const received_by = String(formData.get("received_by") ?? "").trim() || null;
   const note = String(formData.get("note") ?? "").trim() || null;
@@ -93,7 +95,7 @@ async function parsePayment(formData: FormData, patient: Patient, mayCorrect: bo
   // any of the clinic's currencies (or the patient's own, should the clinic have dropped it)
   const currency = String(formData.get("currency") || patient.currency);
   if (currency !== patient.currency && !clinicCurrencyList({ main: config.mainCurrency, deal: config.dealCurrencies }).includes(currency)) {
-    throw new Error(`The clinic doesn't take payments in ${currency}`);
+    throw new Error(await st("The clinic doesn't take payments in {currency}", { currency }));
   }
   const rates = await paymentRates(formData, patient, config, currency, paid_on, mayCorrect, existing);
 
@@ -144,7 +146,7 @@ export async function addPayment(
   const user = await requirePermission("payments.record");
 
   const before = await getPatient(supabase, patientId);
-  if (!before) throw new Error("Patient not found");
+  if (!before) throw new Error(await st("Patient not found"));
   const input = await parsePayment(formData, before, can(user.viewer, "money.edit"));
 
   const { error } = await supabase.from("patient_payments").insert({ ...input, ...visitRef(visitKey), patient_id: patientId });
@@ -171,12 +173,15 @@ export async function addPayment(
     const [settings, allPatients] = await Promise.all([getSettings(supabase, after.responsible_seller_id), getPatients(supabase)]);
     // tiers are in the main currency, at the rate the price was agreed at
     const jump = detectTierJump(allPatients, after.responsible_seller_id, settings, visitDate, dealToMain(after, input.amount));
-    if (jump) return { celebration: jump };
+    if (jump) {
+      const rate = /(\d+)%/.exec(jump.message)?.[1] ?? "";
+      return { celebration: { ...jump, message: await st("🎉 You just hit the {rate}% commission tier!", { rate }) } };
+    }
   }
   if (!isFullyPaid(before) && isFullyPaid(after)) {
-    return { celebration: { kind: "confetti", message: `🏁 ${after.name} is fully paid off — treatment complete!` } };
+    return { celebration: { kind: "confetti", message: await st("🏁 {name} is fully paid off — treatment complete!", { name: after.name }) } };
   }
-  return { celebration: { kind: "confetti", message: `💰 Payment received for ${after.name}!` } };
+  return { celebration: { kind: "confetti", message: await st("💰 Payment received for {name}!", { name: after.name }) } };
 }
 
 export async function updatePayment(id: string, formData: FormData) {
@@ -188,9 +193,9 @@ export async function updatePayment(id: string, formData: FormData) {
     .select("patient_id, method, surcharge_rate, currency, paid_on, rate_to_deal, rate_to_main, rate_source")
     .eq("id", id)
     .maybeSingle();
-  if (!existing) throw new Error("Payment not found");
+  if (!existing) throw new Error(await st("Payment not found"));
   const patient = await getPatient(supabase, existing.patient_id);
-  if (!patient) throw new Error("Patient not found");
+  if (!patient) throw new Error(await st("Patient not found"));
   const input = await parsePayment(formData, patient, can(user.viewer, "money.edit"), {
     currency: existing.currency,
     paid_on: existing.paid_on,

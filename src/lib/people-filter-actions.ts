@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getActingUser } from "@/lib/viewer";
@@ -15,7 +16,7 @@ const PAGE_PATHS: Record<FilterPage, string> = {
 /** Saves (or, with null, clears) the viewer's own default filter for one page. On their own
  * settings row, so RLS keeps it theirs; support can only do this while editing is unlocked. */
 export async function saveMyDefaultFilter(page: FilterPage, filter: PeopleFilter | null): Promise<void> {
-  if (!FILTER_PAGES.includes(page)) throw new Error("Unknown page");
+  if (!FILTER_PAGES.includes(page)) throw new Error(await st("Unknown page"));
   const supabase = await createClient();
   const user = await getActingUser();
 

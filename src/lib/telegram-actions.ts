@@ -1,5 +1,6 @@
 "use server";
 
+import { st } from "@/i18n/server";
 import { randomBytes } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getBotUsername } from "@/lib/telegram";
@@ -22,7 +23,7 @@ export async function generateTelegramLinkCode(): Promise<TelegramLinkInfo> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  if (!user) throw new Error(await st("Not authenticated"));
 
   const code = randomBytes(6).toString("hex");
   const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString();

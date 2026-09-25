@@ -1,5 +1,7 @@
 "use server";
 
+import { msg } from "@/i18n";
+import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getClinicConfig, getPatient } from "@/lib/data";
@@ -28,19 +30,19 @@ function parseTransfer(formData: FormData) {
   };
 
   const kind = str("kind") as TransferKind | null;
-  if (!kind || !KINDS.includes(kind)) throw new Error("Pick a transfer type");
+  if (!kind || !KINDS.includes(kind)) throw new Error(msg("Pick a transfer type"));
   const status = (str("status") as TransferStatus | null) ?? "planned";
-  if (!STATUSES.includes(status)) throw new Error("Invalid status");
+  if (!STATUSES.includes(status)) throw new Error(msg("Invalid status"));
 
   const transfer_time = str("transfer_time");
-  if (transfer_time && !TIME_RE.test(transfer_time)) throw new Error("Use 24-hour time, e.g. 14:30");
+  if (transfer_time && !TIME_RE.test(transfer_time)) throw new Error(msg("Use 24-hour time, e.g. 14:30"));
 
   const paxRaw = Math.round(Number(formData.get("pax")));
   const pax = Number.isFinite(paxRaw) && paxRaw >= 1 ? Math.min(paxRaw, 50) : 1;
 
   const costRaw = str("cost");
   const cost = costRaw == null ? null : Number(costRaw);
-  if (cost != null && (!Number.isFinite(cost) || cost < 0)) throw new Error("Cost must be a positive number");
+  if (cost != null && (!Number.isFinite(cost) || cost < 0)) throw new Error(msg("Cost must be a positive number"));
 
   const company_id = str("company_id");
   return {
@@ -123,7 +125,7 @@ export async function suggestTransfers(patientId: string, visitKey: string): Pro
   const user = await requirePermission("transfers.manage");
 
   const patient = await getPatient(supabase, patientId);
-  if (!patient) throw new Error("Patient not found");
+  if (!patient) throw new Error(await st("Patient not found"));
 
   let visit: {
     date: string | null;
@@ -151,7 +153,7 @@ export async function suggestTransfers(patientId: string, visitKey: string): Pro
     };
   } else {
     const v = patient.extra_visits.find((x) => x.id === visitKey);
-    if (!v) throw new Error("Visit not found");
+    if (!v) throw new Error(await st("Visit not found"));
     visit = {
       date: v.visit_date,
       arrivalDate: v.arrival_date,
@@ -268,7 +270,7 @@ export async function markTransferSent(id: string) {
 
 /** Operations list: tick a transfer off once it's happened (or back to planned). */
 export async function setTransferStatus(id: string, status: TransferStatus) {
-  if (!STATUSES.includes(status)) throw new Error("Invalid status");
+  if (!STATUSES.includes(status)) throw new Error(await st("Invalid status"));
   const supabase = await createClient();
   const user = await requirePermission("transfers.manage");
 

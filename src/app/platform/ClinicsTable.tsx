@@ -11,6 +11,7 @@ import { severityRank, worstSeverity } from "@/lib/clinic-health";
 import { HealthSummary } from "./HealthFlags";
 import { OnboardingTag } from "./Onboarding";
 import { formatPrice, PLAN_LABELS, trialStatus } from "@/lib/clinic-billing";
+import { useT } from "@/i18n/client";
 
 type SortKey = "name" | "health" | "users" | "patients" | "activity" | "created";
 
@@ -47,6 +48,7 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("created");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const router = useRouter();
+  const t = useT();
 
   function handleHeaderSort(key: SortKey) {
     if (key === sortKey) {
@@ -71,15 +73,15 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
   }, [clinics, search, sortKey, sortDir]);
 
   const header = (label: string, key: SortKey) => (
-    <SortHeader label={label} sortKey={key} activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
+    <SortHeader label={t(label)} sortKey={key} activeKey={sortKey} dir={sortDir} onSort={handleHeaderSort} />
   );
 
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-base font-semibold text-slate-900">Clinics</h2>
+        <h2 className="text-base font-semibold text-slate-900">{t("Clinics")}</h2>
         <Input
-          placeholder="Search name or slug…"
+          placeholder={t("Search name or slug…")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="sm:max-w-xs"
@@ -92,10 +94,10 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
             <tr className="border-b border-slate-100 bg-slate-50/60">
               <th className="py-3 pl-4 pr-4">{header("Clinic", "name")}</th>
               <th className="py-3 pr-4">{header("Health", "health")}</th>
-              <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">Plan</th>
+              <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">{t("Plan")}</th>
               <th className="py-3 pr-4">{header("Team", "users")}</th>
               <th className="py-3 pr-4">{header("Patients", "patients")}</th>
-              <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">Quotes</th>
+              <th className="py-3 pr-4 text-xs font-medium uppercase tracking-wide text-slate-400">{t("Quotes")}</th>
               <th className="py-3 pr-4">{header("Last activity", "activity")}</th>
               <th className="py-3 pr-4">{header("Created", "created")}</th>
             </tr>
@@ -117,7 +119,7 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
                   </Link>
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
                     {clinic.slug && <span>{clinic.slug}</span>}
-                    {!clinic.is_active && <Badge tone="amber">Suspended</Badge>}
+                    {!clinic.is_active && <Badge tone="amber">{t("Suspended")}</Badge>}
                     <OnboardingTag steps={clinic.onboarding} />
                   </div>
                 </td>
@@ -149,7 +151,7 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={8} className="py-10 text-center text-slate-400">
-                  {clinics.length === 0 ? "No clinics yet." : "No clinics match your search."}
+                  {clinics.length === 0 ? t("No clinics yet.") : t("No clinics match your search.")}
                 </td>
               </tr>
             )}
@@ -161,21 +163,22 @@ export function ClinicsTable({ clinics }: { clinics: ClinicWithStats[] }) {
 }
 
 function PlanCell({ clinic }: { clinic: ClinicWithStats }) {
+  const t = useT();
   const b = clinic.billing;
-  if (!b) return <span className="text-xs text-slate-400">Not set</span>;
+  if (!b) return <span className="text-xs text-slate-400">{t("Not set")}</span>;
   const trial = trialStatus(b);
   return (
     <div className="text-sm">
-      <span className="text-slate-900">{PLAN_LABELS[b.plan]}</span>
+      <span className="text-slate-900">{t(PLAN_LABELS[b.plan])}</span>
       {b.monthlyPrice !== null && (
-        <span className="text-slate-500"> · {formatPrice(b.monthlyPrice, b.currency)}/mo</span>
+        <span className="text-slate-500"> · {t("{amount}/month", { amount: formatPrice(b.monthlyPrice, b.currency) })}</span>
       )}
       {trial.kind === "active" && (
         <span className="block text-xs text-slate-400">
-          {trial.daysLeft === 0 ? "ends today" : `${trial.daysLeft} day${trial.daysLeft === 1 ? "" : "s"} left`}
+          {trial.daysLeft === 0 ? t("ends today") : trial.daysLeft === 1 ? t("1 day left") : t("{n} days left", { n: trial.daysLeft })}
         </span>
       )}
-      {trial.kind === "expired" && <span className="block text-xs text-red-600">expired</span>}
+      {trial.kind === "expired" && <span className="block text-xs text-red-600">{t("expired")}</span>}
     </div>
   );
 }

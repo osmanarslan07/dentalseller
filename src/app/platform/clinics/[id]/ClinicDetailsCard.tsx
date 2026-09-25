@@ -6,6 +6,7 @@ import type { Clinic } from "@/lib/platform";
 import { Button, Card, Input, Label } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { setClinicActive, updateClinic } from "../../actions";
+import { useT } from "@/i18n/client";
 
 export function ClinicDetailsCard({ clinic }: { clinic: Clinic }) {
   const [saving, setSaving] = useState(false);
@@ -13,6 +14,7 @@ export function ClinicDetailsCard({ clinic }: { clinic: Clinic }) {
   const [error, setError] = useState<string | null>(null);
   const { showToast } = useToast();
   const router = useRouter();
+  const t = useT();
 
   async function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -20,10 +22,10 @@ export function ClinicDetailsCard({ clinic }: { clinic: Clinic }) {
     setSaving(true);
     try {
       await updateClinic(clinic.id, new FormData(e.currentTarget));
-      showToast("Clinic saved ✓");
+      showToast(t("Clinic saved ✓"));
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save clinic");
+      setError(err instanceof Error ? err.message : t("Failed to save clinic"));
     } finally {
       setSaving(false);
     }
@@ -33,7 +35,7 @@ export function ClinicDetailsCard({ clinic }: { clinic: Clinic }) {
     const suspending = clinic.is_active;
     if (
       suspending &&
-      !confirm(`Suspend ${clinic.name}? Everyone at this clinic loses access until it's reactivated. No data is deleted.`)
+      !confirm(t("Suspend {name}? Everyone at this clinic loses access until it's reactivated. No data is deleted.", { name: clinic.name }))
     ) {
       return;
     }
@@ -41,10 +43,10 @@ export function ClinicDetailsCard({ clinic }: { clinic: Clinic }) {
     setToggling(true);
     try {
       await setClinicActive(clinic.id, !suspending);
-      showToast(suspending ? "Clinic suspended" : "Clinic reactivated ✓");
+      showToast(suspending ? t("Clinic suspended") : t("Clinic reactivated ✓"));
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update clinic");
+      setError(err instanceof Error ? err.message : t("Failed to update clinic"));
     } finally {
       setToggling(false);
     }
@@ -52,29 +54,29 @@ export function ClinicDetailsCard({ clinic }: { clinic: Clinic }) {
 
   return (
     <Card className="h-fit p-5">
-      <h2 className="text-base font-semibold text-slate-900">Clinic details</h2>
+      <h2 className="text-base font-semibold text-slate-900">{t("Clinic details")}</h2>
       <form onSubmit={handleSave} className="mt-4 space-y-4">
         <div>
-          <Label>Name</Label>
+          <Label>{t("Name")}</Label>
           <Input name="name" required defaultValue={clinic.name} />
         </div>
         <div>
-          <Label>Slug</Label>
+          <Label>{t("Slug")}</Label>
           <Input name="slug" required defaultValue={clinic.slug ?? ""} />
         </div>
         <Button type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("Saving…") : t("Save")}
         </Button>
       </form>
 
       {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
       <div className="mt-6 border-t border-slate-100 pt-5">
-        <h3 className="text-sm font-semibold text-slate-900">{clinic.is_active ? "Suspend clinic" : "Reactivate clinic"}</h3>
+        <h3 className="text-sm font-semibold text-slate-900">{clinic.is_active ? t("Suspend clinic") : t("Reactivate clinic")}</h3>
         <p className="mt-1 text-xs text-slate-500">
           {clinic.is_active
-            ? "Locks every account at this clinic out of the app. Their data stays intact."
-            : "Everyone at this clinic is currently locked out. Reactivating restores access immediately."}
+            ? t("Locks every account at this clinic out of the app. Their data stays intact.")
+            : t("Everyone at this clinic is currently locked out. Reactivating restores access immediately.")}
         </p>
         <Button
           type="button"
@@ -84,7 +86,7 @@ export function ClinicDetailsCard({ clinic }: { clinic: Clinic }) {
           disabled={toggling}
           onClick={handleToggleActive}
         >
-          {toggling ? "Updating…" : clinic.is_active ? "Suspend" : "Reactivate"}
+          {toggling ? t("Updating…") : clinic.is_active ? t("Suspend") : t("Reactivate")}
         </Button>
       </div>
     </Card>

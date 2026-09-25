@@ -8,6 +8,7 @@ import { CLINIC_MODULES, ClinicModule, MODULE_LABELS } from "@/types";
 import { Button, Card, Input, Label, Select, Textarea } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { updateClinicBilling } from "../../actions";
+import { useT } from "@/i18n/client";
 
 /** Superadmin-only record of what the clinic is on. Nothing here is visible to the clinic,
  * and no payment is taken. */
@@ -35,6 +36,7 @@ export function BillingCard({
   const [error, setError] = useState<string | null>(null);
   const { showToast } = useToast();
   const router = useRouter();
+  const t = useT();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -42,10 +44,10 @@ export function BillingCard({
     setSaving(true);
     try {
       await updateClinicBilling(clinicId, new FormData(e.currentTarget));
-      showToast("Plan saved ✓");
+      showToast(t("Plan saved ✓"));
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save plan");
+      setError(err instanceof Error ? err.message : t("Failed to save plan"));
     } finally {
       setSaving(false);
     }
@@ -54,42 +56,41 @@ export function BillingCard({
   return (
     <Card className="h-fit p-5">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">Plan &amp; billing</h2>
-        {!billing && <span className="text-xs text-slate-400">No plan recorded yet</span>}
+        <h2 className="text-base font-semibold text-slate-900">{t("Plan & billing")}</h2>
+        {!billing && <span className="text-xs text-slate-400">{t("No plan recorded yet")}</span>}
       </div>
-      <p className="mt-1 text-xs text-slate-500">Only superadmins see this. Record-keeping only, no payments are taken.</p>
+      <p className="mt-1 text-xs text-slate-500">{t("Only superadmins see this. Record-keeping only, no payments are taken.")}</p>
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>Plan</Label>
+            <Label>{t("Plan")}</Label>
             <Select name="plan" value={plan} onChange={(e) => choosePlan(e.target.value as Plan)}>
               {PLANS.map((p) => (
                 <option key={p} value={p}>
-                  {PLAN_LABELS[p]}
+                  {t(PLAN_LABELS[p])}
                 </option>
               ))}
             </Select>
           </div>
           <div>
-            <Label>Seat limit</Label>
+            <Label>{t("Seat limit")}</Label>
             <Input
               name="seat_limit"
               type="number"
               min={1}
               step={1}
               defaultValue={billing?.seatLimit ?? ""}
-              placeholder="Unlimited"
+              placeholder={t("Unlimited")}
             />
           </div>
         </div>
         <p className="-mt-2 text-xs text-slate-400">
-          {activeAccounts} active account{activeAccounts === 1 ? "" : "s"} now. At the limit, the clinic can&apos;t add or
-          reactivate anyone.
+          {t("{n} active account(s) now. At the limit, the clinic can't add or reactivate anyone.", { n: activeAccounts })}
         </p>
 
         <fieldset>
-          <Label>Modules</Label>
+          <Label>{t("Modules")}</Label>
           <div className="mt-1 flex flex-col gap-1.5">
             {CLINIC_MODULES.map((m) => (
               <label key={m} className="flex items-center gap-2 text-sm text-slate-700">
@@ -101,37 +102,36 @@ export function BillingCard({
                   onChange={(e) => setModules((ms) => (e.target.checked ? [...ms, m] : ms.filter((x) => x !== m)))}
                   className="h-4 w-4 rounded border-slate-300 text-teal-600"
                 />
-                {MODULE_LABELS[m]}
+                {t(MODULE_LABELS[m])}
               </label>
             ))}
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Patients, payments, tasks, files, team and settings are always on. Choosing a plan fills these in; change
-            them by hand if needed.
+            {t("Patients, payments, tasks, files, team and settings are always on. Choosing a plan fills these in; change them by hand if needed.")}
           </p>
         </fieldset>
 
         {plan === "trial" && (
           <div>
-            <Label>Trial ends</Label>
+            <Label>{t("Trial ends")}</Label>
             <DateInput name="trial_ends_at" defaultValue={billing?.trialEndsAt ?? ""} />
           </div>
         )}
 
         <div className="grid grid-cols-[1fr_auto] gap-3">
           <div>
-            <Label>Monthly price</Label>
+            <Label>{t("Monthly price")}</Label>
             <Input
               name="monthly_price"
               type="number"
               min={0}
               step="0.01"
               defaultValue={billing?.monthlyPrice ?? ""}
-              placeholder="Not set"
+              placeholder={t("Not set")}
             />
           </div>
           <div>
-            <Label>Currency</Label>
+            <Label>{t("Currency")}</Label>
             <Select name="currency" defaultValue={billing?.currency ?? "EUR"}>
               {BILLING_CURRENCIES.map((c) => (
                 <option key={c} value={c}>
@@ -143,19 +143,19 @@ export function BillingCard({
         </div>
 
         <div>
-          <Label>Private notes</Label>
+          <Label>{t("Private notes")}</Label>
           <Textarea
             name="notes"
             rows={3}
             defaultValue={billing?.notes ?? ""}
-            placeholder="e.g. agreed 3 months free, invoice to accounting@…"
+            placeholder={t("e.g. agreed 3 months free, invoice to accounting@…")}
           />
         </div>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
         <Button type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Save plan"}
+          {saving ? t("Saving…") : t("Save plan")}
         </Button>
       </form>
     </Card>

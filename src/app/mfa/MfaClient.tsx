@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { logout } from "@/lib/auth-actions";
 import { Button, Input, Label } from "@/components/ui";
+import { useT } from "@/i18n/client";
 
 interface Enrollment {
   factorId: string;
@@ -20,6 +21,7 @@ export function MfaClient({ mode, email }: { mode: "setup" | "verify"; email: st
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const t = useT();
 
   // Enrolling is a server-side write, so it must happen exactly once per page: React's dev
   // Strict Mode runs effects twice, and two concurrent enrolls for one user make Supabase
@@ -57,16 +59,16 @@ export function MfaClient({ mode, email }: { mode: "setup" | "verify"; email: st
         const { data } = await supabase.auth.mfa.listFactors();
         factorId = data?.totp.find((f) => f.status === "verified")?.id;
       }
-      if (!factorId) throw new Error("No authenticator found. Reload the page to set one up.");
+      if (!factorId) throw new Error(t("No authenticator found. Reload the page to set one up."));
 
       const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: code.trim() });
-      if (error) throw new Error(/invalid/i.test(error.message) ? "That code didn't match. Try the current one." : error.message);
+      if (error) throw new Error(/invalid/i.test(error.message) ? t("That code didn't match. Try the current one.") : error.message);
 
       // the browser client has already written the upgraded (aal2) session cookie
       router.replace("/platform");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed");
+      setError(err instanceof Error ? err.message : t("Verification failed"));
       setPending(false);
     }
   }
@@ -75,36 +77,35 @@ export function MfaClient({ mode, email }: { mode: "setup" | "verify"; email: st
     <div className="space-y-5">
       {mode === "setup" && (
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">1. Scan this code with your authenticator app.</p>
+          <p className="text-sm text-slate-600">1. {t("Scan this code with your authenticator app.")}</p>
           <div className="flex justify-center rounded-lg bg-slate-50 p-3">
             {enrollment ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={enrollment.qrCode} alt="Authenticator QR code" className="h-44 w-44" />
+              <img src={enrollment.qrCode} alt={t("Authenticator QR code")} className="h-44 w-44" />
             ) : (
               <div className="flex h-44 w-44 items-center justify-center text-xs text-slate-400">
-                {error ? "Couldn't start setup" : "Preparing…"}
+                {error ? t("Couldn't start setup") : t("Preparing…")}
               </div>
             )}
           </div>
           {enrollment && (
             <details className="text-xs text-slate-500">
-              <summary className="cursor-pointer">Can&apos;t scan? Enter the key manually</summary>
+              <summary className="cursor-pointer">{t("Can't scan? Enter the key manually")}</summary>
               <code className="mt-2 block break-all rounded bg-slate-50 px-2 py-1.5 font-mono text-slate-700">
                 {enrollment.secret}
               </code>
             </details>
           )}
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Keep a backup: scan the same code on a second device, or save the key in your password manager. Losing
-            every copy locks you out of the platform area until the factor is removed from the Supabase dashboard.
+            {t("Keep a backup: scan the same code on a second device, or save the key in your password manager. Losing every copy locks you out of the platform area until the factor is removed from the Supabase dashboard.")}
           </p>
-          <p className="text-sm text-slate-600">2. Enter the 6-digit code it shows.</p>
+          <p className="text-sm text-slate-600">2. {t("Enter the 6-digit code it shows.")}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label>Authenticator code</Label>
+          <Label>{t("Authenticator code")}</Label>
           <Input
             autoFocus
             inputMode="numeric"
@@ -120,13 +121,13 @@ export function MfaClient({ mode, email }: { mode: "setup" | "verify"; email: st
         </div>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         <Button type="submit" className="w-full" disabled={pending || code.length !== 6 || (mode === "setup" && !enrollment)}>
-          {pending ? "Verifying…" : mode === "setup" ? "Turn on two-factor sign-in" : "Verify"}
+          {pending ? t("Verifying…") : mode === "setup" ? t("Turn on two-factor sign-in") : t("Verify")}
         </Button>
       </form>
 
       <form action={logout} className="text-center">
         <button type="submit" className="text-xs text-slate-500 hover:text-slate-700">
-          Sign out
+          {t("Sign out")}
         </button>
       </form>
     </div>

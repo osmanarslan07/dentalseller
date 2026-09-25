@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useT } from "@/i18n/client";
 import { HealthFlag, HealthSeverity, severityRank, worstSeverity } from "@/lib/clinic-health";
 import { Badge, Card } from "@/components/ui";
 
@@ -7,19 +10,20 @@ const DOT: Record<HealthSeverity, string> = { critical: "bg-red-500", warning: "
 
 /** Compact table cell: a colored dot plus "Healthy" or the worst issue's label. */
 export function HealthSummary({ flags }: { flags: HealthFlag[] }) {
+  const t = useT();
   const worst = worstSeverity(flags);
   if (!worst) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600">
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        Healthy
+        {t("Healthy")}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
       <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[worst]}`} />
-      {flags[0].label}
+      {t(flags[0].label)}
       {flags.length > 1 && <span className="text-slate-400">+{flags.length - 1}</span>}
     </span>
   );
@@ -27,15 +31,16 @@ export function HealthSummary({ flags }: { flags: HealthFlag[] }) {
 
 /** Full list with explanations, for a single clinic's page. */
 export function HealthCard({ flags }: { flags: HealthFlag[] }) {
+  const t = useT();
   if (flags.length === 0) return null;
   return (
     <Card className="p-5">
-      <h2 className="text-base font-semibold text-slate-900">Needs attention</h2>
+      <h2 className="text-base font-semibold text-slate-900">{t("Needs attention")}</h2>
       <ul className="mt-3 space-y-3">
         {flags.map((flag) => (
           <li key={flag.id} className="flex items-start gap-3">
-            <Badge tone={TONE[flag.severity]}>{flag.label}</Badge>
-            <p className="pt-0.5 text-sm text-slate-600">{flag.detail}</p>
+            <Badge tone={TONE[flag.severity]}>{t(flag.label)}</Badge>
+            <p className="pt-0.5 text-sm text-slate-600">{t(flag.detail)}</p>
           </li>
         ))}
       </ul>
@@ -46,6 +51,7 @@ export function HealthCard({ flags }: { flags: HealthFlag[] }) {
 /** Overview panel: every flagged clinic, worst first, so problems stand out without
  * opening each clinic. */
 export function NeedsAttentionPanel({ clinics }: { clinics: { id: string; name: string; health: HealthFlag[] }[] }) {
+  const t = useT();
   const flagged = clinics
     .filter((c) => c.health.length > 0)
     .sort((a, b) => severityRank(worstSeverity(a.health)) - severityRank(worstSeverity(b.health)));
@@ -53,14 +59,14 @@ export function NeedsAttentionPanel({ clinics }: { clinics: { id: string; name: 
     return (
       <p className="flex items-center gap-2 text-sm text-emerald-700">
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        All clinics healthy — nothing needs attention.
+        {t("All clinics healthy — nothing needs attention.")}
       </p>
     );
   }
 
   return (
     <Card className="p-5">
-      <h2 className="text-base font-semibold text-slate-900">Needs attention</h2>
+      <h2 className="text-base font-semibold text-slate-900">{t("Needs attention")}</h2>
       <ul className="mt-3 divide-y divide-slate-100">
         {flagged.map((clinic) => (
           <li key={clinic.id} className="flex flex-wrap items-center gap-2 py-2.5 first:pt-0 last:pb-0">
@@ -69,7 +75,7 @@ export function NeedsAttentionPanel({ clinics }: { clinics: { id: string; name: 
             </Link>
             {clinic.health.map((flag) => (
               <Badge key={flag.id} tone={TONE[flag.severity]}>
-                {flag.label}
+                {t(flag.label)}
               </Badge>
             ))}
           </li>

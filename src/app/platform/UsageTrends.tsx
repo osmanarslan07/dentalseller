@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card } from "@/components/ui";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n";
 
 export interface UsagePoint {
   /** Axis tick, e.g. "Sept" */
@@ -17,9 +19,9 @@ export interface UsagePoint {
 type Metric = "quotesCreated" | "patientsConfirmed" | "activeUsers";
 
 const METRICS: { key: Metric; title: string; unit: string; note: string }[] = [
-  { key: "quotesCreated", title: "Quotes created", unit: "quotes", note: "New quotes, by creation date" },
-  { key: "patientsConfirmed", title: "Patients confirmed", unit: "patients", note: "By confirmation date" },
-  { key: "activeUsers", title: "Active team members", unit: "people", note: "Did anything in the app that month" },
+  { key: "quotesCreated", title: msg("Quotes created"), unit: msg("quotes"), note: msg("New quotes, by creation date") },
+  { key: "patientsConfirmed", title: msg("Patients confirmed"), unit: msg("patients"), note: msg("By confirmation date") },
+  { key: "activeUsers", title: msg("Active team members"), unit: msg("people"), note: msg("Did anything in the app that month") },
 ];
 
 const TEAL = "#0d9488";
@@ -30,17 +32,18 @@ const AXIS_TEXT = "#64748b";
  * measures have different scales, and each one reads on its own. Counts only. */
 export function UsageTrends({ title, data }: { title: string; data: UsagePoint[] }) {
   const [showTable, setShowTable] = useState(false);
+  const t = useT();
 
   return (
     <Card className="p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+        <h2 className="text-base font-semibold text-slate-900">{t(title)}</h2>
         <button
           type="button"
           onClick={() => setShowTable((v) => !v)}
           className="text-xs font-medium text-slate-500 hover:text-slate-700"
         >
-          {showTable ? "Show charts" : "Show as table"}
+          {showTable ? t("Show charts") : t("Show as table")}
         </button>
       </div>
 
@@ -49,10 +52,10 @@ export function UsageTrends({ title, data }: { title: string; data: UsagePoint[]
           <table className="w-full min-w-[420px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                <th className="py-2 pr-4 font-medium">Month</th>
+                <th className="py-2 pr-4 font-medium">{t("Month")}</th>
                 {METRICS.map((m) => (
                   <th key={m.key} className="py-2 pr-4 text-right font-medium">
-                    {m.title}
+                    {t(m.title)}
                   </th>
                 ))}
               </tr>
@@ -84,10 +87,11 @@ export function UsageTrends({ title, data }: { title: string; data: UsagePoint[]
 
 function MetricChart({ metric, data }: { metric: (typeof METRICS)[number]; data: UsagePoint[] }) {
   const latest = data[data.length - 1];
+  const t = useT();
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium text-slate-700">{metric.title}</h3>
+        <h3 className="text-sm font-medium text-slate-700">{t(metric.title)}</h3>
         {latest && (
           <span className="text-sm tabular-nums text-slate-900">
             <span className="font-semibold">{latest[metric.key]}</span>
@@ -117,7 +121,7 @@ function MetricChart({ metric, data }: { metric: (typeof METRICS)[number]; data:
             <Tooltip
               cursor={{ fill: "#f1f5f9" }}
               labelFormatter={(_, payload) => payload?.[0]?.payload?.label ?? ""}
-              formatter={(value) => [`${value} ${metric.unit}`, metric.title]}
+              formatter={(value) => [`${value} ${t(metric.unit)}`, t(metric.title)]}
               // text stays in normal ink — the bar beside it already carries the teal
               itemStyle={{ color: "#0f172a" }}
               labelStyle={{ color: AXIS_TEXT }}

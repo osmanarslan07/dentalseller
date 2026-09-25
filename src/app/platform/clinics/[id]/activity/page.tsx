@@ -6,6 +6,7 @@ import { ACTIVITY_CATEGORY_LABELS, ActivityCategory, parseActivityCategory } fro
 import { formatActivityTime } from "@/lib/activity-log";
 import { Badge, Card } from "@/components/ui";
 import { SupportModeButton } from "../SupportModeButton";
+import { getT } from "@/i18n/server";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -35,6 +36,7 @@ export default async function ClinicActivityPage({
     getMaskedClinicActivity(id, { actor: sp.actor, category, from, to, page }),
   ]);
   if (!clinic) notFound();
+  const t = await getT();
 
   const base = `/platform/clinics/${id}/activity`;
   const pageHref = (n: number) => {
@@ -49,11 +51,9 @@ export default async function ClinicActivityPage({
           <Link href={`/platform/clinics/${id}`} className="text-sm text-slate-500 hover:text-slate-700">
             ← {clinic.name}
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Clinic activity</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{t("Clinic activity")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Who did what and when. Patient names and free-text details are hidden here; patients, quotes and tasks
-            show as references like #P-7F3A. To see the full details, open the clinic in support mode (your visit is
-            logged).
+            {t("Who did what and when. Patient names and free-text details are hidden here; patients, quotes and tasks show as references like #P-7F3A. To see the full details, open the clinic in support mode (your visit is logged).")}
           </p>
         </div>
         <SupportModeButton clinicId={id} />
@@ -62,30 +62,30 @@ export default async function ClinicActivityPage({
       <Card className="p-4">
         <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" action={base}>
           <select name="actor" defaultValue={sp.actor ?? ""} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-            <option value="">Everyone</option>
+            <option value="">{t("Everyone")}</option>
             {activity.staff.map(([staffId, name]) => (
               <option key={staffId} value={staffId}>
                 {name}
               </option>
             ))}
-            <option value="support">DentalSeller support</option>
+            <option value="support">{t("DentalSeller support")}</option>
           </select>
           <select name="category" defaultValue={category ?? ""} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-            <option value="">All actions</option>
+            <option value="">{t("All actions")}</option>
             {(Object.keys(ACTIVITY_CATEGORY_LABELS) as ActivityCategory[]).map((c) => (
               <option key={c} value={c}>
-                {ACTIVITY_CATEGORY_LABELS[c]}
+                {t(ACTIVITY_CATEGORY_LABELS[c])}
               </option>
             ))}
           </select>
-          <DateInput name="from" defaultValue={from} aria-label="From" className="w-40" />
-          <DateInput name="to" defaultValue={to} aria-label="To" className="w-40" />
+          <DateInput name="from" defaultValue={from} aria-label={t("From")} className="w-40" />
+          <DateInput name="to" defaultValue={to} aria-label={t("To")} className="w-40" />
           <div className="flex gap-2">
             <button type="submit" className="flex-1 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
-              Filter
+              {t("Filter")}
             </button>
             <Link href={base} className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">
-              Reset
+              {t("Reset")}
             </Link>
           </div>
         </form>
@@ -93,7 +93,7 @@ export default async function ClinicActivityPage({
 
       <Card className="overflow-hidden">
         {activity.entries.length === 0 ? (
-          <p className="px-5 py-12 text-center text-sm text-slate-400">No activity matches these filters.</p>
+          <p className="px-5 py-12 text-center text-sm text-slate-400">{t("No activity matches these filters.")}</p>
         ) : (
           <ul className="divide-y divide-slate-100">
             {activity.entries.map((e) => (
@@ -101,7 +101,7 @@ export default async function ClinicActivityPage({
                 <p className="text-sm text-slate-800">
                   {e.viaSupport && (
                     <span className="mr-2">
-                      <Badge tone="blue">Support</Badge>
+                      <Badge tone="blue">{t("Support")}</Badge>
                     </span>
                   )}
                   {e.text}
@@ -117,15 +117,15 @@ export default async function ClinicActivityPage({
         <div className="flex items-center justify-between text-sm">
           {page > 1 ? (
             <Link href={pageHref(page - 1)} className="font-medium text-teal-700 hover:underline">
-              ← Newer
+              ← {t("Newer")}
             </Link>
           ) : (
             <span />
           )}
-          <span className="text-slate-400">Page {page}</span>
+          <span className="text-slate-400">{t("Page {n}", { n: page })}</span>
           {activity.hasMore ? (
             <Link href={pageHref(page + 1)} className="font-medium text-teal-700 hover:underline">
-              Older →
+              {t("Older")} →
             </Link>
           ) : (
             <span />

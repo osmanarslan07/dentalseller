@@ -6,6 +6,7 @@ import { Button, Card, Input, Label, Select } from "@/components/ui";
 import { CURRENCY_NAMES, SUPPORTED_CURRENCIES } from "@/lib/money";
 import { createClinic, CreateClinicResult } from "../../actions";
 import { CredentialNotice } from "@/components/CredentialNotice";
+import { useT } from "@/i18n/client";
 
 function slugify(name: string): string {
   return name
@@ -23,6 +24,7 @@ export function NewClinicForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CreateClinicResult | null>(null);
+  const t = useT();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,7 +33,7 @@ export function NewClinicForm() {
     try {
       setResult(await createClinic(new FormData(e.currentTarget)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create clinic");
+      setError(err instanceof Error ? err.message : t("Failed to create clinic"));
     } finally {
       setPending(false);
     }
@@ -40,19 +42,19 @@ export function NewClinicForm() {
   if (result) {
     return (
       <Card className="space-y-4 p-6">
-        <CredentialNotice title="Clinic created. First admin account:" email={result.email} tempPassword={result.tempPassword} />
+        <CredentialNotice title={t("Clinic created. First admin account:")} email={result.email} tempPassword={result.tempPassword} />
         <div className="flex flex-wrap gap-2">
           <Link
             href={`/platform/clinics/${result.clinicId}`}
             className="inline-flex items-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
           >
-            Open clinic
+            {t("Open clinic")}
           </Link>
           <Link
             href="/platform"
             className="inline-flex items-center rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
           >
-            Back to overview
+            {t("Back to overview")}
           </Link>
         </div>
       </Card>
@@ -63,9 +65,9 @@ export function NewClinicForm() {
     <Card className="p-6">
       <form onSubmit={handleSubmit} className="space-y-5">
         <fieldset className="space-y-4">
-          <legend className="mb-1 text-sm font-semibold text-slate-900">Clinic</legend>
+          <legend className="mb-1 text-sm font-semibold text-slate-900">{t("Clinic")}</legend>
           <div>
-            <Label>Name</Label>
+            <Label>{t("Name")}</Label>
             <Input
               name="name"
               required
@@ -78,7 +80,7 @@ export function NewClinicForm() {
             />
           </div>
           <div>
-            <Label>Slug</Label>
+            <Label>{t("Slug")}</Label>
             <Input
               name="slug"
               required
@@ -89,10 +91,10 @@ export function NewClinicForm() {
               }}
               placeholder="smile-istanbul"
             />
-            <p className="mt-1 text-xs text-slate-400">Short unique ID, lowercase letters, numbers and dashes.</p>
+            <p className="mt-1 text-xs text-slate-400">{t("Short unique ID, lowercase letters, numbers and dashes.")}</p>
           </div>
           <div>
-            <Label>Main currency</Label>
+            <Label>{t("Main currency")}</Label>
             <Select name="main_currency" defaultValue="GBP">
               {SUPPORTED_CURRENCIES.map((c) => (
                 <option key={c} value={c}>
@@ -101,20 +103,19 @@ export function NewClinicForm() {
               ))}
             </Select>
             <p className="mt-1 text-xs text-slate-400">
-              What the clinic reports in (commission, totals). The clinic can add other currencies itself; this one is
-              fixed once it has patients.
+              {t("What the clinic reports in (commission, totals). The clinic can add other currencies itself; this one is fixed once it has patients.")}
             </p>
           </div>
         </fieldset>
 
         <fieldset className="space-y-4 border-t border-slate-100 pt-5">
-          <legend className="mb-1 text-sm font-semibold text-slate-900">First admin</legend>
+          <legend className="mb-1 text-sm font-semibold text-slate-900">{t("First admin")}</legend>
           <div>
-            <Label>Name</Label>
+            <Label>{t("Name")}</Label>
             <Input name="admin_name" required placeholder="Ayşe Yılmaz" />
           </div>
           <div>
-            <Label>Email</Label>
+            <Label>{t("Email")}</Label>
             <Input name="admin_email" type="email" required placeholder="admin@clinic.com" />
           </div>
         </fieldset>
@@ -126,10 +127,10 @@ export function NewClinicForm() {
             href="/platform"
             className="inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
           >
-            Cancel
+            {t("Cancel")}
           </Link>
           <Button type="submit" disabled={pending}>
-            {pending ? "Creating…" : "Create clinic"}
+            {pending ? t("Creating…") : t("Create clinic")}
           </Button>
         </div>
       </form>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
+import { useDateFnsLocale, useT } from "@/i18n/client";
 
 /** Seen within this window counts as online — the heartbeat pings every 60s, so this
  * leaves room for a missed ping or two. */
@@ -15,6 +16,8 @@ export function isOnline(lastSeenAt: string | null, now = Date.now()): boolean {
  * doesn't keep showing someone as online long after they left. */
 export function LastSeen({ lastSeenAt, lastSignInAt }: { lastSeenAt: string | null; lastSignInAt: string | null }) {
   const [now, setNow] = useState(() => Date.now());
+  const t = useT();
+  const locale = useDateFnsLocale();
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
@@ -28,7 +31,7 @@ export function LastSeen({ lastSeenAt, lastSignInAt }: { lastSeenAt: string | nu
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
         </span>
-        Online
+        {t("Online")}
       </span>
     );
   }
@@ -39,7 +42,7 @@ export function LastSeen({ lastSeenAt, lastSignInAt }: { lastSeenAt: string | nu
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-slate-400" suppressHydrationWarning>
       <span className="h-2 w-2 rounded-full bg-slate-300" />
-      {seen ? `Seen ${formatDistanceToNowStrict(new Date(seen), { addSuffix: true })}` : "Never signed in"}
+      {seen ? t("Seen {when}", { when: formatDistanceToNowStrict(new Date(seen), { addSuffix: true, locale }) }) : t("Never signed in")}
     </span>
   );
 }

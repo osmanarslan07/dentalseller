@@ -3,12 +3,14 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui";
 import { startSupportSession } from "@/lib/support-actions";
+import { useT } from "@/i18n/client";
 
 /** Enters the clinic's app as DentalSeller support — view-only until editing is unlocked
  * from the support bar. Invisible to the clinic; recorded in the support log. */
 export function SupportModeButton({ clinicId }: { clinicId: string }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -22,12 +24,12 @@ export function SupportModeButton({ clinicId }: { clinicId: string }) {
               await startSupportSession(clinicId);
             } catch (err) {
               if (err instanceof Error && /NEXT_REDIRECT/.test(err.message)) throw err;
-              setError(err instanceof Error ? err.message : "Couldn't open support mode");
+              setError(err instanceof Error ? err.message : t("Couldn't open support mode"));
             }
           })
         }
       >
-        {pending ? "Opening…" : "Open in support mode"}
+        {pending ? t("Opening…") : t("Open in support mode")}
       </Button>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>

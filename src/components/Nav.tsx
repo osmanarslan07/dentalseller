@@ -9,7 +9,7 @@ import { PIN_COOKIE } from "@/lib/nav-pin";
 import { CLINIC_SECTIONS } from "@/app/(app)/settings/clinic/sections";
 import { Avatar, initials } from "@/components/Avatar";
 import { useT } from "@/i18n/client";
-import { LanguageSwitch } from "@/components/LanguageSwitch";
+import { LanguageList } from "@/components/LanguageSwitch";
 
 function HomeIcon({ className = "" }: { className?: string }) {
   return (
@@ -646,9 +646,9 @@ export function AppShell({
                         {t("Sign out")}
                       </button>
                     </form>
-                    <div className="mt-1 flex items-center justify-between border-t border-slate-100 px-2.5 pb-1 pt-2.5">
-                      <span className="text-xs text-slate-500">{t("Language")}</span>
-                      <LanguageSwitch />
+                    <div className="mt-1 border-t border-slate-100 pt-2">
+                      <p className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">{t("Language")}</p>
+                      <LanguageList />
                     </div>
                   </div>
                 )}
@@ -731,7 +731,6 @@ export function AppShell({
                 <SlidersIcon className="h-5 w-5" />
                 {t("My settings")}
               </Link>
-              <LanguageSwitch className="ml-auto" />
               <form action={logout}>
                 <button className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-100">
                   <SignOutIcon className="h-5 w-5" />
@@ -739,6 +738,7 @@ export function AppShell({
                 </button>
               </form>
             </div>
+            <LanguageList className="mt-2 grid grid-cols-2 gap-2" />
           </div>
         </div>
       )}

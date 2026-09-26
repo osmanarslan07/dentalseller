@@ -453,7 +453,7 @@ if it keeps master working, one consolidated test checklist at the end, merge af
 
 ---
 
-### Step H — Page map & new menu ✅ (built, awaiting your check)
+### Step H — Page map & new menu ✅ (live on master since 2026-09-25 — waiting for your test)
 
 **The page map** (decided in this step, reviewed by you before building):
 
@@ -499,7 +499,7 @@ To do:
 - ✅ Accessibility: keyboard, focus, tooltips on the rail, reduced-motion
 - ☐ Test checklist
 
-### Step I — Settings, regrouped ✅ (built, awaiting your check)
+### Step I — Settings, regrouped ✅ (live on master since 2026-09-25 — waiting for your test)
 
 Problem: one long page of tabs where personal and clinic-wide settings sit side by side, and
 every new feature adds another card.
@@ -535,7 +535,7 @@ To do:
 - ✅ Settings search (static index of section + setting names)
 - ☐ Test checklist
 
-### Step J — Users, profiles, sales performance, activity ✅ (built on branch `step-j-users`, awaiting your check)
+### Step J — Users, profiles, sales performance, activity ✅ (merged to master d9b4386, live since 2026-09-25 — waiting for your test)
 
 **My profile** (every user, from the profile menu)
 - Name, email (change with confirmation), **phone number** (international format — used for
@@ -618,7 +618,7 @@ To do:
 20. ☐ Another clinic's user id in `/users/<id>` → not found.
 21. ☐ Support mode: Users and My profile are read-only (My profile shows the viewed-as member).
 
-### Step K — Coordinators you can see, and seller / coordinator filters with saved defaults ✅ (built on branch `step-k-coordinators`, awaiting your check)
+### Step K — Coordinators you can see, and seller / coordinator filters with saved defaults ✅ (merged to master 6b50ea2, live since 2026-09-25 — waiting for your test)
 
 Why: some clinics have several coordinators (and several admins), and admins want to see who
 coordinates what. The patient's Coordinator field exists since step A, but it only shows on
@@ -703,7 +703,7 @@ To do:
 11. ☐ Delete a coordinator with the handover option → only people who can coordinate are offered.
 12. ☐ Support mode: filters work; "Save as my default" is refused while view-only.
 
-### Step L — Currency: one main currency, deals in several ✅ (built on branch `step-l-currency`, awaiting your check)
+### Step L — Currency: one main currency, deals in several ✅ (merged to master 47fc62b, live since 2026-09-25 — waiting for your test)
 
 Today: every amount is shown in **£** (hard-coded in about 50 places); the only currency setting
 is each user's "Currency display" plus "approx. in ₺" on earnings.
@@ -897,11 +897,19 @@ Rule of thumb: rerun the kit before each big release and at each stage below.
 - Pages load only what they show, lists read past the 1,000-row API cap (phase A `f405af0`, phase B `6485204`).
 - Per-page overhead cut: local sign-in check, one viewer-context call (`fbd87ba`) — live pages ~500 → ~300–430 ms.
 - Suspended-clinic members now see "suspended" instead of the welcome form.
+- Phase C: Dashboard and Patients list stop loading every patient (`4718397`).
+- Phase D: money maths reads per-visit totals instead of every payment/extra row (D2 `1b21eab`); the
+  Patients list draws 100 rows at a time with "Show more", and the Dashboard "Payments don't match" card
+  and Accounting "Open balances" are worked out on the server as small rows, listing the first 20 / 50
+  with "Show all" (D1 + D3 `79bcff3`). Before/after page: https://claude.ai/artifact/3dz7nrQEywZjmHvbdz5vtZ
+- Supabase org is on Pro (2026-09-26).
 
 **Now — before the first paying clinic**
-- Phase C of fix 2: Dashboard and Patients list stop loading every patient (Patients list as slim rows).
-- Move off the free database: Supabase Pro (no auto-pause after a week idle, daily backups). The free
-  Nano size is also why the first load after a quiet period can take a few seconds (cold cache).
+- Switch Thera's database compute from the default (Nano) to Micro or larger (Supabase dashboard →
+  Settings → Compute and Disk; about $10/month, covered by Pro's compute credit for one project).
+  The last load test still failed about half the requests at 10+ simultaneous users on Nano.
+- If that isn't enough: work out the unpaid-balance lists in SQL instead of TypeScript (they still read
+  the money totals of every open-balance candidate on each Dashboard / Accounting load).
 
 **At ~5 clinics**
 - Database compute Small or larger. On Nano, ~25 busy users at once was the ceiling in the test.

@@ -4,6 +4,8 @@ import { getPatients, getProfiles, getSavedFilters, getSellers, getSettings } fr
 import { PatientsClient } from "./PatientsClient";
 import { requirePagePermission } from "@/lib/permissions";
 import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
+import { clinicTodayIso } from "@/lib/balance";
+import { toListRows } from "./list-rows";
 import { ALL_FILTER } from "@/lib/people-filter";
 
 export default async function PatientsPage({
@@ -26,7 +28,7 @@ export default async function PatientsPage({
     getProfiles(supabase),
     getSavedFilters(supabase, currentUserId),
   ]);
-  const coordinators = await getCoordinatorOptions(supabase, viewer.clinicId, profiles, patients);
+  const coordinators = await getCoordinatorOptions(supabase, viewer.clinicId, profiles);
   const initialFilter = initialPeopleFilter(
     params,
     saved.patients,
@@ -37,8 +39,9 @@ export default async function PatientsPage({
   return (
     <PatientsClient
       key={`${params.q ?? ""}|${params.seller ?? ""}|${params.coordinator ?? ""}|${params.active ?? ""}`}
-      patients={patients}
-      settings={settings}
+      // slim rows: balances, visit money and the viewer's commission worked out here, with the
+      // same functions the list used in the browser, so it doesn't receive every full record
+      patients={toListRows(patients, settings, currentUserId, clinicTodayIso())}
       initialQuery={params.q ?? ""}
       sellers={sellers}
       coordinators={coordinators}

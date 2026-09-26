@@ -4519,6 +4519,35 @@ $$;
 revoke execute on function public.patient_counts_by_seller(uuid, date, date) from public, anon;
 grant execute on function public.patient_counts_by_seller(uuid, date, date) to authenticated;
 
+-- ---------- dashboard counts without loading patients (perf fix 2, phase C) ----------
+-- How many patients each (responsible seller, coordinator) pair has, split by confirmation month:
+-- p_this_month / p_last_month / anything else. The dashboard adds up the groups its Seller /
+-- Coordinator filter matches, which gives exactly the counts it used to take from every patient.
+-- One JSON value, so the API's 1,000-row cap never applies.
+create or replace function public.patient_count_groups(p_clinic uuid, p_this_month text, p_last_month text)
+returns jsonb
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(jsonb_agg(jsonb_build_array(seller, coordinator, bucket, n)), '[]')
+  from (
+    select responsible_seller_id as seller,
+           coordinator_id as coordinator,
+           case to_char(confirmation_date, 'YYYY-MM')
+             when p_this_month then 'this'
+             when p_last_month then 'last'
+             else 'other'
+           end as bucket,
+           count(*) as n
+    from public.patients
+    where clinic_id = p_clinic
+    group by 1, 2, 3
+  ) g;
+$$;
+revoke execute on function public.patient_count_groups(uuid, text, text) from public, anon;
+grant execute on function public.patient_count_groups(uuid, text, text) to authenticated;
+
 -- ---------- RLS: check the caller once per query, not once per row ----------
 -- The policy helpers (has_permission, my_clinic_id, is_active_profile, ...) are SECURITY
 -- DEFINER, which Postgres never inlines, so a bare call in a policy runs again for every row

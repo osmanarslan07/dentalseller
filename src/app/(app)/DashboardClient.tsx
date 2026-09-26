@@ -2,11 +2,11 @@
 
 import { ReactNode, useMemo, useState } from "react";
 import { Patient, Seller } from "@/types";
+import type { PatientCountGroup } from "@/lib/data";
 import { StatCard } from "@/components/ui";
 import { CountUp } from "@/components/CountUp";
 import { CheckCircleIcon, PeopleIcon, UserPlusIcon } from "@/components/StatIcons";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
-import { addMonths, currentMonthKey } from "@/lib/commission";
 import { PeopleFilter, matchesPeopleFilter, onlyMine, sellerFilterOptions } from "@/lib/people-filter";
 import { TeamOperationsPanel } from "./TeamOperationsPanel";
 import { useT } from "@/i18n/client";
@@ -17,7 +17,8 @@ type CountCardId = "patients_sold" | "confirmed_this_month" | "new_patients_delt
  * cards and the operations panel. Only patient counts and operational figures live here —
  * commission stays on Earnings — so any filter is safe for anyone who can see patients. */
 export function DashboardClient({
-  allPatients,
+  operationsPatients,
+  countGroups,
   sellers,
   coordinators,
   cardIds,
@@ -27,7 +28,10 @@ export function DashboardClient({
   todayIso,
   monthAheadIso,
 }: {
-  allPatients: Patient[];
+  /** Every patient the operations panel can list (see getPatients' `operationsFrom`). */
+  operationsPatients: Patient[];
+  /** Patient counts per (seller, coordinator) and confirmation month, for the count cards. */
+  countGroups: PatientCountGroup[];
   sellers: Seller[];
   coordinators: PersonOption[];
   /** The count cards the viewer chose to see, in their order (none for non-sellers). */
@@ -41,18 +45,18 @@ export function DashboardClient({
   const t = useT();
   const [filter, setFilter] = useState(initialFilter);
   const patients = useMemo(
-    () => allPatients.filter((p) => matchesPeopleFilter(p, filter, currentUserId)),
-    [allPatients, filter, currentUserId]
+    () => operationsPatients.filter((p) => matchesPeopleFilter(p, filter, currentUserId)),
+    [operationsPatients, filter, currentUserId]
   );
 
   const sellerOptions = useMemo(() => sellerFilterOptions(sellers), [sellers]);
 
+  // the same filter over (seller, coordinator) groups gives the counts over every patient
   const counts = useMemo(() => {
-    const thisMonth = currentMonthKey();
-    const lastMonth = addMonths(thisMonth, -1);
-    const inMonth = (m: string) => patients.filter((p) => p.confirmation_date?.slice(0, 7) === m).length;
-    return { total: patients.length, thisMonth: inMonth(thisMonth), lastMonth: inMonth(lastMonth) };
-  }, [patients]);
+    const groups = countGroups.filter((g) => matchesPeopleFilter(g, filter, currentUserId));
+    const sum = (bucket?: PatientCountGroup["bucket"]) => groups.filter((g) => !bucket || g.bucket === bucket).reduce((s, g) => s + g.n, 0);
+    return { total: sum(), thisMonth: sum("this"), lastMonth: sum("last") };
+  }, [countGroups, filter, currentUserId]);
   const delta = counts.thisMonth - counts.lastMonth;
 
   const cards: Record<CountCardId, ReactNode> = {

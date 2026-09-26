@@ -2,15 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Patient, CommissionSettings, Seller } from "@/types";
+import { Seller } from "@/types";
 import { sellerLabel } from "@/lib/sellers";
-import {
-  computeMonthlyAggregates,
-  monthLabel,
-  patientCommissionContribution,
-  ratesMapFromAggregates,
-  visitExpectedTotal,
-} from "@/lib/commission";
+import { monthLabel } from "@/lib/commission";
+import type { PatientListRow } from "./list-rows";
 import { formatCurrency, formatDate } from "@/lib/format";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,7 +13,6 @@ import { Badge, Button, Card, Input, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { useToast } from "@/components/Toast";
 import { deletePatient, sendPatientTelegramMessage } from "./actions";
-import { patientDueNow, todayIsoLocal } from "@/lib/balance";
 import { PeopleFilter, hasVisitToCome, matchesPeopleFilter, sellerFilterOptions } from "@/lib/people-filter";
 import { PeopleFilterBar, PersonOption } from "@/components/PeopleFilterBar";
 import { useCurrencies } from "@/components/currency";
@@ -27,18 +21,18 @@ import { msg, T } from "@/i18n";
 
 /** "£3,000" paid, or "£3,150 (exp.)" — price + extras — before anything is paid. In the
  * patient's own currency. */
-function visitMoney(p: Patient, key: "visit1" | "visit2", t: T): string {
-  const actual = key === "visit1" ? p.visit1_actual : p.visit2_actual;
+function visitMoney(p: PatientListRow, key: "visit1" | "visit2", t: T): string {
+  const { actual, expected } = p.money[key];
   if (actual != null) return formatCurrency(actual, p.currency);
-  const expected = visitExpectedTotal(p, key, key === "visit1" ? p.visit1_expected : p.visit2_expected);
   return expected != null ? t("{amount} (exp.)", { amount: formatCurrency(expected, p.currency) }) : "—";
 }
 
 /** What's short right now (price + extras vs payments on visits already under way), else
  * whether the rest is simply not due yet. Hover lists which visit. */
-function BalanceBadge({ patient }: { patient: Patient }) {
+function BalanceBadge({ patient }: { patient: PatientListRow }) {
   const t = useT();
-  const { short, dueNow, overpaid, upcoming, anyOwed } = patientDueNow(patient, todayIsoLocal());
+  // worked out on the server (toListRows) as of the clinic's today
+  const { short, dueNow, overpaid, upcoming, anyOwed } = patient.balance;
   const detail = short
     .map(
       (b) =>
@@ -95,7 +89,7 @@ const STAGE_TONES: Record<Stage, "slate" | "green" | "amber" | "blue"> = {
 };
 
 /** Derived, not stored — recomputed from dates/status every render so it can never drift out of sync. */
-function patientStage(p: Patient): Stage {
+function patientStage(p: PatientListRow): Stage {
   if (!p.visit1_date) return "confirmed";
   if (p.visit1_status !== "completed") return "visit1_scheduled";
   if (!p.needs_visit2) return "done";
@@ -107,7 +101,7 @@ function patientStage(p: Patient): Stage {
 /** Search matches more than just the exact name spelling — a seller is just as likely to
  * remember the Komo reference, the hotel, or the treatment they typed in. `q` is already
  * lowercased and trimmed. */
-function matchesSearch(p: Patient, q: string): boolean {
+function matchesSearch(p: PatientListRow, q: string): boolean {
   const haystacks = [
     p.name,
     p.phone,
@@ -184,7 +178,7 @@ function DocumentsMenu({
   open,
   onToggle,
 }: {
-  patient: Patient;
+  patient: PatientListRow;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -266,7 +260,7 @@ function TelegramMenu({
   onToggle,
   onClose,
 }: {
-  patient: Patient;
+  patient: PatientListRow;
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
@@ -339,7 +333,6 @@ function TelegramMenu({
 
 export function PatientsClient({
   patients,
-  settings,
   initialQuery,
   sellers,
   coordinators,
@@ -348,8 +341,8 @@ export function PatientsClient({
   savedFilter,
   currentUserId,
 }: {
-  patients: Patient[];
-  settings: CommissionSettings;
+  /** Slim rows with money already worked out (toListRows on the server). */
+  patients: PatientListRow[];
   initialQuery: string;
   sellers: Seller[];
   /** Everyone who coordinates or may coordinate patients. */
@@ -403,18 +396,6 @@ export function PatientsClient({
     return () => document.removeEventListener("click", close);
   }, [openTelegramId]);
 
-  // Commission tiers are computed from the viewer's own commission-earning visits only — this
-  // list is the shared clinic roster, so mixing in colleagues' totals would both misreport the
-  // tier (wrong monthly total) and, worse, expose derived commission on patients that aren't
-  // theirs. Scoped by sellerId (not a pre-filtered patient list) so a patient reassigned away
-  // still contributes whatever commission the viewer already earned on it — see
-  // patientCommissionContribution in lib/commission.
-  const aggregates = useMemo(
-    () => computeMonthlyAggregates(patients, settings, currentUserId),
-    [patients, settings, currentUserId]
-  );
-  const ratesMap = useMemo(() => ratesMapFromAggregates(aggregates), [aggregates]);
-
   const months = useMemo(() => {
     const set = new Set<string>();
     for (const p of patients) if (p.confirmation_date) set.add(p.confirmation_date.slice(0, 7));
@@ -440,9 +421,9 @@ export function PatientsClient({
       return {
         patient: p,
         isMine,
-        // Zeroes out on its own for visits the viewer doesn't get credit for, so a patient
-        // that's since been reassigned away still shows whatever was earned before the handoff.
-        commission: patientCommissionContribution(p, ratesMap, currentUserId),
+        // the viewer's own commission, worked out on the server from their own tiers (zero on
+        // visits credited to someone else) — see toListRows
+        commission: p.commission,
         stage: patientStage(p),
       };
     });
@@ -477,7 +458,7 @@ export function PatientsClient({
     });
 
     return list;
-  }, [patients, search, stageFilter, monthFilter, treatmentFilter, people, onlyToCome, sortKey, sortDir, ratesMap, currentUserId]);
+  }, [patients, search, stageFilter, monthFilter, treatmentFilter, people, onlyToCome, sortKey, sortDir, currentUserId]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -868,9 +849,9 @@ function KanbanBoard({
   sellerName,
   onCardClick,
 }: {
-  rows: { patient: Patient; commission: { actual: number; expected: number }; stage: Stage; isMine: boolean }[];
+  rows: { patient: PatientListRow; commission: { actual: number; expected: number }; stage: Stage; isMine: boolean }[];
   sellerName: (id: string) => string;
-  onCardClick: (p: Patient) => void;
+  onCardClick: (p: PatientListRow) => void;
 }) {
   const { main: mainCurrency } = useCurrencies();
   const t = useT();

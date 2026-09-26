@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getSavedFilters, getSellers, getSettings } from "@/lib/data";
+import { getPatientCountGroups, getPatients, getProfiles, getSavedFilters, getSellers, getSettings } from "@/lib/data";
+import { addMonths } from "@/lib/commission";
 import { OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
 import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
 import { ALL_FILTER } from "@/lib/people-filter";
@@ -20,23 +21,6 @@ export default async function DashboardPage() {
   // the count cards are for people who sell; transfers for people who book them
   const sells = can(viewer, "earnings.own");
   const booksTransfers = can(viewer, "transfers.manage");
-  const [allPatients, settings, sellers, profiles, saved] = await Promise.all([
-    getPatients(supabase),
-    getSettings(supabase, userId),
-    getSellers(supabase),
-    getProfiles(supabase),
-    getSavedFilters(supabase, userId),
-  ]);
-  const coordinators = viewer ? await getCoordinatorOptions(supabase, viewer.clinicId, profiles, allPatients) : [];
-  // Default All / All (step K); a saved default wins. Everything filtered here is patient
-  // counts and operational data — no commission — so any filter is safe to show.
-  const initialFilter = initialPeopleFilter(
-    {},
-    saved.dashboard,
-    new Set(sellers.map((s) => s.id)),
-    new Set(coordinators.map((c) => c.id)),
-    userId
-  );
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -49,6 +33,29 @@ export default async function DashboardPage() {
     2,
     "0"
   )}-${String(monthAhead.getDate()).padStart(2, "0")}`;
+  const thisMonth = todayIso.slice(0, 7);
+  const lastMonth = addMonths(thisMonth, -1);
+
+  // Only what the page shows: patients the operations panel can list from today on, and the
+  // count cards as small (seller, coordinator, month) groups instead of every patient.
+  const [operationsPatients, countGroups, settings, sellers, profiles, saved] = await Promise.all([
+    getPatients(supabase, { operationsFrom: todayIso }),
+    getPatientCountGroups(supabase, thisMonth, lastMonth),
+    getSettings(supabase, userId),
+    getSellers(supabase),
+    getProfiles(supabase),
+    getSavedFilters(supabase, userId),
+  ]);
+  const coordinators = viewer ? await getCoordinatorOptions(supabase, viewer.clinicId, profiles) : [];
+  // Default All / All (step K); a saved default wins. Everything filtered here is patient
+  // counts and operational data — no commission — so any filter is safe to show.
+  const initialFilter = initialPeopleFilter(
+    {},
+    saved.dashboard,
+    new Set(sellers.map((s) => s.id)),
+    new Set(coordinators.map((c) => c.id)),
+    userId
+  );
 
   const cardIds = settings.dashboard_cards.filter(
     (id): id is CountCardId => sells && OPERATIONAL_CARD_IDS.includes(id)
@@ -79,7 +86,8 @@ export default async function DashboardPage() {
       </div>
 
       <DashboardClient
-        allPatients={allPatients}
+        operationsPatients={operationsPatients}
+        countGroups={countGroups}
         sellers={sellers}
         coordinators={coordinators}
         cardIds={cardIds}

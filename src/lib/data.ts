@@ -167,7 +167,8 @@ async function withPatients(
   filter: (q: PatientsQuery) => PatientsQuery = (q) => q
 ): Promise<Record<string, unknown>[]> {
   const have = new Set(rows.map((r) => r.id as string));
-  const missing = ids.filter((id) => !have.has(id));
+  // `ids` may name a patient more than once (it can come from several lookups): load each once
+  const missing = [...new Set(ids)].filter((id) => !have.has(id));
   if (missing.length === 0) return rows;
   const more = (
     await Promise.all(chunks(missing).map((part) => fetchPatientRows(supabase, clinicId, select, (q) => filter(q.in("id", part)))))
@@ -193,6 +194,10 @@ export interface PatientScope {
   /** Patients with visit 1, visit 2 or an extra visit dated from..to (to exclusive) — every
    * patient a month's commission totals read (computeMonthTotals keys visits by their date). */
   visitIn?: DateRange;
+  /** Every patient the dashboard's operations panel can list as of this day: anything dated
+   * from then on (visits, arrivals, departures, extra visits — events and logistics), visit 1
+   * done with visit 2 still to book, and every open-balance candidate. */
+  operationsFrom?: string;
 }
 
 /** YYYY-MM-DD from, to exclusive. */
@@ -211,7 +216,21 @@ export async function getPatients(supabase: SupabaseClient, scope: PatientScope 
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
   let rows: Record<string, unknown>[];
-  if (scope.ids) {
+  if (scope.operationsFrom) {
+    const day = scope.operationsFrom;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("Invalid date");
+    const dated = ["visit1_arrival_date", "visit1_departure_date", "visit1_date", "visit2_arrival_date", "visit2_departure_date", "visit2_date"];
+    const [direct, viaExtraVisits, openBalances] = await Promise.all([
+      fetchPatientRows(supabase, clinicId, PATIENT_SELECT, (q) =>
+        q.or([...dated.map((c) => `${c}.gte.${day}`), "and(visit1_status.eq.completed,needs_visit2.is.true,visit2_date.is.null)"].join(","))
+      ),
+      patientIdsWithExtraVisit(supabase, clinicId, (q) =>
+        q.or(["visit_date", "arrival_date", "departure_date"].map((c) => `${c}.gte.${day}`).join(","))
+      ),
+      getOpenBalanceCandidateIds(supabase),
+    ]);
+    rows = await withPatients(supabase, clinicId, PATIENT_SELECT, direct, [...viaExtraVisits, ...openBalances]);
+  } else if (scope.ids) {
     rows = await withPatients(supabase, clinicId, PATIENT_SELECT, [], scope.ids.filter((id) => UUID_RE.test(id)));
   } else if (scope.visitIn) {
     const range = checkRange(scope.visitIn);
@@ -326,6 +345,31 @@ export async function getPatientCountsBySeller(
   return new Map(
     Object.entries((data ?? {}) as Record<string, [number, number]>).map(([id, [total, confirmed]]) => [id, { total: Number(total), confirmed: Number(confirmed) }])
   );
+}
+
+/** Patient counts per (responsible seller, coordinator), split into confirmed in `thisMonth`,
+ * in `lastMonth` (both YYYY-MM) and any other time — the dashboard sums the groups its filter
+ * matches instead of loading every patient. */
+export interface PatientCountGroup {
+  responsible_seller_id: string;
+  coordinator_id: string | null;
+  bucket: "this" | "last" | "other";
+  n: number;
+}
+
+export async function getPatientCountGroups(supabase: SupabaseClient, thisMonth: string, lastMonth: string): Promise<PatientCountGroup[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() =>
+    supabase.rpc("patient_count_groups", { p_clinic: clinicId, p_this_month: thisMonth, p_last_month: lastMonth })
+  );
+  if (error) throw error;
+  return ((data ?? []) as [string, string | null, "this" | "last" | "other", number][]).map(([seller, coordinator, bucket, n]) => ({
+    responsible_seller_id: seller,
+    coordinator_id: coordinator,
+    bucket,
+    n: Number(n),
+  }));
 }
 
 /** Every seller responsible for at least one of the clinic's patients. */

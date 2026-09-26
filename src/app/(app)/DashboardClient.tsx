@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useMemo, useState } from "react";
-import { MoneyPatient, Seller } from "@/types";
+import { MoneyPatient, OpenBalanceItem, RecentPatient, Seller } from "@/types";
 import type { PatientCountGroup } from "@/lib/data";
 import { StatCard } from "@/components/ui";
 import { CountUp } from "@/components/CountUp";
@@ -18,6 +18,8 @@ type CountCardId = "patients_sold" | "confirmed_this_month" | "new_patients_delt
  * commission stays on Earnings — so any filter is safe for anyone who can see patients. */
 export function DashboardClient({
   operationsPatients,
+  openItems,
+  recentPatients,
   countGroups,
   sellers,
   coordinators,
@@ -30,6 +32,10 @@ export function DashboardClient({
 }: {
   /** Every patient the operations panel can list (see getPatients' `operationsFrom`). */
   operationsPatients: MoneyPatient[];
+  /** Visits whose money doesn't add up (getOpenBalanceItems). */
+  openItems: OpenBalanceItem[];
+  /** The newest patients, for the "Recent patients" table. */
+  recentPatients: RecentPatient[];
   /** Patient counts per (seller, coordinator) and confirmation month, for the count cards. */
   countGroups: PatientCountGroup[];
   sellers: Seller[];
@@ -47,6 +53,15 @@ export function DashboardClient({
   const patients = useMemo(
     () => operationsPatients.filter((p) => matchesPeopleFilter(p, filter, currentUserId)),
     [operationsPatients, filter, currentUserId]
+  );
+
+  const openBalances = useMemo(
+    () => openItems.filter((i) => matchesPeopleFilter(i, filter, currentUserId)),
+    [openItems, filter, currentUserId]
+  );
+  const recent = useMemo(
+    () => recentPatients.filter((p) => matchesPeopleFilter(p, filter, currentUserId)).slice(0, 6),
+    [recentPatients, filter, currentUserId]
   );
 
   const sellerOptions = useMemo(() => sellerFilterOptions(sellers), [sellers]);
@@ -108,6 +123,8 @@ export function DashboardClient({
 
       <TeamOperationsPanel
         patients={patients}
+        openItems={openBalances}
+        recentPatients={recent}
         showResponsible={!onlyMine(filter)}
         sellers={sellers}
         todayIso={todayIso}

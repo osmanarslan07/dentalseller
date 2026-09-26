@@ -1,7 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, MoneyPatient, Patient, PatientFile, PatientRoster, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, MoneyPatient, OpenBalanceItem, Patient, PatientFile, PatientRoster, RecentPatient, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { visitCosts } from "@/lib/commission";
+import { isMismatch, visitBalances } from "@/lib/balance";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer } from "@/lib/viewer";
 import { SavedFilters, parseSavedFilters } from "@/lib/people-filter";
@@ -221,7 +222,7 @@ export interface PatientScope {
   visitIn?: DateRange;
   /** Every patient the dashboard's operations panel can list as of this day: anything dated
    * from then on (visits, arrivals, departures, extra visits — events and logistics), visit 1
-   * done with visit 2 still to book, and every open-balance candidate. */
+   * done with visit 2 still to book. (Unpaid balances come as small rows from getOpenBalanceItems.) */
   operationsFrom?: string;
 }
 
@@ -266,16 +267,15 @@ async function loadPatientRows(
     const day = scope.operationsFrom;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("Invalid date");
     const dated = ["visit1_arrival_date", "visit1_departure_date", "visit1_date", "visit2_arrival_date", "visit2_departure_date", "visit2_date"];
-    const [direct, viaExtraVisits, openBalances] = await Promise.all([
+    const [direct, viaExtraVisits] = await Promise.all([
       fetchPatientRows(supabase, clinicId, select, (q) =>
         q.or([...dated.map((c) => `${c}.gte.${day}`), "and(visit1_status.eq.completed,needs_visit2.is.true,visit2_date.is.null)"].join(","))
       ),
       patientIdsWithExtraVisit(supabase, clinicId, (q) =>
         q.or(["visit_date", "arrival_date", "departure_date"].map((c) => `${c}.gte.${day}`).join(","))
       ),
-      getOpenBalanceCandidateIds(supabase),
     ]);
-    rows = await withPatients(supabase, clinicId, select, direct, [...viaExtraVisits, ...openBalances]);
+    rows = await withPatients(supabase, clinicId, select, direct, viaExtraVisits);
   } else if (scope.ids) {
     rows = await withPatients(supabase, clinicId, select, [], scope.ids.filter((id) => UUID_RE.test(id)));
   } else if (scope.visitIn) {
@@ -962,3 +962,50 @@ export async function getPatientFiles(supabase: SupabaseClient, patientId: strin
   if (error) throw error;
   return ((data ?? []) as PatientFile[]).map((f) => ({ ...f, size: Number(f.size) }));
 }
+
+/** Every visit whose money doesn't add up as of `todayIso` (still short, or overpaid), as
+ * small rows: the balance rules run here on per-visit totals, so nothing else reaches the page.
+ * Oldest visit first (visits without a date lead, as the old accounting table had them). */
+export async function getOpenBalanceItems(supabase: SupabaseClient, todayIso: string): Promise<OpenBalanceItem[]> {
+  const ids = await getOpenBalanceCandidateIds(supabase);
+  const patients = await getPatientTotals(supabase, { ids });
+  return patients
+    .flatMap((p) =>
+      visitBalances(p)
+        .filter((b) => isMismatch(b, todayIso))
+        .map((b) => ({
+          patientId: p.id,
+          name: p.name,
+          currency: p.currency,
+          deal_rate: p.deal_rate,
+          responsible_seller_id: p.responsible_seller_id,
+          coordinator_id: p.coordinator_id,
+          key: b.key,
+          label: b.label,
+          date: b.date,
+          owed: b.owed,
+          paid: b.paid,
+          due: b.due,
+        }))
+    )
+    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+}
+
+/** The newest patients (by confirmation date), a few fields each. */
+export async function getRecentPatients(supabase: SupabaseClient, limit: number): Promise<RecentPatient[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from("patients")
+      .select(RECENT_SELECT)
+      .eq("clinic_id", clinicId)
+      .order("confirmation_date", { ascending: false, nullsFirst: false })
+      .order("id")
+      .limit(limit)
+  );
+  if (error) throw error;
+  return (data ?? []) as unknown as RecentPatient[];
+}
+const RECENT_SELECT =
+  "id, name, treatment, confirmation_date, visit1_date, visit1_status, visit2_status, responsible_seller_id, coordinator_id, komo_reference";

@@ -6,16 +6,18 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Select } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { monthLabel } from "@/lib/commission";
-import { isMismatch, todayIsoLocal as todayIso, visitBalances } from "@/lib/balance";
 import { visitLabel } from "@/lib/visit-key";
 import { downloadCsv, escapeCsv } from "@/lib/csv";
-import { MoneyPatient, Patient, PatientPayment, PaymentMethod, Profile, Seller } from "@/types";
+import { OpenBalanceItem, Patient, PatientPayment, PaymentMethod, Profile, Seller } from "@/types";
 import { sellerNameMap } from "@/lib/sellers";
 import { useCurrencies } from "@/components/currency";
 import { dealToMain, paymentFx, surchargeMain } from "@/lib/money";
 import { useLocale, useT } from "@/i18n/client";
 
 const METHOD_LABELS: Record<PaymentMethod, string> = { cash: "Cash", card: "Card", bank: "Bank transfer" };
+
+/** How many open balances the table lists before "Show all". */
+const OPEN_PAGE = 50;
 
 type LedgerRow = { payment: PatientPayment; patient: Patient; visit: string };
 
@@ -26,7 +28,7 @@ type LedgerRow = { payment: PatientPayment; patient: Patient; visit: string };
  * agreed at is the exchange-rate gain / loss. */
 export function AccountingClient({
   patients,
-  openPatients,
+  openBalances,
   month,
   months,
   anyForeign,
@@ -35,8 +37,8 @@ export function AccountingClient({
 }: {
   /** The patients paid in `month`, with every payment (the ledger). */
   patients: Patient[];
-  /** Every patient whose balance may not add up, with per-visit totals (open balances). */
-  openPatients: MoneyPatient[];
+  /** Every visit whose money doesn't add up, oldest first (getOpenBalanceItems). */
+  openBalances: OpenBalanceItem[];
   month: string;
   /** Months with payments (and the current one), newest first. */
   months: string[];
@@ -45,7 +47,6 @@ export function AccountingClient({
   profiles: Profile[];
   sellers: Seller[];
 }) {
-  const today = todayIso();
   const t = useT();
   const locale = useLocale();
   const { main } = useCurrencies();
@@ -90,15 +91,10 @@ export function AccountingClient({
     return sum;
   }, [ledger]);
 
-  const openBalances = useMemo(
-    () =>
-      openPatients
-        .flatMap((p) => visitBalances(p).filter((b) => isMismatch(b, today)).map((b) => ({ patient: p, balance: b })))
-        .sort((a, b) => (a.balance.date ?? "").localeCompare(b.balance.date ?? "")),
-    [openPatients, today]
-  );
+  const [showAllOpen, setShowAllOpen] = useState(false);
+  const shownOpen = showAllOpen ? openBalances : openBalances.slice(0, OPEN_PAGE);
   // what's still due, in the main currency at each patient's agreed rate
-  const outstanding = openBalances.reduce((s, r) => s + dealToMain(r.patient, Math.max(0, r.balance.due)), 0);
+  const outstanding = openBalances.reduce((s, r) => s + dealToMain(r, Math.max(0, r.due)), 0);
 
   function exportCsv() {
     const header = [
@@ -276,29 +272,40 @@ export function AccountingClient({
                 </tr>
               </thead>
               <tbody>
-                {openBalances.map(({ patient, balance: b }) => (
-                  <tr key={`${patient.id}-${b.key}`} className="border-b border-slate-50 last:border-0">
+                {shownOpen.map((b) => (
+                  <tr key={`${b.patientId}-${b.key}`} className="border-b border-slate-50 last:border-0">
                     <td className="py-2.5 pl-5 pr-4">
-                      <Link href={`/patients/${patient.id}`} className="font-medium text-slate-800 hover:text-teal-700">
-                        {patient.name}
+                      <Link href={`/patients/${b.patientId}`} className="font-medium text-slate-800 hover:text-teal-700">
+                        {b.name}
                       </Link>
                       <div className="text-xs text-slate-400">{t(b.label)}</div>
                     </td>
                     <td className="py-2.5 pr-4 text-slate-600">{b.date ? formatDate(b.date) : "—"}</td>
-                    <td className="py-2.5 pr-4 text-right text-slate-700">{formatCurrency(b.owed, patient.currency)}</td>
-                    <td className="py-2.5 pr-4 text-right text-slate-700">{formatCurrency(b.paid, patient.currency)}</td>
+                    <td className="py-2.5 pr-4 text-right text-slate-700">{formatCurrency(b.owed, b.currency)}</td>
+                    <td className="py-2.5 pr-4 text-right text-slate-700">{formatCurrency(b.paid, b.currency)}</td>
                     <td className="py-2.5 pr-4 text-right">
                       {b.due > 0 ? (
-                        <Badge tone="amber">{t("{amount} due", { amount: formatCurrency(b.due, patient.currency) })}</Badge>
+                        <Badge tone="amber">{t("{amount} due", { amount: formatCurrency(b.due, b.currency) })}</Badge>
                       ) : (
-                        <Badge tone="blue">{t("Overpaid {amount}", { amount: formatCurrency(-b.due, patient.currency) })}</Badge>
+                        <Badge tone="blue">{t("Overpaid {amount}", { amount: formatCurrency(-b.due, b.currency) })}</Badge>
                       )}
                     </td>
-                    <td className="py-2.5 pr-5 text-slate-600">{sellerNames.get(patient.responsible_seller_id) ?? "—"}</td>
+                    <td className="py-2.5 pr-5 text-slate-600">{sellerNames.get(b.responsible_seller_id) ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {openBalances.length > shownOpen.length && (
+              <div className="border-t border-slate-100 py-3 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowAllOpen(true)}
+                  className="text-sm font-medium text-teal-600 hover:text-teal-700"
+                >
+                  {t("Show all {n}", { n: openBalances.length })}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Card>

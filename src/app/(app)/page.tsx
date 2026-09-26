@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getPatientCountGroups, getPatientTotals, getProfiles, getSavedFilters, getSellers, getSettings } from "@/lib/data";
+import { getOpenBalanceItems, getPatientCountGroups, getPatientTotals, getRecentPatients, getProfiles, getSavedFilters, getSellers, getSettings } from "@/lib/data";
 import { addMonths } from "@/lib/commission";
 import { OPERATIONAL_CARD_IDS } from "@/lib/dashboard-cards";
 import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
@@ -38,8 +38,11 @@ export default async function DashboardPage() {
 
   // Only what the page shows: patients the operations panel can list from today on, and the
   // count cards as small (seller, coordinator, month) groups instead of every patient.
-  const [operationsPatients, countGroups, settings, sellers, profiles, saved] = await Promise.all([
+  const [operationsPatients, openItems, recentPatients, countGroups, settings, sellers, profiles, saved] = await Promise.all([
     getPatientTotals(supabase, { operationsFrom: todayIso }),
+    getOpenBalanceItems(supabase, todayIso),
+    // enough that the dashboard's seller/coordinator filter still leaves the 6 it shows
+    getRecentPatients(supabase, 40),
     getPatientCountGroups(supabase, thisMonth, lastMonth),
     getSettings(supabase, userId),
     getSellers(supabase),
@@ -87,6 +90,8 @@ export default async function DashboardPage() {
 
       <DashboardClient
         operationsPatients={operationsPatients}
+        openItems={openItems}
+        recentPatients={recentPatients}
         countGroups={countGroups}
         sellers={sellers}
         coordinators={coordinators}

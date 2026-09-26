@@ -83,4 +83,8 @@ export const patients: Record<string, string> = {
   "Clear patient": "Hastayı temizle",
   "Searching…": "Aranıyor…",
   "No patients match.": "Eşleşen hasta yok.",
+  // list paging
+  "Showing {shown} of {total}": "{total} hastadan {shown} tanesi gösteriliyor",
+  "Show more": "Daha fazla göster",
+  "Show all {n}": "Tümünü göster ({n})",
 };

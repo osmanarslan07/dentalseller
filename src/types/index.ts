@@ -628,3 +628,38 @@ export const DEFAULT_CLINIC_CONFIG: ClinicConfig = {
     lastErrorAt: null,
   },
 };
+
+/** One visit whose money doesn't add up (still short, or overpaid), worked out on the server so
+ * the dashboard and accounting receive a small row instead of the whole patient. */
+export type OpenBalanceItem = {
+  patientId: string;
+  name: string;
+  currency: Patient["currency"];
+  /** What one unit of the patient's deal currency is in the main currency (dealToMain). */
+  deal_rate: number;
+  responsible_seller_id: string;
+  coordinator_id: string | null;
+  /** "visit1", "visit2" or an extra visit's id. */
+  key: string;
+  label: string;
+  date: string | null;
+  owed: number;
+  paid: number;
+  /** owed − paid: positive = still due, negative = overpaid */
+  due: number;
+};
+
+/** The few patient fields the dashboard's "Recent patients" table shows. */
+export type RecentPatient = Pick<
+  Patient,
+  | "id"
+  | "name"
+  | "treatment"
+  | "confirmation_date"
+  | "visit1_date"
+  | "visit1_status"
+  | "visit2_status"
+  | "responsible_seller_id"
+  | "coordinator_id"
+  | "komo_reference"
+>;

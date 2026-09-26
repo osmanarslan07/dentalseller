@@ -331,6 +331,8 @@ function TelegramMenu({
   );
 }
 
+const PAGE_SIZE = 100;
+
 export function PatientsClient({
   patients,
   initialQuery,
@@ -460,6 +462,13 @@ export function PatientsClient({
     return list;
   }, [patients, search, stageFilter, monthFilter, treatmentFilter, people, onlyToCome, sortKey, sortDir, currentUserId]);
 
+  // only a page of rows is drawn at a time (a big clinic has thousands); search, filters and sort
+  // above still work over every row. The limit starts over whenever the result set changes.
+  const [shownState, setShownState] = useState({ rows, n: PAGE_SIZE });
+  const shownCount = shownState.rows === rows ? shownState.n : PAGE_SIZE;
+  const shown = useMemo(() => rows.slice(0, shownCount), [rows, shownCount]);
+  const showMore = () => setShownState({ rows, n: shownCount + PAGE_SIZE });
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
@@ -583,7 +592,7 @@ export function PatientsClient({
 
       {view === "kanban" && (
         <KanbanBoard
-          rows={rows}
+          rows={shown}
           sellerName={sellerName}
           onCardClick={(p) => router.push(`/patients/${p.id}`)}
         />
@@ -591,7 +600,7 @@ export function PatientsClient({
 
       {view === "list" && (
       <div className="grid gap-3 md:hidden">
-        {rows.map(({ patient: p, commission, stage, isMine }) => (
+        {shown.map(({ patient: p, commission, stage, isMine }) => (
           <Card
             key={p.id}
             className="cursor-pointer p-4"
@@ -730,7 +739,7 @@ export function PatientsClient({
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ patient: p, commission, stage, isMine }, i) => (
+              {shown.map(({ patient: p, commission, stage, isMine }, i) => (
                 <tr
                   key={p.id}
                   className="animate-fade-in-up cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/50"
@@ -838,6 +847,21 @@ export function PatientsClient({
           </table>
         </div>
       </Card>
+      )}
+
+      {rows.length > shown.length && (
+        <div className="flex flex-col items-center gap-2 py-2 text-sm text-slate-500">
+          <span>
+            {t("Showing {shown} of {total}", { shown: shown.length, total: rows.length })}
+          </span>
+          <button
+            type="button"
+            onClick={showMore}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 font-medium text-slate-700 hover:bg-slate-50"
+          >
+            {t("Show more")}
+          </button>
+        </div>
       )}
 
     </div>

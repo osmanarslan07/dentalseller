@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import {
   getClinicConfig,
-  getOpenBalanceCandidateIds,
+  getOpenBalanceItems,
   getPatientIdsPaidIn,
-  getPatientTotals,
   getPatients,
   getPaymentMonths,
   getProfiles,
@@ -27,25 +26,22 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
   const clinicConfig = await getClinicConfig(supabase);
   // Only the patients this page shows: those paid in the chosen month (the ledger) and those
   // whose balance may not add up (open balances — the balance rules narrow them further).
-  const [paidIds, openIds, paymentMonths, anyForeign, profiles, sellers] = await Promise.all([
+  const [paidIds, openBalances, paymentMonths, anyForeign, profiles, sellers] = await Promise.all([
     getPatientIdsPaidIn(supabase, { from: `${month}-01`, to: `${addMonths(month, 1)}-01` }),
-    getOpenBalanceCandidateIds(supabase),
+    getOpenBalanceItems(supabase, clinicTodayIso()),
     getPaymentMonths(supabase),
     hasForeignMoney(supabase, clinicConfig.mainCurrency),
     getProfiles(supabase),
     getSellers(supabase),
   ]);
-  // the ledger shows each payment, so those patients come in full; open balances only need totals
-  const [patients, openPatients] = await Promise.all([
-    getPatients(supabase, { ids: paidIds }),
-    getPatientTotals(supabase, { ids: openIds }),
-  ]);
+  // the ledger shows each payment, so those patients come in full; open balances arrive as small rows
+  const patients = await getPatients(supabase, { ids: paidIds });
   const months = [...new Set([thisMonth, month, ...paymentMonths])].sort().reverse();
 
   return (
     <AccountingClient
       patients={patients}
-      openPatients={openPatients}
+      openBalances={openBalances}
       month={month}
       months={months}
       anyForeign={anyForeign}

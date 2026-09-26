@@ -13,9 +13,8 @@ import {
   setExtraVisitLogisticsFlag,
   setPatientLogisticsFlag,
 } from "./patients/actions";
-import { MoneyPatient, Seller } from "@/types";
+import { MoneyPatient, OpenBalanceItem, RecentPatient, Seller } from "@/types";
 import { sellerLabel } from "@/lib/sellers";
-import { isMismatch, visitBalances } from "@/lib/balance";
 import { visitExpectedTotal } from "@/lib/commission";
 import { useModule } from "@/components/permissions";
 import { useT } from "@/i18n/client";
@@ -68,14 +67,8 @@ type LogisticsItem = {
   badges: LogisticsBadge[];
 };
 
-type PaymentMismatch = {
-  patient: MoneyPatient;
-  visitLabel: string;
-  visitDate: string | null;
-  /** owed − paid: positive = still due, negative = overpaid */
-  due: number;
-  daysSince: number | null;
-};
+/** How many unpaid visits the card lists before "Show all". */
+const MISMATCH_PAGE = 20;
 
 /** Everything here is operational (arrivals, follow-ups, logistics, unpaid amounts) — none of
  * it reveals commission, which is computed from each seller's own private tier rates. So it's
@@ -84,6 +77,8 @@ type PaymentMismatch = {
  * adds a "Responsible: X" label whenever that can be someone other than the viewer. */
 export function TeamOperationsPanel({
   patients,
+  openItems,
+  recentPatients,
   showResponsible,
   sellers,
   todayIso,
@@ -91,6 +86,10 @@ export function TeamOperationsPanel({
 }: {
   /** Already narrowed by the dashboard's filter. */
   patients: MoneyPatient[];
+  /** Visits whose money doesn't add up, oldest first, already narrowed by the filter. */
+  openItems: OpenBalanceItem[];
+  /** The newest patients, already narrowed by the filter. */
+  recentPatients: RecentPatient[];
   showResponsible: boolean;
   sellers: Seller[];
   todayIso: string;
@@ -194,20 +193,21 @@ export function TeamOperationsPanel({
 
   // Visits whose money doesn't add up: already happened and still owed something (expected +
   // extras vs payments), or overpaid. A zero-owed visit (e.g. a comped extra visit) never shows.
-  const paymentMismatches = useMemo(() => {
-    const list: PaymentMismatch[] = [];
-    for (const p of patients) {
-      for (const b of visitBalances(p)) {
-        if (!isMismatch(b, todayIso)) continue;
-        const daysSince = b.date
-          ? Math.round((new Date(todayIso).getTime() - new Date(b.date).getTime()) / (1000 * 60 * 60 * 24))
-          : null;
-        list.push({ patient: p, visitLabel: b.label, visitDate: b.date, due: b.due, daysSince });
-      }
-    }
-    list.sort((a, b) => (b.daysSince ?? -1) - (a.daysSince ?? -1));
-    return list;
-  }, [patients, todayIso]);
+  // Worked out on the server (getOpenBalanceItems); the longest overdue come first.
+  const [showAllMismatches, setShowAllMismatches] = useState(false);
+  const paymentMismatches = useMemo(
+    () =>
+      openItems
+        .map((m) => ({
+          ...m,
+          daysSince: m.date
+            ? Math.round((new Date(todayIso).getTime() - new Date(m.date).getTime()) / (1000 * 60 * 60 * 24))
+            : null,
+        }))
+        .sort((x, y) => (y.daysSince ?? -1) - (x.daysSince ?? -1)),
+    [openItems, todayIso]
+  );
+  const shownMismatches = showAllMismatches ? paymentMismatches : paymentMismatches.slice(0, MISMATCH_PAGE);
 
   const logisticsNotArranged = useMemo(() => {
     const list: LogisticsItem[] = [];
@@ -410,33 +410,33 @@ export function TeamOperationsPanel({
             <p className="py-8 text-center text-sm text-slate-400">{t("Every visit is paid in full ✓")}</p>
           ) : (
             <ul className="space-y-1">
-              {paymentMismatches.map((m, i) => (
+              {shownMismatches.map((m, i) => (
                 <li
-                  key={`${m.patient.id}-${m.visitLabel}`}
+                  key={`${m.patientId}-${m.key}`}
                   className="animate-fade-in-up"
                   style={{ animationDelay: `${i * 40}ms` }}
                 >
                   <Link
-                    href={`/patients/${m.patient.id}`}
+                    href={`/patients/${m.patientId}`}
                     className="flex items-center justify-between rounded-lg px-2 py-2 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
                   >
                     <div>
-                      <p className="text-sm font-medium text-slate-800">{m.patient.name}</p>
+                      <p className="text-sm font-medium text-slate-800">{m.name}</p>
                       <p className="text-xs text-slate-500">
-                        {t(m.visitLabel)}
-                        {m.visitDate ? ` · ${formatDate(m.visitDate)}` : ""}
+                        {t(m.label)}
+                        {m.date ? ` · ${formatDate(m.date)}` : ""}
                       </p>
                       {showResponsible && (
                         <p className="text-xs text-slate-400">
-                          {responsible(m.patient.responsible_seller_id)}
+                          {responsible(m.responsible_seller_id)}
                         </p>
                       )}
                     </div>
                     <div className="text-right">
                       <span className={`block text-sm font-medium ${m.due > 0 ? "text-slate-700" : "text-blue-700"}`}>
                         {m.due > 0
-                          ? t("{amount} due", { amount: formatCurrency(m.due, m.patient.currency) })
-                          : t("Overpaid {amount}", { amount: formatCurrency(-m.due, m.patient.currency) })}
+                          ? t("{amount} due", { amount: formatCurrency(m.due, m.currency) })
+                          : t("Overpaid {amount}", { amount: formatCurrency(-m.due, m.currency) })}
                       </span>
                       {m.daysSince != null && (
                         <span
@@ -451,6 +451,17 @@ export function TeamOperationsPanel({
                   </Link>
                 </li>
               ))}
+              {paymentMismatches.length > shownMismatches.length && (
+                <li className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllMismatches(true)}
+                    className="text-sm font-medium text-teal-600 hover:text-teal-700"
+                  >
+                    {t("Show all {n}", { n: paymentMismatches.length })}
+                  </button>
+                </li>
+              )}
             </ul>
           )}
         </Card>
@@ -558,7 +569,7 @@ export function TeamOperationsPanel({
               </tr>
             </thead>
             <tbody>
-              {patients.slice(0, 6).map((p, i) => (
+              {recentPatients.map((p, i) => (
                 <tr key={p.id} className="animate-fade-in border-b border-slate-50 last:border-0" style={{ animationDelay: `${i * 40}ms` }}>
                   <td className="py-2.5 pl-4 font-medium text-slate-800">{p.name}</td>
                   <td className="py-2.5 text-slate-500">{p.treatment || "—"}</td>
@@ -589,7 +600,7 @@ export function TeamOperationsPanel({
                   </td>
                 </tr>
               ))}
-              {patients.length === 0 && (
+              {recentPatients.length === 0 && (
                 <tr>
                   <td colSpan={showResponsible ? 7 : 6} className="py-8 text-center text-slate-400">
                     {t("No patients yet.")}{" "}
@@ -605,7 +616,7 @@ export function TeamOperationsPanel({
         </div>
 
         <ul className="divide-y divide-slate-50 sm:hidden">
-          {patients.slice(0, 6).map((p, i) => (
+          {recentPatients.map((p, i) => (
             <li key={p.id} className="animate-fade-in-up py-3" style={{ animationDelay: `${i * 40}ms` }}>
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -637,7 +648,7 @@ export function TeamOperationsPanel({
               </div>
             </li>
           ))}
-          {patients.length === 0 && (
+          {recentPatients.length === 0 && (
             <li className="py-8 text-center text-slate-400">
               {t("No patients yet.")}{" "}
               <Link href="/patients" className="text-teal-600 hover:underline">

@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, Patient, PatientFile, PatientRoster, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, MoneyPatient, Patient, PatientFile, PatientRoster, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { visitCosts } from "@/lib/commission";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -53,6 +53,11 @@ const PATIENT_SELECT =
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v));
 
+/** Like PATIENT_SELECT, but extras, payments and transfer costs as one sum per visit (the
+ * patient_*_totals views) — all the money maths needs, at a fraction of the rows. */
+const TOTALS_SELECT =
+  "*, extra_visits:patient_visits(*), extras:patient_extra_totals(visit_number, extra_visit_id, total), payments:patient_payment_totals(visit_number, extra_visit_id, amount), transfer_costs:patient_transfer_cost_totals(visit_number, extra_visit_id, cost)";
+
 /** Postgres numerics can arrive as strings — make the money fields plain numbers once, here.
  * `deductCosts` is the clinic's "deduct costs before commission" setting: when on, each
  * visit's hotel + external transfer costs are attached for the commission maths. */
@@ -95,15 +100,35 @@ export function normalizePatient(row: Record<string, unknown>, deductCosts: bool
       discount_value: num(v.discount_value),
     })),
   };
-  if (deductCosts) {
-    const costs: Record<string, number> = {};
-    for (const key of ["visit1", "visit2", ...normalized.extra_visits.map((v) => v.id)]) {
-      const c = visitCosts(normalized, key);
-      if (c.hotel + c.transfers > 0) costs[key] = c.hotel + c.transfers;
-    }
-    normalized.commission_costs = costs;
-  }
+  if (deductCosts) normalized.commission_costs = commissionCosts(normalized);
   return normalized;
+}
+
+/** Per visit, the hotel + external transfer costs taken off before commission (clinics that
+ * deduct costs). Only visits with a cost appear. */
+function commissionCosts(p: MoneyPatient): Record<string, number> {
+  const costs: Record<string, number> = {};
+  for (const key of ["visit1", "visit2", ...p.extra_visits.map((v) => v.id)]) {
+    const c = visitCosts(p, key);
+    if (c.hotel + c.transfers > 0) costs[key] = c.hotel + c.transfers;
+  }
+  return costs;
+}
+
+/** Like normalizePatient, for a row loaded with per-visit totals (TOTALS_SELECT). */
+function normalizeTotals(row: Record<string, unknown>, deductCosts: boolean): MoneyPatient {
+  const base = normalizePatient({ ...row, extras: [], payments: [], transfer_costs: [] }, false);
+  type Part = { visit_number: 1 | 2 | null; extra_visit_id: string | null };
+  const list = <T,>(v: unknown) => (Array.isArray(v) ? (v as T[]) : []);
+  const p: MoneyPatient = {
+    ...base,
+    extras: list<Part & { total: unknown }>(row.extras).map((e) => ({ visit_number: e.visit_number, extra_visit_id: e.extra_visit_id, total: Number(e.total) })),
+    payments: list<Part & { amount: unknown }>(row.payments).map((x) => ({ visit_number: x.visit_number, extra_visit_id: x.extra_visit_id, amount: Number(x.amount) })),
+    transfer_costs: list<Part & { cost: unknown }>(row.transfer_costs).map((t) => ({ visit_number: t.visit_number, extra_visit_id: t.extra_visit_id, cost: num(t.cost) })),
+    commission_costs: null,
+  };
+  if (deductCosts) p.commission_costs = commissionCosts(p);
+  return p;
 }
 
 /** Whether the viewed clinic deducts hotel/transfer costs before commission. */
@@ -215,13 +240,34 @@ const within = ({ from, to }: DateRange, col: string) => `and(${col}.gte.${from}
 export async function getPatients(supabase: SupabaseClient, scope: PatientScope = {}): Promise<Patient[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
+  const rows = await loadPatientRows(supabase, clinicId, scope, PATIENT_SELECT);
+  const deduct = await deductsCosts(supabase);
+  return rows.map((row) => normalizePatient(row, deduct));
+}
+
+/** The same patients as getPatients, with extras, payments and transfer costs as one sum per
+ * visit instead of every row: everything the balance, commission and export maths reads (they
+ * take MoneyPatient). Use getPatients where individual payments or extras are shown. */
+export async function getPatientTotals(supabase: SupabaseClient, scope: PatientScope = {}): Promise<MoneyPatient[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const [rows, deduct] = await Promise.all([loadPatientRows(supabase, clinicId, scope, TOTALS_SELECT), deductsCosts(supabase)]);
+  return rows.map((row) => normalizeTotals(row, deduct));
+}
+
+async function loadPatientRows(
+  supabase: SupabaseClient,
+  clinicId: string,
+  scope: PatientScope,
+  select: string
+): Promise<Record<string, unknown>[]> {
   let rows: Record<string, unknown>[];
   if (scope.operationsFrom) {
     const day = scope.operationsFrom;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("Invalid date");
     const dated = ["visit1_arrival_date", "visit1_departure_date", "visit1_date", "visit2_arrival_date", "visit2_departure_date", "visit2_date"];
     const [direct, viaExtraVisits, openBalances] = await Promise.all([
-      fetchPatientRows(supabase, clinicId, PATIENT_SELECT, (q) =>
+      fetchPatientRows(supabase, clinicId, select, (q) =>
         q.or([...dated.map((c) => `${c}.gte.${day}`), "and(visit1_status.eq.completed,needs_visit2.is.true,visit2_date.is.null)"].join(","))
       ),
       patientIdsWithExtraVisit(supabase, clinicId, (q) =>
@@ -229,32 +275,31 @@ export async function getPatients(supabase: SupabaseClient, scope: PatientScope 
       ),
       getOpenBalanceCandidateIds(supabase),
     ]);
-    rows = await withPatients(supabase, clinicId, PATIENT_SELECT, direct, [...viaExtraVisits, ...openBalances]);
+    rows = await withPatients(supabase, clinicId, select, direct, [...viaExtraVisits, ...openBalances]);
   } else if (scope.ids) {
-    rows = await withPatients(supabase, clinicId, PATIENT_SELECT, [], scope.ids.filter((id) => UUID_RE.test(id)));
+    rows = await withPatients(supabase, clinicId, select, [], scope.ids.filter((id) => UUID_RE.test(id)));
   } else if (scope.visitIn) {
     const range = checkRange(scope.visitIn);
     const [direct, viaExtraVisits] = await Promise.all([
-      fetchPatientRows(supabase, clinicId, PATIENT_SELECT, (q) =>
+      fetchPatientRows(supabase, clinicId, select, (q) =>
         q.or([within(range, "visit1_date"), within(range, "visit2_date")].join(","))
       ),
       patientIdsWithExtraVisit(supabase, clinicId, (q) => q.gte("visit_date", range.from).lt("visit_date", range.to)),
     ]);
-    rows = await withPatients(supabase, clinicId, PATIENT_SELECT, direct, viaExtraVisits);
+    rows = await withPatients(supabase, clinicId, select, direct, viaExtraVisits);
   } else if (scope.creditedTo) {
     const s = uuidOnly(scope.creditedTo);
     const [direct, viaExtraVisits] = await Promise.all([
-      fetchPatientRows(supabase, clinicId, PATIENT_SELECT, (q) =>
+      fetchPatientRows(supabase, clinicId, select, (q) =>
         q.or(`responsible_seller_id.eq.${s},visit1_earned_by_seller_id.eq.${s},visit2_earned_by_seller_id.eq.${s}`)
       ),
       patientIdsWithExtraVisit(supabase, clinicId, (q) => q.eq("earned_by_seller_id", s)),
     ]);
-    rows = await withPatients(supabase, clinicId, PATIENT_SELECT, direct, viaExtraVisits);
+    rows = await withPatients(supabase, clinicId, select, direct, viaExtraVisits);
   } else {
-    rows = await fetchPatientRows(supabase, clinicId, PATIENT_SELECT);
+    rows = await fetchPatientRows(supabase, clinicId, select);
   }
-  const deduct = await deductsCosts(supabase);
-  return rows.map((row) => normalizePatient(row, deduct));
+  return rows;
 }
 
 function toRoster(row: Record<string, unknown>): PatientRoster {

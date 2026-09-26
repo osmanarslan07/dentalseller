@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useMemo, useState } from "react";
-import { Patient, Seller } from "@/types";
+import { MoneyPatient, Seller } from "@/types";
 import type { PatientCountGroup } from "@/lib/data";
 import { StatCard } from "@/components/ui";
 import { CountUp } from "@/components/CountUp";
@@ -29,7 +29,7 @@ export function DashboardClient({
   monthAheadIso,
 }: {
   /** Every patient the operations panel can list (see getPatients' `operationsFrom`). */
-  operationsPatients: Patient[];
+  operationsPatients: MoneyPatient[];
   /** Patient counts per (seller, coordinator) and confirmation month, for the count cards. */
   countGroups: PatientCountGroup[];
   sellers: Seller[];

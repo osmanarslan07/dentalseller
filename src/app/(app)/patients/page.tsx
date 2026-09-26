@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getSavedFilters, getSellers, getSettings } from "@/lib/data";
+import { getPatientTotals, getProfiles, getSavedFilters, getSellers, getSettings } from "@/lib/data";
 import { PatientsClient } from "./PatientsClient";
 import { requirePagePermission } from "@/lib/permissions";
 import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
@@ -22,7 +22,7 @@ export default async function PatientsPage({
   const supabase = await createClient();
   const currentUserId = viewer.userId;
   const [patients, settings, sellers, profiles, saved] = await Promise.all([
-    getPatients(supabase),
+    getPatientTotals(supabase),
     getSettings(supabase, currentUserId),
     getSellers(supabase),
     getProfiles(supabase),

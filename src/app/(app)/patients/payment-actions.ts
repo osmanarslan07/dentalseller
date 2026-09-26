@@ -4,7 +4,7 @@ import { msg } from "@/i18n";
 import { st } from "@/i18n/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatient, getPatients, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatient, getPatientTotals, getSettings } from "@/lib/data";
 import { logActivity } from "@/lib/activity-log";
 import { detectTierJump } from "@/lib/commission";
 import { visitLabel, visitRef } from "@/lib/visit-key";
@@ -173,7 +173,7 @@ export async function addPayment(
     // the seller's month total only counts visits credited to them — their patients are enough
     const [settings, credited] = await Promise.all([
       getSettings(supabase, after.responsible_seller_id),
-      getPatients(supabase, { creditedTo: after.responsible_seller_id }),
+      getPatientTotals(supabase, { creditedTo: after.responsible_seller_id }),
     ]);
     // tiers are in the main currency, at the rate the price was agreed at
     const jump = detectTierJump(credited, after.responsible_seller_id, settings, visitDate, dealToMain(after, input.amount));

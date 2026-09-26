@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatientCountsBySeller, getPatients, getProfiles, getSellers, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatientCountsBySeller, getPatientTotals, getProfiles, getSellers, getSettings } from "@/lib/data";
 import {
   addMonths,
   computeMonthlyAggregates,
@@ -29,7 +29,7 @@ export default async function SalesPerformancePage({ searchParams }: { searchPar
   // with a visit in it are all the commission maths needs; the counts come from the database.
   const month = { from: `${selectedMonth}-01`, to: `${addMonths(selectedMonth, 1)}-01` };
   const [monthPatients, sellers, clinicConfig, counts, profiles] = await Promise.all([
-    getPatients(supabase, { visitIn: month }),
+    getPatientTotals(supabase, { visitIn: month }),
     getSellers(supabase),
     getClinicConfig(supabase),
     // every seller's patient count and sold-in-month count, in one query

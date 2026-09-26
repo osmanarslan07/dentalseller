@@ -4548,6 +4548,30 @@ $$;
 revoke execute on function public.patient_count_groups(uuid, text, text) from public, anon;
 grant execute on function public.patient_count_groups(uuid, text, text) to authenticated;
 
+-- ---------- per-visit money totals (perf fix 2, phase D) ----------
+-- Lists, the dashboard, earnings, sales and exports only ever add up a patient's extras,
+-- payments and transfer costs per visit; loading every row just to sum it cost most of their
+-- time. These views give one row per patient and visit with the sum. security_invoker: the
+-- caller's RLS applies to the underlying rows, exactly as when reading the tables themselves.
+create or replace view public.patient_extra_totals with (security_invoker = true) as
+  select patient_id, clinic_id, visit_number, extra_visit_id, sum(total) as total
+  from public.patient_extras
+  group by patient_id, clinic_id, visit_number, extra_visit_id;
+
+create or replace view public.patient_payment_totals with (security_invoker = true) as
+  select patient_id, clinic_id, visit_number, extra_visit_id, sum(amount) as amount
+  from public.patient_payments
+  group by patient_id, clinic_id, visit_number, extra_visit_id;
+
+create or replace view public.patient_transfer_cost_totals with (security_invoker = true) as
+  select patient_id, clinic_id, visit_number, extra_visit_id, sum(cost) as cost
+  from public.transfers
+  group by patient_id, clinic_id, visit_number, extra_visit_id;
+
+revoke all on public.patient_extra_totals, public.patient_payment_totals, public.patient_transfer_cost_totals from anon;
+grant select on public.patient_extra_totals, public.patient_payment_totals, public.patient_transfer_cost_totals to authenticated;
+notify pgrst, 'reload schema';
+
 -- ---------- RLS: check the caller once per query, not once per row ----------
 -- The policy helpers (has_permission, my_clinic_id, is_active_profile, ...) are SECURITY
 -- DEFINER, which Postgres never inlines, so a bare call in a policy runs again for every row

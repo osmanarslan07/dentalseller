@@ -1,4 +1,4 @@
-import { CommissionSettings, Patient } from "@/types";
+import { CommissionSettings, MoneyPatient, Patient } from "@/types";
 import { computeMonthlyAggregates, patientCommissionContribution, ratesMapFromAggregates, visitExpectedTotal } from "@/lib/commission";
 import { patientDueNow } from "@/lib/balance";
 
@@ -44,7 +44,7 @@ export type PatientListRow = Pick<
 /** The list rows for `patients`, as the viewer (`userId`) sees them on `todayIso` (the clinic's
  * today). Commission tiers come from the viewer's own credited visits among `patients`, exactly
  * as the list worked them out in the browser before. */
-export function toListRows(patients: Patient[], settings: CommissionSettings, userId: string, todayIso: string): PatientListRow[] {
+export function toListRows(patients: MoneyPatient[], settings: CommissionSettings, userId: string, todayIso: string): PatientListRow[] {
   const ratesMap = ratesMapFromAggregates(computeMonthlyAggregates(patients, settings, userId));
   return patients.map((p) => ({
     id: p.id,

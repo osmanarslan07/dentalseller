@@ -13,7 +13,7 @@ import {
   setExtraVisitLogisticsFlag,
   setPatientLogisticsFlag,
 } from "./patients/actions";
-import { Patient, Seller } from "@/types";
+import { MoneyPatient, Seller } from "@/types";
 import { sellerLabel } from "@/lib/sellers";
 import { isMismatch, visitBalances } from "@/lib/balance";
 import { visitExpectedTotal } from "@/lib/commission";
@@ -69,7 +69,7 @@ type LogisticsItem = {
 };
 
 type PaymentMismatch = {
-  patient: Patient;
+  patient: MoneyPatient;
   visitLabel: string;
   visitDate: string | null;
   /** owed − paid: positive = still due, negative = overpaid */
@@ -90,7 +90,7 @@ export function TeamOperationsPanel({
   monthAheadIso,
 }: {
   /** Already narrowed by the dashboard's filter. */
-  patients: Patient[];
+  patients: MoneyPatient[];
   showResponsible: boolean;
   sellers: Seller[];
   todayIso: string;

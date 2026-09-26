@@ -3,6 +3,7 @@ import {
   getClinicConfig,
   getOpenBalanceCandidateIds,
   getPatientIdsPaidIn,
+  getPatientTotals,
   getPatients,
   getPaymentMonths,
   getProfiles,
@@ -34,12 +35,17 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
     getProfiles(supabase),
     getSellers(supabase),
   ]);
-  const patients = await getPatients(supabase, { ids: [...new Set([...paidIds, ...openIds])] });
+  // the ledger shows each payment, so those patients come in full; open balances only need totals
+  const [patients, openPatients] = await Promise.all([
+    getPatients(supabase, { ids: paidIds }),
+    getPatientTotals(supabase, { ids: openIds }),
+  ]);
   const months = [...new Set([thisMonth, month, ...paymentMonths])].sort().reverse();
 
   return (
     <AccountingClient
       patients={patients}
+      openPatients={openPatients}
       month={month}
       months={months}
       anyForeign={anyForeign}

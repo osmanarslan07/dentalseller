@@ -1,8 +1,8 @@
-import { Patient } from "@/types";
+import { MoneyPatient } from "@/types";
 import { extrasTotalFor, visitDiscount } from "@/lib/commission";
 
 /** The visit's discount in money, or blank when there's none. */
-function discountFor(p: Patient, visitKey: string, expected: number | null): number | null {
+function discountFor(p: MoneyPatient, visitKey: string, expected: number | null): number | null {
   return visitDiscount(p, visitKey, (expected ?? 0) + extrasTotalFor(p, visitKey)) || null;
 }
 
@@ -35,7 +35,7 @@ export function escapeCsv(value: string | number | null): string {
   return str;
 }
 
-export function patientsToCsv(patients: Patient[]): string {
+export function patientsToCsv(patients: MoneyPatient[]): string {
   const rows = patients.map((p) =>
     [
       p.name,

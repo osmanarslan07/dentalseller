@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getPatients } from "@/lib/data";
+import { getPatientTotals } from "@/lib/data";
 import { getViewer } from "@/lib/viewer";
 import { can } from "@/lib/permissions";
 import { patientsToCsv } from "@/lib/csv";
@@ -10,7 +10,7 @@ export async function GET() {
   const viewer = await getViewer();
   if (!viewer || !can(viewer, "patients.export")) return new Response("Not allowed", { status: 403 });
 
-  const patients = await getPatients(await createClient());
+  const patients = await getPatientTotals(await createClient());
   return new Response(patientsToCsv(patients), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

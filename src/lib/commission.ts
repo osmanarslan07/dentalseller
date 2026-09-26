@@ -1,4 +1,4 @@
-import { Celebration, CommissionSettings, DiscountType, Patient } from "@/types";
+import { Celebration, CommissionSettings, DiscountType, MoneyPatient } from "@/types";
 import { formatCurrency } from "@/lib/format";
 import { dealToMainOrNull } from "@/lib/money";
 
@@ -7,7 +7,7 @@ export function monthKey(dateStr: string): string {
 }
 
 /** Everything the patient is expected to pay across all visits: prices + extras − discounts. */
-export function treatmentTotal(p: Patient): number {
+export function treatmentTotal(p: MoneyPatient): number {
   const keys: [string, number | null][] = [
     ["visit1", p.visit1_expected],
     ["visit2", p.visit2_expected],
@@ -28,7 +28,7 @@ export interface VisitDiscountSetting {
 }
 
 /** The discount stored on a visit ("visit1" | "visit2" | an extra visit's id), or null. */
-export function visitDiscountSetting(p: Patient, visitKey: string): VisitDiscountSetting | null {
+export function visitDiscountSetting(p: MoneyPatient, visitKey: string): VisitDiscountSetting | null {
   const [type, value, reason] =
     visitKey === "visit1"
       ? [p.visit1_discount_type, p.visit1_discount_value, p.visit1_discount_reason]
@@ -45,7 +45,7 @@ export function visitDiscountSetting(p: Patient, visitKey: string): VisitDiscoun
 /** How much comes off a visit whose price + extras is `base`: a % of it or a fixed amount,
  * never more than the base itself. The one place a discount becomes money — every total
  * (owed, still due, expected commission, reports, messages) goes through visitExpectedTotal. */
-export function visitDiscount(p: Patient, visitKey: string, base: number): number {
+export function visitDiscount(p: MoneyPatient, visitKey: string, base: number): number {
   return discountAmount(visitDiscountSetting(p, visitKey), base);
 }
 
@@ -57,14 +57,14 @@ export function discountAmount(d: VisitDiscountSetting | null, base: number): nu
 }
 
 /** Total of the extras sold on one visit ("visit1" | "visit2" | an extra visit's id). */
-export function extrasTotalFor(p: Patient, visitKey: string): number {
+export function extrasTotalFor(p: MoneyPatient, visitKey: string): number {
   return p.extras
     .filter((e) => (e.extra_visit_id ?? `visit${e.visit_number}`) === visitKey)
     .reduce((sum, e) => sum + e.total, 0);
 }
 
 /** Hotel cost + external transfer costs of one visit — what the clinic spends on it. */
-export function visitCosts(p: Patient, visitKey: string): { hotel: number; transfers: number } {
+export function visitCosts(p: MoneyPatient, visitKey: string): { hotel: number; transfers: number } {
   const hotel =
     visitKey === "visit1"
       ? p.visit1_hotel_cost
@@ -80,7 +80,7 @@ export function visitCosts(p: Patient, visitKey: string): { hotel: number; trans
 /** An amount as commission sees it: in the main currency (at the rate the price was agreed
  * at), minus the visit's costs when the clinic deducts them (see Patient.commission_costs —
  * costs are already in the main currency), never below zero. */
-function afterCosts(p: Patient, visitKey: string, dealAmount: number | null): number | null {
+function afterCosts(p: MoneyPatient, visitKey: string, dealAmount: number | null): number | null {
   const amount = dealToMainOrNull(p, dealAmount);
   if (amount == null || !p.commission_costs) return amount;
   return Math.max(0, amount - (p.commission_costs[visitKey] ?? 0));
@@ -88,7 +88,7 @@ function afterCosts(p: Patient, visitKey: string, dealAmount: number | null): nu
 
 /** What the patient is expected to pay for a visit: the agreed treatment price plus any
  * extras sold on it, minus its discount. Null only when there's neither price nor extras. */
-export function visitExpectedTotal(p: Patient, visitKey: string, expected: number | null): number | null {
+export function visitExpectedTotal(p: MoneyPatient, visitKey: string, expected: number | null): number | null {
   const extras = extrasTotalFor(p, visitKey);
   if (expected == null && extras === 0) return null;
   const base = (expected ?? 0) + extras;
@@ -159,7 +159,7 @@ interface Visit {
   ownerId: string;
 }
 
-function patientVisits(p: Patient): Visit[] {
+function patientVisits(p: MoneyPatient): Visit[] {
   return [
     {
       date: p.visit1_date,
@@ -187,7 +187,7 @@ function patientVisits(p: Patient): Visit[] {
 
 /** All of a patient's visits, optionally narrowed to just the ones a given seller gets
  * commission credit for. Pass no sellerId to get every visit regardless of owner. */
-function visitsForSeller(p: Patient, sellerId?: string): Visit[] {
+function visitsForSeller(p: MoneyPatient, sellerId?: string): Visit[] {
   const visits = patientVisits(p);
   return sellerId == null ? visits : visits.filter((v) => v.ownerId === sellerId);
 }
@@ -196,7 +196,7 @@ function visitsForSeller(p: Patient, sellerId?: string): Visit[] {
  * patients actually came in" as opposed to how many were sold/confirmed. Pass sellerId to
  * count only visits that seller gets commission credit for. */
 export function countPatientsWithCompletedVisitInMonth(
-  patients: Patient[],
+  patients: MoneyPatient[],
   month: string,
   sellerId?: string
 ): number {
@@ -213,7 +213,7 @@ export function countPatientsWithCompletedVisitInMonth(
 /** Raw actual/expected totals per calendar month, optionally narrowed to one seller's
  * commission-earning visits (a patient can straddle two sellers if it was reassigned
  * after some visits were already paid — see visitsForSeller). */
-export function computeMonthTotals(patients: Patient[], sellerId?: string): Map<string, MonthTotals> {
+export function computeMonthTotals(patients: MoneyPatient[], sellerId?: string): Map<string, MonthTotals> {
   const map = new Map<string, MonthTotals>();
 
   const bump = (month: string, key: "actualTotal" | "expectedTotal", amount: number) => {
@@ -236,7 +236,7 @@ export function computeMonthTotals(patients: Patient[], sellerId?: string): Map<
 
 /** Expected total for visits with no date yet (e.g. visit2 not booked) —
  * kept out of the per-month map so they don't skew a specific month's bar. */
-export function computeUnscheduledExpectedTotal(patients: Patient[], sellerId?: string): number {
+export function computeUnscheduledExpectedTotal(patients: MoneyPatient[], sellerId?: string): number {
   let total = 0;
   for (const p of patients) {
     for (const visit of visitsForSeller(p, sellerId)) {
@@ -252,7 +252,7 @@ export function computeUnscheduledExpectedTotal(patients: Patient[], sellerId?: 
  * (see visitsForSeller), while "patients confirmed" still follows current ownership since
  * that's a whole-patient pipeline event, not a per-visit one. */
 export function computeMonthlyAggregates(
-  patients: Patient[],
+  patients: MoneyPatient[],
   settings: CommissionSettings,
   sellerId?: string
 ): MonthAggregate[] {
@@ -294,7 +294,7 @@ export function computeMonthlyAggregates(
  * Pass sellerId to get only the slice of this patient that seller gets credit for
  * (relevant once a patient has been reassigned partway through treatment). */
 export function patientCommissionContribution(
-  p: Patient,
+  p: MoneyPatient,
   monthlyRates: Map<string, { actualRate: number; expectedRate: number }>,
   sellerId?: string
 ): { actual: number; expected: number } {
@@ -321,7 +321,7 @@ export function patientCommissionContribution(
  * every pound still to come this month, not just the one just paid. `patientsAfterSave`
  * must already reflect the new amount (i.e. fetched after the DB write it came from). */
 export function detectTierJump(
-  patientsAfterSave: Patient[],
+  patientsAfterSave: MoneyPatient[],
   sellerId: string,
   settings: CommissionSettings,
   visitDate: string,

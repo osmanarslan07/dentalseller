@@ -9,7 +9,7 @@ import { monthLabel } from "@/lib/commission";
 import { isMismatch, todayIsoLocal as todayIso, visitBalances } from "@/lib/balance";
 import { visitLabel } from "@/lib/visit-key";
 import { downloadCsv, escapeCsv } from "@/lib/csv";
-import { Patient, PatientPayment, PaymentMethod, Profile, Seller } from "@/types";
+import { MoneyPatient, Patient, PatientPayment, PaymentMethod, Profile, Seller } from "@/types";
 import { sellerNameMap } from "@/lib/sellers";
 import { useCurrencies } from "@/components/currency";
 import { dealToMain, paymentFx, surchargeMain } from "@/lib/money";
@@ -26,14 +26,17 @@ type LedgerRow = { payment: PatientPayment; patient: Patient; visit: string };
  * agreed at is the exchange-rate gain / loss. */
 export function AccountingClient({
   patients,
+  openPatients,
   month,
   months,
   anyForeign,
   profiles,
   sellers,
 }: {
-  /** The patients paid in `month` plus every patient whose balance may not add up. */
+  /** The patients paid in `month`, with every payment (the ledger). */
   patients: Patient[];
+  /** Every patient whose balance may not add up, with per-visit totals (open balances). */
+  openPatients: MoneyPatient[];
   month: string;
   /** Months with payments (and the current one), newest first. */
   months: string[];
@@ -89,10 +92,10 @@ export function AccountingClient({
 
   const openBalances = useMemo(
     () =>
-      patients
+      openPatients
         .flatMap((p) => visitBalances(p).filter((b) => isMismatch(b, today)).map((b) => ({ patient: p, balance: b })))
         .sort((a, b) => (a.balance.date ?? "").localeCompare(b.balance.date ?? "")),
-    [patients, today]
+    [openPatients, today]
   );
   // what's still due, in the main currency at each patient's agreed rate
   const outstanding = openBalances.reduce((s, r) => s + dealToMain(r.patient, Math.max(0, r.balance.due)), 0);

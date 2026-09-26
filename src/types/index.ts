@@ -302,6 +302,16 @@ export interface Patient {
  * dates, visits and people — not for balances or commission. */
 export type PatientRoster = Omit<Patient, "extras" | "payments" | "transfer_costs" | "commission_costs">;
 
+/** A patient as the money maths needs it: extras, payments and transfer costs only as "which
+ * visit + how much". A full Patient is one; so is a patient loaded with per-visit totals
+ * (getPatientTotals) — the balance, commission and export functions take this type, so the
+ * compiler proves they never read anything the totals don't carry. */
+export type MoneyPatient = Omit<Patient, "extras" | "payments" | "transfer_costs"> & {
+  extras: Pick<PatientExtra, "visit_number" | "extra_visit_id" | "total">[];
+  payments: Pick<PatientPayment, "visit_number" | "extra_visit_id" | "amount">[];
+  transfer_costs: Patient["transfer_costs"];
+};
+
 export type PatientInput = Omit<
   Patient,
   | "id"

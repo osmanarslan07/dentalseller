@@ -1,4 +1,4 @@
-import { Patient, PatientExtra, PatientExtraKind } from "@/types";
+import { Patient, PatientExtra, PatientExtraKind, MoneyPatient } from "@/types";
 import { visitExpectedTotal } from "@/lib/commission";
 
 /** Owed vs paid for one visit. Owed = the agreed treatment price + extras sold on the visit − its discount;
@@ -16,7 +16,7 @@ export interface VisitBalance {
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
-export function visitBalances(p: Patient): VisitBalance[] {
+export function visitBalances(p: MoneyPatient): VisitBalance[] {
   const paidFor = (key: string) =>
     p.payments.filter((x) => (x.extra_visit_id ?? `visit${x.visit_number}`) === key).reduce((s, x) => s + x.amount, 0);
   const make = (
@@ -39,7 +39,7 @@ export function visitBalances(p: Patient): VisitBalance[] {
   ].filter((b) => b.owed > 0 || b.paid > 0);
 }
 
-export function patientBalance(p: Patient): { owed: number; paid: number; due: number } {
+export function patientBalance(p: MoneyPatient): { owed: number; paid: number; due: number } {
   const all = visitBalances(p);
   const owed = round(all.reduce((s, b) => s + b.owed, 0));
   const paid = round(all.reduce((s, b) => s + b.paid, 0));
@@ -62,7 +62,7 @@ export function isMismatch(b: VisitBalance, todayIso: string): boolean {
 
 /** Across a patient's visits: what's short right now (the mismatched visits), and what's
  * owed for visits that haven't started yet. */
-export function patientDueNow(p: Patient, todayIso: string) {
+export function patientDueNow(p: MoneyPatient, todayIso: string) {
   const all = visitBalances(p);
   const short = all.filter((b) => isMismatch(b, todayIso));
   return {
@@ -106,7 +106,7 @@ export function extraLabel(e: PatientExtra, lang: "en" | "tr" = "en"): string {
 
 /** The single amount a document or message shows for a visit: what was paid once anything
  * was, otherwise the agreed price + extras. Null when neither exists. */
-export function visitAmount(p: Patient, visitKey: string): number | null {
+export function visitAmount(p: MoneyPatient, visitKey: string): number | null {
   const [expected, actual] =
     visitKey === "visit1"
       ? [p.visit1_expected, p.visit1_actual]

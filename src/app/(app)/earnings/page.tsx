@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatients, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatientTotals, getSettings } from "@/lib/data";
 import { dealToMain, dealToMainOrNull } from "@/lib/money";
 import {
   addMonths,
@@ -52,7 +52,7 @@ export default async function EarningsPage() {
   const user = await getViewerUser();
   // every patient whose visits can earn this seller commission — exactly what the maths below reads
   const [allPatients, settings, clinicConfig] = await Promise.all([
-    user ? getPatients(supabase, { creditedTo: user.id }) : Promise.resolve([]),
+    user ? getPatientTotals(supabase, { creditedTo: user.id }) : Promise.resolve([]),
     getSettings(supabase, user?.id ?? ""),
     getClinicConfig(supabase),
   ]);

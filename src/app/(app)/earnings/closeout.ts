@@ -1,4 +1,4 @@
-import { CommissionSettings, Patient } from "@/types";
+import { CommissionSettings, MoneyPatient } from "@/types";
 import { computeMonthlyAggregates, monthKey } from "@/lib/commission";
 
 export interface CloseoutStats {
@@ -13,7 +13,7 @@ export interface CloseoutStats {
  * sends a few numbers per month instead of the seller's patients. `patients` must hold every
  * patient credited to the seller (getPatients' `creditedTo`). */
 export function closeoutStats(
-  patients: Patient[],
+  patients: MoneyPatient[],
   currentUserId: string,
   settings: CommissionSettings,
   months: string[]

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getProfiles, getSavedFilters, getSellers, getTransferCompanies, getTransfersInRange } from "@/lib/data";
+import { getClinicConfig, getProfiles, getSavedFilters, getSellers, getTransferCompanies, getTransfersInRange, getUpcomingTransfers } from "@/lib/data";
 import { getCoordinatorOptions, initialPeopleFilter } from "@/lib/coordinators";
 import { ALL_FILTER, sellerFilterOptions } from "@/lib/people-filter";
 import { clinicTodayIso } from "@/lib/balance";
@@ -27,8 +27,9 @@ export default async function TransfersPage({
   const to = addDays(from, days - 1);
 
   const supabase = await createClient();
-  const [transfers, companies, clinicConfig, sellers, profiles, saved] = await Promise.all([
+  const [transfers, upcoming, companies, clinicConfig, sellers, profiles, saved] = await Promise.all([
     getTransfersInRange(supabase, from, to),
+    getUpcomingTransfers(supabase, today),
     getTransferCompanies(supabase),
     getClinicConfig(supabase),
     getSellers(supabase),
@@ -47,6 +48,7 @@ export default async function TransfersPage({
   return (
     <TransfersClient
       transfers={transfers}
+      upcoming={upcoming}
       companies={companies}
       driverMessages={clinicConfig.driverMessages.mode}
       isAdmin={can(viewer, "messaging.manage")}

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Card } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import type { TransferWithPatient } from "@/lib/data";
+import type { TransferWithPatient, UpcomingTransfer } from "@/lib/data";
 import { driverDayMessage, driverMessage, isWhatsAppable, waDigits } from "@/lib/transfer-message";
 import { DriverSend, DriverMessagesOffHint, FallbackLink, sendLabel, useDriverMessages, WhatsAppDelivery } from "@/components/driver-messages";
 import { Driver, DriverMessagesMode, TransferCompany, TransferKind, TransferStatus } from "@/types";
@@ -27,9 +27,12 @@ const STATUS: Record<TransferStatus, { label: string; tone: "slate" | "blue" | "
   done: { label: "Done", tone: "green" },
 };
 
-function dayLabel(iso: string, today: string, tx: T, locale: string): string {
+function dayLabel(iso: string, today: string, tx: T, locale: string, short = false): string {
   const [y, m, d] = iso.split("-").map(Number);
-  const label = new Date(y, m - 1, d).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" });
+  const label = new Date(y, m - 1, d).toLocaleDateString(
+    locale,
+    short ? { weekday: "short", day: "numeric", month: "short" } : { weekday: "long", day: "numeric", month: "long" }
+  );
   const tomorrow = (() => {
     const [ty, tm, td] = today.split("-").map(Number);
     const t = new Date(ty, tm - 1, td + 1);
@@ -70,6 +73,7 @@ function groupByDriver(items: TransferWithPatient[], companies: TransferCompany[
  * driver, with WhatsApp sends per transfer or for a driver's whole day. */
 export function TransfersClient({
   transfers,
+  upcoming,
   companies,
   driverMessages,
   isAdmin,
@@ -86,6 +90,7 @@ export function TransfersClient({
   currentUserId,
 }: {
   transfers: TransferWithPatient[];
+  upcoming: UpcomingTransfer[];
   companies: TransferCompany[];
   driverMessages: DriverMessagesMode;
   isAdmin: boolean;
@@ -116,6 +121,21 @@ export function TransfersClient({
   const href = (date: string, d = days) => `/transfers?date=${date}&days=${d}`;
   const noDriver = shown.filter((t) => !t.driver_id).length;
   const notSent = shown.filter((t) => t.driver_id && t.status === "planned").length;
+
+  // Every day from today on with transfers still to send (what the menu badge points at, and
+  // beyond its week), and the next day with anything at all after the ones on screen — so no
+  // one has to guess a date. Both follow the people filter, like the list.
+  const upcomingShown = upcoming.filter((t) => matchesPeopleFilter(t.patient, people, currentUserId));
+  const unsentDays: { date: string; n: number }[] = [];
+  for (const t of upcomingShown) {
+    if (t.status !== "planned") continue;
+    const last = unsentDays[unsentDays.length - 1];
+    if (last?.date === t.transfer_date) last.n++;
+    else unsentDays.push({ date: t.transfer_date, n: 1 });
+  }
+  const lastShown = dates[dates.length - 1];
+  const nextBusy = upcomingShown.find((t) => t.transfer_date > lastShown)?.transfer_date;
+  const MAX_CHIPS = 10;
 
   function run(id: string, fn: () => Promise<void>, ok?: string) {
     setBusyId(id);
@@ -222,6 +242,43 @@ export function TransfersClient({
         <p className="-mt-3 text-xs text-slate-500">
           {tx("Showing only the filtered patients' transfers. A driver's day list still includes all of their transfers.")}
         </p>
+      )}
+
+      {unsentDays.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-slate-600">{tx("Not sent yet:")}</span>
+          {unsentDays.slice(0, MAX_CHIPS).map(({ date, n }) => {
+            const inView = dates.includes(date);
+            return (
+              <Link
+                key={date}
+                href={href(date)}
+                aria-current={inView ? "date" : undefined}
+                title={n === 1 ? tx("1 transfer not sent yet") : tx("{n} transfers not sent yet", { n })}
+                className={`inline-flex items-center gap-1.5 rounded-full py-1 pl-3 pr-1.5 text-xs font-medium ring-1 ${
+                  inView ? "bg-teal-50 text-teal-800 ring-teal-200" : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {dayLabel(date, today, tx, locale, true)}
+                <span className="rounded-full bg-slate-900/5 px-1.5 tabular-nums">{n}</span>
+              </Link>
+            );
+          })}
+          {unsentDays.length > MAX_CHIPS && (
+            <span className="text-xs text-slate-500">{tx("+{n} more days", { n: unsentDays.length - MAX_CHIPS })}</span>
+          )}
+        </div>
+      )}
+
+      {shown.length === 0 && nextBusy && (
+        <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <p className="text-sm text-slate-600">
+            {tx("Nothing on these days. The next transfer is on {date}.", { date: dayLabel(nextBusy, today, tx, locale) })}
+          </p>
+          <Link href={href(nextBusy)} className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700">
+            {tx("Go to {date}", { date: dayLabel(nextBusy, today, tx, locale, true) })}
+          </Link>
+        </Card>
       )}
 
       {dates.map((date) => {

@@ -7,7 +7,7 @@ import { useToast } from "@/components/Toast";
 import { waLink } from "@/lib/transfer-message";
 import { sendTransfersWhatsApp } from "@/app/(app)/patients/whatsapp-actions";
 import { DriverMessagesMode, Transfer } from "@/types";
-import { useT } from "@/i18n/client";
+import { useLocale, useT } from "@/i18n/client";
 
 function without(map: Record<string, string>, key: string): Record<string, string> {
   const next = { ...map };
@@ -120,7 +120,9 @@ export function FallbackLink({ url, onUse }: { url: string; onUse: () => void })
 }
 
 const STATUS_TEXT: Record<NonNullable<Transfer["wa_status"]>, { label: string; className: string }> = {
-  accepted: { label: "Sending…", className: "text-slate-500" },
+  // WhatsApp took the message; only the webhook can say more, so until it's set up this is
+  // where every message stays — shown as sent, since it has left the clinic
+  accepted: { label: "✓ Sent", className: "text-slate-500" },
   sent: { label: "✓ Sent", className: "text-slate-500" },
   delivered: { label: "✓✓ Delivered", className: "text-slate-600" },
   read: { label: "✓✓ Read", className: "text-sky-700" },
@@ -130,12 +132,29 @@ const STATUS_TEXT: Record<NonNullable<Transfer["wa_status"]>, { label: string; c
 /** Where the last API message about a transfer got to (API mode only). */
 export function WhatsAppDelivery({ transfer }: { transfer: Pick<Transfer, "wa_status" | "wa_error" | "wa_status_at"> }) {
   const t = useT();
+  const locale = useLocale();
   if (!transfer.wa_status) return null;
   const s = STATUS_TEXT[transfer.wa_status];
+  const failed = transfer.wa_status === "failed";
+  // the clinic's time, fixed, so the server and the browser print the same thing
+  const when =
+    transfer.wa_status_at && !failed
+      ? new Date(transfer.wa_status_at).toLocaleString(locale, {
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "Europe/Istanbul",
+        })
+      : null;
   return (
-    <span className={`text-xs font-medium ${s.className}`} title={transfer.wa_error ?? (transfer.wa_status_at ? new Date(transfer.wa_status_at).toLocaleString("en-GB") : undefined)}>
+    <span
+      className={`text-xs font-medium ${s.className}`}
+      title={failed ? (transfer.wa_error ?? undefined) : transfer.wa_status === "accepted" ? t("Sent to WhatsApp — delivery isn't confirmed yet") : undefined}
+    >
       {t(s.label)}
-      {transfer.wa_status === "failed" && transfer.wa_error ? ` — ${transfer.wa_error}` : ""}
+      {when ? ` · ${when}` : ""}
+      {failed && transfer.wa_error ? ` — ${transfer.wa_error}` : ""}
     </span>
   );
 }

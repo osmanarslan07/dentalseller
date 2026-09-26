@@ -256,6 +256,29 @@ export async function getTransfersInRange(
   return (data ?? []).map((t) => ({ ...t, cost: t.cost != null ? Number(t.cost) : null })) as TransferWithPatient[];
 }
 
+export type UpcomingTransfer = Pick<Transfer, "status"> & {
+  transfer_date: string; // the query only returns dated transfers
+
+  patient: Pick<Patient, "responsible_seller_id" | "coordinator_id">;
+};
+
+/** Just the dates and statuses of every transfer from today on — enough for the Transfers
+ * page to point at the days still to send, and the next day with anything on it. */
+export async function getUpcomingTransfers(supabase: SupabaseClient, todayIso: string): Promise<UpcomingTransfer[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from("transfers")
+      .select("transfer_date, status, patient:patients(responsible_seller_id, coordinator_id)")
+      .eq("clinic_id", clinicId)
+      .gte("transfer_date", todayIso)
+      .order("transfer_date", { ascending: true })
+  );
+  if (error) throw error;
+  return (data ?? []) as unknown as UpcomingTransfer[];
+}
+
 /** One patient's transfers across all visits, in the order they happen. */
 export async function getPatientTransfers(supabase: SupabaseClient, patientId: string): Promise<Transfer[]> {
   const clinicId = await getMyClinicId();
@@ -403,8 +426,9 @@ export async function getQuote(supabase: SupabaseClient, id: string): Promise<Qu
 
 /** The two numbers the menu shows on Tasks and Transfers. Best-effort: a badge is never
  * worth breaking the page over, so a failed count is just 0. Tasks are counted overdue by
- * date (the time of day is ignored); transfers are the planned ones from today on that
- * haven't been sent yet. */
+ * date (the time of day is ignored); transfers are the ones in the coming week (today and
+ * the six days after) that haven't been sent yet — later ones aren't urgent, and the
+ * Transfers page still lists them in its "Not sent yet" bar. */
 export async function getNavBadges(
   supabase: SupabaseClient,
   wants: { tasks: boolean; transfers: boolean },
@@ -413,6 +437,8 @@ export async function getNavBadges(
   const clinicId = await getMyClinicId();
   if (!clinicId) return { tasks: 0, transfers: 0 };
   const owner = await ownerFilter();
+  const [y, m, d] = todayIso.split("-").map(Number);
+  const weekEnd = new Date(Date.UTC(y, m - 1, d + 6)).toISOString().slice(0, 10);
   const [tasks, transfers] = await Promise.all([
     wants.tasks
       ? withRetry(() => {
@@ -434,6 +460,7 @@ export async function getNavBadges(
             .eq("clinic_id", clinicId)
             .eq("status", "planned")
             .gte("transfer_date", todayIso)
+            .lte("transfer_date", weekEnd)
         )
       : null,
   ]);

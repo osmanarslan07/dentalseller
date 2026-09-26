@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, Patient, PatientFile, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
+import { ClinicConfig, CommissionSettings, DEFAULT_CLINIC_CONFIG, DEFAULT_SETTINGS, MemberRole, Patient, PatientFile, PatientRoster, Profile, ProfileRole, Quote, Seller, Task, Transfer, TransferCompany } from "@/types";
 import { DEFAULT_DASHBOARD_CARDS } from "@/lib/dashboard-cards";
 import { visitCosts } from "@/lib/commission";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -14,6 +14,29 @@ async function withRetry<T>(fn: () => PromiseLike<T>): Promise<T> {
     await new Promise((r) => setTimeout(r, 300));
     return fn();
   }
+}
+
+/** The API returns at most this many rows per request (Supabase's max_rows) and says nothing
+ * when it cuts a list off there. */
+const PAGE_ROWS = 1000;
+
+/** Every row of a query, read page by page past the API's row cap. `page` builds the same
+ * query for rows from..to; it must have a stable order (end it on a unique column). */
+async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_ROWS) {
+    const { data, error } = await withRetry(() => page(from, from + PAGE_ROWS - 1));
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_ROWS) return rows;
+  }
+}
+
+/** Splits a long id list so an `in (...)` filter keeps the request URL short. */
+function chunks<T>(items: T[], size = 150): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 /** The clinic being viewed — the caller's own, or the supported clinic in support mode —
@@ -88,21 +111,226 @@ async function deductsCosts(supabase: SupabaseClient): Promise<boolean> {
   return (await getClinicConfig(supabase)).deductCostsFromCommission;
 }
 
-export async function getPatients(supabase: SupabaseClient): Promise<Patient[]> {
+const ROSTER_SELECT = "*, extra_visits:patient_visits(*)";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Ids go into PostgREST filter strings (`or=(...)`), so only ever a real uuid. */
+function uuidOnly(id: string): string {
+  if (!UUID_RE.test(id)) throw new Error("Invalid id");
+  return id;
+}
+
+function patientsQuery(supabase: SupabaseClient, clinicId: string, select: string) {
+  return supabase.from("patients").select(select).eq("clinic_id", clinicId);
+}
+type PatientsQuery = ReturnType<typeof patientsQuery>;
+
+/** Every matching patient row of the clinic, newest confirmation first, past the row cap. */
+function fetchPatientRows(
+  supabase: SupabaseClient,
+  clinicId: string,
+  select: string,
+  filter: (q: PatientsQuery) => PatientsQuery = (q) => q
+): Promise<Record<string, unknown>[]> {
+  return fetchAll((from, to) =>
+    filter(patientsQuery(supabase, clinicId, select))
+      .order("confirmation_date", { ascending: false, nullsFirst: false })
+      .order("id")
+      .order("visit_date", { foreignTable: "patient_visits", ascending: true, nullsFirst: false })
+      .range(from, to)
+  ) as unknown as Promise<Record<string, unknown>[]>;
+}
+
+/** Patients with at least one extra visit matching `filter` — extra visits live in their own
+ * table, so a patient-level `or` can't see them. */
+function extraVisitsQuery(supabase: SupabaseClient, clinicId: string) {
+  return supabase.from("patient_visits").select("id, patient_id").eq("clinic_id", clinicId);
+}
+
+async function patientIdsWithExtraVisit(
+  supabase: SupabaseClient,
+  clinicId: string,
+  filter: (q: ReturnType<typeof extraVisitsQuery>) => ReturnType<typeof extraVisitsQuery>
+): Promise<string[]> {
+  const rows = await fetchAll((from, to) => filter(extraVisitsQuery(supabase, clinicId)).order("id").range(from, to));
+  return [...new Set((rows as { patient_id: string }[]).map((r) => r.patient_id))];
+}
+
+/** `rows` plus the patients in `ids` it doesn't have yet, in the same newest-first order. */
+async function withPatients(
+  supabase: SupabaseClient,
+  clinicId: string,
+  select: string,
+  rows: Record<string, unknown>[],
+  ids: string[],
+  filter: (q: PatientsQuery) => PatientsQuery = (q) => q
+): Promise<Record<string, unknown>[]> {
+  const have = new Set(rows.map((r) => r.id as string));
+  const missing = ids.filter((id) => !have.has(id));
+  if (missing.length === 0) return rows;
+  const more = (
+    await Promise.all(chunks(missing).map((part) => fetchPatientRows(supabase, clinicId, select, (q) => filter(q.in("id", part)))))
+  ).flat();
+  const byNewest = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+    const ad = (a.confirmation_date as string | null) ?? "", bd = (b.confirmation_date as string | null) ?? "";
+    if (ad !== bd) return !ad ? 1 : !bd ? -1 : bd.localeCompare(ad);
+    return (a.id as string).localeCompare(b.id as string);
+  };
+  return [...rows, ...more].sort(byNewest);
+}
+
+/** Which patients to load. Without a scope it's the whole clinic — megabytes of data per
+ * request once a clinic has a few thousand patients, so pages should scope it. */
+export interface PatientScope {
+  /** Everyone whose visits can count for this seller's commission: they're responsible for
+   * the patient, or earned one of its visits (a visit's credit owner is its earner, else the
+   * responsible seller — see patientVisits in lib/commission). Exactly the patients that
+   * seller's commission maths reads. */
+  creditedTo?: string;
+}
+
+export async function getPatients(supabase: SupabaseClient, scope: PatientScope = {}): Promise<Patient[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
-  const { data, error } = await withRetry(() =>
-    supabase
-      .from("patients")
-      .select(PATIENT_SELECT)
-      .eq("clinic_id", clinicId)
-      .order("confirmation_date", { ascending: false, nullsFirst: false })
-      .order("visit_date", { foreignTable: "patient_visits", ascending: true, nullsFirst: false })
-  );
-
-  if (error) throw error;
+  let rows: Record<string, unknown>[];
+  if (scope.creditedTo) {
+    const s = uuidOnly(scope.creditedTo);
+    const [direct, viaExtraVisits] = await Promise.all([
+      fetchPatientRows(supabase, clinicId, PATIENT_SELECT, (q) =>
+        q.or(`responsible_seller_id.eq.${s},visit1_earned_by_seller_id.eq.${s},visit2_earned_by_seller_id.eq.${s}`)
+      ),
+      patientIdsWithExtraVisit(supabase, clinicId, (q) => q.eq("earned_by_seller_id", s)),
+    ]);
+    rows = await withPatients(supabase, clinicId, PATIENT_SELECT, direct, viaExtraVisits);
+  } else {
+    rows = await fetchPatientRows(supabase, clinicId, PATIENT_SELECT);
+  }
   const deduct = await deductsCosts(supabase);
-  return (data ?? []).map((row) => normalizePatient(row, deduct));
+  return rows.map((row) => normalizePatient(row, deduct));
+}
+
+function toRoster(row: Record<string, unknown>): PatientRoster {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { extras, payments, transfer_costs, commission_costs, ...roster } = normalizePatient(row, false);
+  return roster;
+}
+
+/** Patients for lists and people pages, without money detail. Filters combine with AND. */
+export interface RosterScope {
+  responsible?: string;
+  coordinator?: string;
+  /** Coordinated patients with a visit still to come, or with any visit, arrival or extra visit
+   * dated from..to (to exclusive) — every patient the coordinator workload can count. */
+  coordinatedActive?: { from: string; to: string };
+}
+
+export async function getPatientRoster(supabase: SupabaseClient, scope: RosterScope): Promise<PatientRoster[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const filter = (q: PatientsQuery): PatientsQuery => {
+    if (scope.responsible) q = q.eq("responsible_seller_id", scope.responsible);
+    if (scope.coordinator) q = q.eq("coordinator_id", scope.coordinator);
+    if (scope.coordinatedActive) q = q.not("coordinator_id", "is", null);
+    return q;
+  };
+  let rows: Record<string, unknown>[];
+  if (scope.coordinatedActive) {
+    const { from, to } = scope.coordinatedActive;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error("Invalid date");
+    const within = (col: string) => `and(${col}.gte.${from},${col}.lt.${to})`;
+    const [direct, viaExtraVisits] = await Promise.all([
+      fetchPatientRows(supabase, clinicId, ROSTER_SELECT, (q) =>
+        filter(q).or(
+          [
+            "visit1_status.eq.upcoming",
+            "and(needs_visit2.is.true,visit2_status.eq.upcoming)",
+            within("visit1_arrival_date"),
+            within("visit1_date"),
+            within("visit2_arrival_date"),
+            within("visit2_date"),
+          ].join(",")
+        )
+      ),
+      patientIdsWithExtraVisit(supabase, clinicId, (q) => q.or(`status.eq.upcoming,${within("visit_date")}`)),
+    ]);
+    rows = await withPatients(supabase, clinicId, ROSTER_SELECT, direct, viaExtraVisits, filter);
+  } else {
+    rows = await fetchPatientRows(supabase, clinicId, ROSTER_SELECT, filter);
+  }
+  return rows.map(toRoster);
+}
+
+/** How many of the clinic's patients match — without loading them. */
+export async function countPatients(
+  supabase: SupabaseClient,
+  filter: { responsible?: string; withoutCoordinator?: boolean } = {}
+): Promise<number> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return 0;
+  const { count, error } = await withRetry(() => {
+    let q = supabase.from("patients").select("id", { count: "exact", head: true }).eq("clinic_id", clinicId);
+    if (filter.responsible) q = q.eq("responsible_seller_id", filter.responsible);
+    if (filter.withoutCoordinator) q = q.is("coordinator_id", null);
+    return q;
+  });
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Names of just these patients (activity entries, task labels), by id. */
+export async function getPatientNames(supabase: SupabaseClient, ids: Iterable<string | null | undefined>): Promise<Map<string, string>> {
+  const clinicId = await getMyClinicId();
+  const wanted = [...new Set([...ids].filter((id): id is string => !!id && UUID_RE.test(id)))];
+  if (!clinicId || wanted.length === 0) return new Map();
+  const parts = await Promise.all(
+    chunks(wanted).map(async (part) => {
+      const { data, error } = await withRetry(() =>
+        supabase.from("patients").select("id, name").eq("clinic_id", clinicId).in("id", part)
+      );
+      if (error) throw error;
+      return (data ?? []) as { id: string; name: string }[];
+    })
+  );
+  return new Map(parts.flat().map((p) => [p.id, p.name]));
+}
+
+export interface PatientOption {
+  id: string;
+  name: string;
+}
+
+/** Patients whose name contains `query`, for type-to-search pickers. */
+export async function searchPatientNames(supabase: SupabaseClient, query: string, limit = 20): Promise<PatientOption[]> {
+  const clinicId = await getMyClinicId();
+  const q = query.trim().slice(0, 80);
+  if (!clinicId || !q) return [];
+  // % and _ are wildcards in ILIKE; the user means them literally
+  const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const { data, error } = await withRetry(() =>
+    supabase.from("patients").select("id, name").eq("clinic_id", clinicId).ilike("name", pattern).order("name").limit(limit)
+  );
+  if (error) throw error;
+  return (data ?? []) as PatientOption[];
+}
+
+/** Hotel names and room types already used in the clinic, for autocomplete. */
+export async function getStayOptions(supabase: SupabaseClient): Promise<{ hotels: string[]; roomTypes: string[] }> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return { hotels: [], roomTypes: [] };
+  const { data, error } = await withRetry(() => supabase.rpc("patient_stay_options", { p_clinic: clinicId }).maybeSingle());
+  if (error) throw error;
+  const row = data as { hotels: string[] | null; room_types: string[] | null } | null;
+  return { hotels: row?.hotels ?? [], roomTypes: row?.room_types ?? [] };
+}
+
+/** Everyone coordinating at least one patient of the clinic. */
+export async function getCoordinatingIds(supabase: SupabaseClient): Promise<Set<string>> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return new Set();
+  const { data, error } = await withRetry(() => supabase.rpc("patient_coordinator_ids", { p_clinic: clinicId }));
+  if (error) throw error;
+  return new Set(((data ?? []) as string[]).filter(Boolean));
 }
 
 export async function getPatient(supabase: SupabaseClient, id: string): Promise<Patient | null> {
@@ -241,7 +469,7 @@ export async function getTransfersInRange(
 ): Promise<TransferWithPatient[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
-  const { data, error } = await withRetry(() =>
+  const data = await fetchAll((start, end) =>
     supabase
       .from("transfers")
       .select("*, patient:patients(id, name, phone, responsible_seller_id, coordinator_id)")
@@ -250,10 +478,10 @@ export async function getTransfersInRange(
       .lte("transfer_date", to)
       .order("transfer_date", { ascending: true })
       .order("transfer_time", { ascending: true, nullsFirst: false })
+      .order("id")
+      .range(start, end)
   );
-
-  if (error) throw error;
-  return (data ?? []).map((t) => ({ ...t, cost: t.cost != null ? Number(t.cost) : null })) as TransferWithPatient[];
+  return data.map((t) => ({ ...t, cost: t.cost != null ? Number(t.cost) : null })) as TransferWithPatient[];
 }
 
 export type UpcomingTransfer = Pick<Transfer, "status"> & {
@@ -267,16 +495,17 @@ export type UpcomingTransfer = Pick<Transfer, "status"> & {
 export async function getUpcomingTransfers(supabase: SupabaseClient, todayIso: string): Promise<UpcomingTransfer[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
-  const { data, error } = await withRetry(() =>
+  const data = await fetchAll((from, to) =>
     supabase
       .from("transfers")
       .select("transfer_date, status, patient:patients(responsible_seller_id, coordinator_id)")
       .eq("clinic_id", clinicId)
       .gte("transfer_date", todayIso)
       .order("transfer_date", { ascending: true })
+      .order("id")
+      .range(from, to)
   );
-  if (error) throw error;
-  return (data ?? []) as unknown as UpcomingTransfer[];
+  return data as unknown as UpcomingTransfer[];
 }
 
 /** One patient's transfers across all visits, in the order they happen. */
@@ -403,13 +632,11 @@ export async function getQuotes(supabase: SupabaseClient): Promise<Quote[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
   const owner = await ownerFilter();
-  const { data, error } = await withRetry(() => {
+  const data = await fetchAll((from, to) => {
     let q = supabase.from("quotes").select("*").eq("clinic_id", clinicId);
     if (owner) q = q.eq("user_id", owner);
-    return q.order("created_at", { ascending: false });
+    return q.order("created_at", { ascending: false }).order("id").range(from, to);
   });
-
-  if (error) throw error;
   return data as Quote[];
 }
 
@@ -471,16 +698,16 @@ export async function getTasks(supabase: SupabaseClient): Promise<Task[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
   const owner = await ownerFilter();
-  const { data, error } = await withRetry(() => {
+  const data = await fetchAll((from, to) => {
     let q = supabase.from("tasks").select("*").eq("clinic_id", clinicId);
     if (owner) q = q.eq("user_id", owner);
     return q
       .order("status", { ascending: true })
       .order("due_date", { ascending: true })
-      .order("due_time", { ascending: true, nullsFirst: false });
+      .order("due_time", { ascending: true, nullsFirst: false })
+      .order("id")
+      .range(from, to);
   });
-
-  if (error) throw error;
   return data as Task[];
 }
 

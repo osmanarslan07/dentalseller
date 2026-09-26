@@ -1,7 +1,8 @@
 import { DateInput } from "@/components/DateInput";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getSellers } from "@/lib/data";
+import { getPatientNames, getProfiles, getSellers } from "@/lib/data";
+import { PatientFilter } from "./PatientFilter";
 import { peopleNameMap } from "@/lib/sellers";
 import { requirePagePermission } from "@/lib/permissions";
 import { ActivityLogRow, describeActivity, formatActivityTime } from "@/lib/activity-log";
@@ -30,19 +31,16 @@ export default async function ActivityHistoryPage({ searchParams }: { searchPara
     page * ACTIVITY_PAGE_SIZE
   );
 
-  const [{ data, error }, profiles, patients, sellers] = await Promise.all([
-    query,
-    getProfiles(supabase),
-    getPatients(supabase),
-    getSellers(supabase),
-  ]);
+  const [{ data, error }, profiles, sellers] = await Promise.all([query, getProfiles(supabase), getSellers(supabase)]);
   if (error) throw error;
 
   const rows = (data ?? []) as ActivityLogRow[];
   const hasMore = rows.length > ACTIVITY_PAGE_SIZE;
   const entries = rows.slice(0, ACTIVITY_PAGE_SIZE);
   const nameById = peopleNameMap(profiles, sellers);
-  const patientNameById = new Map(patients.map((p) => [p.id, p.name]));
+  // names of just the patients on this page, plus the one filtered by
+  const patientNameById = await getPatientNames(supabase, [...entries.map((e) => e.target_id), patient]);
+  const filteredPatient = patient && patientNameById.has(patient) ? { id: patient, name: patientNameById.get(patient)! } : null;
 
   const filterParams = new URLSearchParams(
     Object.entries({ actor, category: category ?? "", patient, from, to, q }).filter(([, v]) => v) as [string, string][]
@@ -83,16 +81,7 @@ export default async function ActivityHistoryPage({ searchParams }: { searchPara
               </option>
             ))}
           </select>
-          <select name="patient" defaultValue={patient} aria-label={t("Patient")} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-            <option value="">{t("All patients")}</option>
-            {[...patients]
-              .sort((x, y) => x.name.localeCompare(y.name))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-          </select>
+          <PatientFilter key={patient ?? ""} initial={filteredPatient} />
           <DateInput name="from" defaultValue={from} aria-label={t("From")} className="w-40" />
           <DateInput name="to" defaultValue={to} aria-label={t("To")} className="w-40" />
           <input

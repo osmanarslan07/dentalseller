@@ -4,6 +4,7 @@ import { DateInput } from "@/components/DateInput";
 import { useState, useTransition } from "react";
 import { Modal } from "@/components/Modal";
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
+import { PatientPicker, PickedPatient } from "@/components/PatientPicker";
 import { useToast } from "@/components/Toast";
 import { Task } from "@/types";
 import { createTask, updateTask } from "./actions";
@@ -13,17 +14,20 @@ export function TaskFormModal({
   open,
   onClose,
   task,
-  patients,
+  patientNames,
 }: {
   open: boolean;
   onClose: () => void;
   task?: Task | null;
-  patients: { id: string; name: string }[];
+  /** Names of already-linked patients, by id — to show the task's current patient. */
+  patientNames: Record<string, string>;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [patientId, setPatientId] = useState(task?.patient_id ?? "");
+  const [patient, setPatient] = useState<PickedPatient | null>(
+    task?.patient_id ? { id: task.patient_id, name: patientNames[task.patient_id] ?? task.patient_name ?? "" } : null
+  );
   const isEdit = !!task;
   const { showToast } = useToast();
   const t = useT();
@@ -73,15 +77,16 @@ export function TaskFormModal({
 
         <div>
           <Label>{t("Patient (optional)")}</Label>
-          <Select name="patient_id" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-            <option value="">— {t("None")} —</option>
-            {patients.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-          {!patientId && (
+          <PatientPicker
+            name="patient_id"
+            value={patient}
+            onChange={(p) => {
+              setPatient(p);
+              setIsDirty(true);
+            }}
+            aria-label={t("Patient (optional)")}
+          />
+          {!patient && (
             <Input
               name="patient_name"
               defaultValue={task?.patient_id ? "" : task?.patient_name ?? ""}

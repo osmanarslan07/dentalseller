@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { AccountStatus, getClinicAccounts, getPatients, getProfiles, getSellers, getSettings } from "@/lib/data";
+import { AccountStatus, countPatients, getClinicAccounts, getPatientRoster, getProfiles, getSellers, getSettings } from "@/lib/data";
 import { can, canAny, requirePagePermission } from "@/lib/permissions";
 import { getClinicRoles } from "@/lib/roles";
 import { signedAvatarUrls } from "@/lib/avatars";
@@ -9,7 +9,7 @@ import { Badge, Card } from "@/components/ui";
 import { AddUserPanel } from "./AddUserPanel";
 import { SellersCard } from "./SellersCard";
 import { STATUS_LABELS, StatusBadge, lastActiveText, parseStatus } from "./status";
-import { WORKLOAD_DAYS, coordinatorWorkload, getCoordinatorOptions } from "@/lib/coordinators";
+import { WORKLOAD_DAYS, coordinatorWorkload, getCoordinatorOptions, workloadWindow } from "@/lib/coordinators";
 import { patientsHrefForCoordinator } from "@/lib/people-filter";
 import { clinicTodayIso } from "@/lib/balance";
 import { getLang, getT } from "@/i18n/server";
@@ -231,10 +231,14 @@ async function WorkloadCard({
   clinicId: string;
   profiles: Awaited<ReturnType<typeof getProfiles>>;
 }) {
-  const patients = await getPatients(supabase);
-  const coordinators = await getCoordinatorOptions(supabase, clinicId, profiles, patients);
-  const workload = coordinatorWorkload(patients, clinicTodayIso());
-  const unassigned = patients.filter((p) => !p.coordinator_id).length;
+  const today = clinicTodayIso();
+  const [coordinators, active, unassigned] = await Promise.all([
+    getCoordinatorOptions(supabase, clinicId, profiles),
+    // only coordinated patients the workload can count: a visit still to come, or dated soon
+    getPatientRoster(supabase, { coordinatedActive: workloadWindow(today) }),
+    countPatients(supabase, { withoutCoordinator: true }),
+  ]);
+  const workload = coordinatorWorkload(active, today);
   const t = await getT();
   return (
     <Card className="overflow-hidden">
@@ -292,13 +296,13 @@ async function SellersTab({
   supabase: Awaited<ReturnType<typeof createClient>>;
   currentUserId: string;
 }) {
-  const [patients, sellers] = await Promise.all([getPatients(supabase), getSellers(supabase)]);
+  const sellers = await getSellers(supabase);
   const rows = await Promise.all(
     sellers
       .filter((s) => !s.profile_id)
       .map(async (seller) => ({
         seller,
-        patientCount: patients.filter((p) => p.responsible_seller_id === seller.id).length,
+        patientCount: await countPatients(supabase, { responsible: seller.id }),
         commission: await getSettings(supabase, seller.id),
       }))
   );

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getPatients, getProfiles, getSellers } from "@/lib/data";
+import { getPatientNames, getProfiles, getSellers } from "@/lib/data";
 import { getViewer } from "@/lib/viewer";
 import { can } from "@/lib/permissions";
 import { peopleNameMap } from "@/lib/sellers";
@@ -30,17 +30,16 @@ export async function GET(request: NextRequest) {
 
   const filters = parseActivityFilters(Object.fromEntries(request.nextUrl.searchParams));
   const supabase = await createClient();
-  const [{ data, error }, profiles, patients, sellers] = await Promise.all([
+  const [{ data, error }, profiles, sellers] = await Promise.all([
     activityQuery(supabase, viewer.clinicId, filters).limit(EXPORT_LIMIT),
     getProfiles(supabase),
-    getPatients(supabase),
     getSellers(supabase),
   ]);
   if (error) return new Response("Could not load the activity", { status: 500 });
 
   const nameById = peopleNameMap(profiles, sellers);
-  const patientNameById = new Map(patients.map((p) => [p.id, p.name]));
   const rows = (data ?? []) as ActivityLogRow[];
+  const patientNameById = await getPatientNames(supabase, rows.map((e) => e.target_id));
 
   const lines = [["Time (UTC)", "Person", "What happened", "Category"].join(",")];
   for (const e of rows) {

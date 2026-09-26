@@ -1,4 +1,4 @@
-import { Patient } from "@/types";
+import { PatientRoster } from "@/types";
 import { msg } from "@/i18n";
 
 export type CalendarEventKind =
@@ -52,7 +52,7 @@ export const KIND_STYLES: Record<CalendarEventKind, string> = {
 };
 
 /** Flattens every dated field across all patients (clinic visits + flight legs) into one event list. */
-export function flattenCalendarEvents(patients: Patient[]): CalendarEvent[] {
+export function flattenCalendarEvents(patients: PatientRoster[]): CalendarEvent[] {
   const events: CalendarEvent[] = [];
 
   for (const p of patients) {

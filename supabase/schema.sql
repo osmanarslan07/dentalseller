@@ -4340,6 +4340,49 @@ grant execute on function public.set_seller_currency(uuid, text) to authenticate
 alter table public.profiles add column if not exists language text not null default 'en'
   check (language in ('en', 'tr'));
 
+-- ---------- lookups that used to load every patient (perf fix 2, phase A) ----------
+-- "Newest first" lists of one clinic read an index instead of the whole clinic.
+create index if not exists patients_clinic_confirmation_idx
+  on public.patients (clinic_id, confirmation_date desc nulls last);
+create index if not exists activity_log_clinic_created_idx
+  on public.activity_log (clinic_id, created_at desc);
+
+-- Everyone who coordinates at least one patient — the coordinator filters also list people
+-- who can no longer coordinate but still have patients. Runs as the caller, so RLS applies.
+create or replace function public.patient_coordinator_ids(p_clinic uuid)
+returns setof uuid
+language sql
+stable
+set search_path = public
+as $$
+  select distinct coordinator_id
+  from public.patients
+  where clinic_id = p_clinic and coordinator_id is not null;
+$$;
+revoke execute on function public.patient_coordinator_ids(uuid) from public, anon;
+grant execute on function public.patient_coordinator_ids(uuid) to authenticated;
+
+-- Hotel names and room types already used on the clinic's patients, for autocomplete.
+-- Sorted by code point (collate "C"), the same order the app used when it sorted them itself.
+create or replace function public.patient_stay_options(p_clinic uuid)
+returns table (hotels text[], room_types text[])
+language sql
+stable
+set search_path = public
+as $$
+  select
+    array(
+      select distinct h collate "C" from public.patients p, unnest(array[p.visit1_hotel_name, p.visit2_hotel_name]) h
+      where p.clinic_id = p_clinic and h <> '' order by 1
+    ),
+    array(
+      select distinct r collate "C" from public.patients p, unnest(array[p.visit1_room_type, p.visit2_room_type]) r
+      where p.clinic_id = p_clinic and r <> '' order by 1
+    );
+$$;
+revoke execute on function public.patient_stay_options(uuid) from public, anon;
+grant execute on function public.patient_stay_options(uuid) to authenticated;
+
 -- ---------- RLS: check the caller once per query, not once per row ----------
 -- The policy helpers (has_permission, my_clinic_id, is_active_profile, ...) are SECURITY
 -- DEFINER, which Postgres never inlines, so a bare call in a policy runs again for every row

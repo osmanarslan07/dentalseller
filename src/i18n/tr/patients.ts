@@ -79,4 +79,8 @@ export const patients: Record<string, string> = {
   "Already on the list as “{name}” — that seller will be used.": "Listede zaten “{name}” olarak var — bu satış temsilcisi kullanılacak.",
   "Added to your seller list. They don't need an account; you can link one later in Settings → Team.":
     "Satış temsilcisi listenize eklenir. Hesaba ihtiyacı yok; daha sonra Ayarlar → Ekip bölümünden bir hesap bağlayabilirsiniz.",
+  // patient picker (type to search)
+  "Clear patient": "Hastayı temizle",
+  "Searching…": "Aranıyor…",
+  "No patients match.": "Eşleşen hasta yok.",
 };

@@ -298,6 +298,10 @@ export interface Patient {
   updated_at: string;
 }
 
+/** A patient without the money detail (extras, payments, transfer costs): enough for names,
+ * dates, visits and people — not for balances or commission. */
+export type PatientRoster = Omit<Patient, "extras" | "payments" | "transfer_costs" | "commission_costs">;
+
 export type PatientInput = Omit<
   Patient,
   | "id"

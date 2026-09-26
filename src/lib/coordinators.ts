@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { Patient, Profile } from "@/types";
+import { PatientRoster, Profile } from "@/types";
+import { getCoordinatingIds } from "@/lib/data";
 import { getClinicRoles } from "@/lib/roles";
 import { flattenCalendarEvents } from "@/lib/calendar-events";
 import { PeopleFilter, cleanPeopleFilter, hasVisitToCome, resolveFilter } from "@/lib/people-filter";
@@ -18,16 +19,21 @@ export interface CoordinatorOption {
  * database checks the same when a coordinator is set) and who have signed in — an invited
  * account has no name yet and follows nobody up. Anyone still coordinating a patient
  * — deactivated, or since moved to a role without it — stays listed so filters and existing
- * patients keep showing them. */
+ * patients keep showing them. `patients` narrows "still coordinating" to those patients (the
+ * Transfers page: people coordinating a listed transfer); without it, any patient of the clinic. */
 export async function getCoordinatorOptions(
   supabase: SupabaseClient,
   clinicId: string,
   profiles: Profile[],
-  patients: Pick<Patient, "coordinator_id">[]
+  patients?: { coordinator_id: string | null }[]
 ): Promise<CoordinatorOption[]> {
-  const roles = await getClinicRoles(supabase, clinicId);
+  const [roles, coordinating] = await Promise.all([
+    getClinicRoles(supabase, clinicId),
+    patients
+      ? new Set(patients.map((p) => p.coordinator_id).filter((id): id is string => !!id))
+      : getCoordinatingIds(supabase),
+  ]);
   const editors = new Set(roles.filter((r) => r.permissions.includes("patients.edit")).map((r) => r.key));
-  const coordinating = new Set(patients.map((p) => p.coordinator_id).filter((id): id is string => !!id));
   return profiles
     .map((p) => ({
       id: p.id,
@@ -61,11 +67,18 @@ export interface CoordinatorWorkload {
   arriving: number;
 }
 
-/** Per coordinator id. `todayIso` is the clinic's today (YYYY-MM-DD). */
-export function coordinatorWorkload(patients: Patient[], todayIso: string): Map<string, CoordinatorWorkload> {
+/** The days "arriving" counts: today up to (not including) WORKLOAD_DAYS from now. */
+export function workloadWindow(todayIso: string): { from: string; to: string } {
   const end = new Date(`${todayIso}T00:00:00Z`);
   end.setUTCDate(end.getUTCDate() + WORKLOAD_DAYS);
-  const endIso = end.toISOString().slice(0, 10);
+  return { from: todayIso, to: end.toISOString().slice(0, 10) };
+}
+
+/** Per coordinator id. `todayIso` is the clinic's today (YYYY-MM-DD). `patients` must hold
+ * every coordinated patient with a visit to come or dated in the window (see
+ * getPatientRoster's `coordinatedActive`); others don't change the numbers. */
+export function coordinatorWorkload(patients: PatientRoster[], todayIso: string): Map<string, CoordinatorWorkload> {
+  const endIso = workloadWindow(todayIso).to;
 
   const out = new Map<string, CoordinatorWorkload>();
   const coordinated = patients.filter((p) => p.coordinator_id);

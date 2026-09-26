@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getClinicAccounts, getPatients, getProfiles, getSellers } from "@/lib/data";
+import { getClinicAccounts, getPatientNames, getPatientRoster, getProfiles, getSellers } from "@/lib/data";
 import { can, requirePagePermission } from "@/lib/permissions";
 import { getClinicRoles } from "@/lib/roles";
 import { signedAvatarUrls } from "@/lib/avatars";
@@ -12,7 +12,7 @@ import { formatDate } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
 import { PermissionSummary } from "@/components/PermissionSummary";
 import { Card } from "@/components/ui";
-import { Patient, Permission } from "@/types";
+import { PatientRoster, Permission } from "@/types";
 import { StatusBadge, lastActiveText } from "../status";
 import { UserActions } from "./UserActions";
 import { HandoverForm } from "./HandoverForm";
@@ -41,12 +41,15 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
 
   const canActivity = can(viewer, "activity.view");
   const canPatients = can(viewer, "patients.view");
-  const [[account], roles, avatars, sellers, patients, activity] = await Promise.all([
+  const [[account], roles, avatars, sellers, asSeller, asCoordinator, coordinatorOptions, activity] = await Promise.all([
     getClinicAccounts([profile]),
     getClinicRoles(supabase, viewer.clinicId),
     signedAvatarUrls(supabase, [profile]),
     getSellers(supabase),
-    canPatients || canActivity ? getPatients(supabase) : Promise.resolve([] as Patient[]),
+    canPatients ? getPatientRoster(supabase, { responsible: id }) : Promise.resolve([] as PatientRoster[]),
+    canPatients ? getPatientRoster(supabase, { coordinator: id }) : Promise.resolve([] as PatientRoster[]),
+    // who could take over their patients: members who can coordinate (patients.edit), not them
+    getCoordinatorOptions(supabase, viewer.clinicId, profiles),
     canActivity
       ? activityQuery(supabase, viewer.clinicId, parseActivityFilters({ actor: id })).limit(RECENT_ACTIVITY)
       : Promise.resolve({ data: [], error: null }),
@@ -58,13 +61,9 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
     ...new Set(account.roles.flatMap((key) => roles.find((r) => r.key === key)?.permissions ?? [])),
   ];
   const nameById = peopleNameMap(profiles, sellers);
-  const patientNameById = new Map(patients.map((p) => [p.id, p.name]));
   const entries = (activity.data ?? []) as ActivityLogRow[];
-  const asSeller = canPatients ? patients.filter((p) => p.responsible_seller_id === id) : [];
-  const asCoordinator = canPatients ? patients.filter((p) => p.coordinator_id === id) : [];
+  const patientNameById = await getPatientNames(supabase, entries.map((e) => e.target_id));
   const isSelf = id === viewer.userId;
-  // who could take over their patients: members who can coordinate (patients.edit), not them
-  const coordinatorOptions = await getCoordinatorOptions(supabase, viewer.clinicId, profiles, patients);
   const heirs = coordinatorOptions.filter((c) => c.pickable && c.id !== id).map((c) => ({ id: c.id, name: c.name }));
   const workload = coordinatorWorkload(asCoordinator, clinicTodayIso()).get(id) ?? { active: 0, arriving: 0 };
   const canHandover = can(viewer, "team.manage") && can(viewer, "patients.edit");
@@ -178,7 +177,7 @@ async function PatientList({
   footer,
 }: {
   title: string;
-  patients: Patient[];
+  patients: PatientRoster[];
   empty: string;
   summary?: string;
   footer?: ReactNode;

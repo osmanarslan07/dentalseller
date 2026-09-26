@@ -14,6 +14,7 @@ import { Patient, Seller } from "@/types";
 import { SellerPick, SellerPicker } from "@/components/SellerPicker";
 import { sellerNameMap } from "@/lib/sellers";
 import { createPatient } from "./actions";
+import { NamedPatient, findPatientsNamed } from "@/lib/patient-lookup-actions";
 import { Toggle } from "./detail/bits";
 import { pickableSellers } from "@/lib/sellers";
 import type { CoordinatorOption } from "@/lib/coordinators";
@@ -45,7 +46,6 @@ export function NewPatientForm({
   currentUserId,
   canAssignSellers,
   coordinators,
-  existingPatients,
 }: {
   /** Members who can coordinate patients (patients.edit). */
   coordinators: CoordinatorOption[];
@@ -55,14 +55,13 @@ export function NewPatientForm({
   currentUserId: string;
   /** sellers.assign: record a patient for any seller, or type a new one; otherwise you add your own. */
   canAssignSellers: boolean;
-  /** To warn when the name matches someone already entered. */
-  existingPatients: Pick<Patient, "id" | "name" | "confirmation_date" | "responsible_seller_id">[];
 }) {
   const router = useRouter();
   const t = useT();
   const { showToast } = useToast();
   const { enabled: soundEnabled } = useCelebrationSound();
   const [pending, startTransition] = useTransition();
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // yourself when you sell; otherwise (a coordinator) the first seller on the list
   const [seller, setSeller] = useState<SellerPick>(() => {
@@ -88,13 +87,23 @@ export function NewPatientForm({
   const currency = currencyChoice ?? (usual && currencies.list.includes(usual) ? usual : currencies.main);
   const sym = currencySymbol(currency);
 
-  function submit(e: FormEvent<HTMLFormElement>) {
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const formData = new FormData(e.currentTarget);
 
     const name = String(formData.get("name") ?? "").trim();
-    const dupes = existingPatients.filter((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+    // warn when the name matches someone already entered
+    let dupes: NamedPatient[] = [];
+    setChecking(true);
+    try {
+      dupes = await findPatientsNamed(name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Something went wrong"));
+      return;
+    } finally {
+      setChecking(false);
+    }
     if (dupes.length > 0) {
       const names = sellerNameMap(sellers);
       const sellerNameFor = (id: string) => names.get(id) ?? t("Unknown seller");
@@ -245,8 +254,8 @@ export function NewPatientForm({
           <Button type="button" variant="secondary" onClick={() => router.push("/patients")}>
             {t("Cancel")}
           </Button>
-          <Button type="submit" disabled={pending}>
-            {pending ? t("Creating…") : `${t("Create patient")} →`}
+          <Button type="submit" disabled={pending || checking}>
+            {pending || checking ? t("Creating…") : `${t("Create patient")} →`}
           </Button>
         </div>
       </form>

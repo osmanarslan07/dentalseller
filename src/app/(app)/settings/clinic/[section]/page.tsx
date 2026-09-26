@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatients, getProfiles, getSellers, getTransferCompanies } from "@/lib/data";
+import { countPatients, getClinicConfig, getProfiles, getSellers, getTransferCompanies } from "@/lib/data";
 import { latestMarketRates } from "@/lib/rates";
 import { CurrenciesCard } from "../../CurrenciesCard";
 import { can, canAny, requirePagePermission } from "@/lib/permissions";
@@ -55,7 +55,7 @@ export default async function ClinicSectionPage({ params }: { params: Promise<{ 
         />
       )}
 
-      {section.id === "data" && <DataExportCard patients={await getPatients(supabase)} />}
+      {section.id === "data" && <DataExportCard count={await countPatients(supabase)} />}
     </div>
   );
 }

@@ -22,10 +22,11 @@ function isOverdue(task: Task) {
 
 export function TasksClient({
   tasks,
-  patients,
+  patientNames,
 }: {
   tasks: Task[];
-  patients: { id: string; name: string }[];
+  /** Names of the patients these tasks are linked to, by id. */
+  patientNames: Record<string, string>;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -74,7 +75,7 @@ export function TasksClient({
 
   function TaskRow({ task }: { task: Task }) {
     const overdue = isOverdue(task);
-    const patientLabel = task.patient_name || patients.find((p) => p.id === task.patient_id)?.name;
+    const patientLabel = task.patient_name || (task.patient_id ? patientNames[task.patient_id] : undefined);
     return (
       <Card className="flex items-start gap-3 p-4">
         <input
@@ -150,7 +151,7 @@ export function TasksClient({
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         task={editingTask}
-        patients={patients}
+        patientNames={patientNames}
       />
     </div>
   );

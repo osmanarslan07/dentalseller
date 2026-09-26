@@ -170,9 +170,13 @@ export async function addPayment(
   const visitDate =
     visitKey === "visit1" ? after.visit1_date : visitKey === "visit2" ? after.visit2_date : after.extra_visits.find((v) => v.id === visitKey)?.visit_date ?? null;
   if (visitDate) {
-    const [settings, allPatients] = await Promise.all([getSettings(supabase, after.responsible_seller_id), getPatients(supabase)]);
+    // the seller's month total only counts visits credited to them — their patients are enough
+    const [settings, credited] = await Promise.all([
+      getSettings(supabase, after.responsible_seller_id),
+      getPatients(supabase, { creditedTo: after.responsible_seller_id }),
+    ]);
     // tiers are in the main currency, at the rate the price was agreed at
-    const jump = detectTierJump(allPatients, after.responsible_seller_id, settings, visitDate, dealToMain(after, input.amount));
+    const jump = detectTierJump(credited, after.responsible_seller_id, settings, visitDate, dealToMain(after, input.amount));
     if (jump) {
       const rate = /(\d+)%/.exec(jump.message)?.[1] ?? "";
       return { celebration: { ...jump, message: await st("🎉 You just hit the {rate}% commission tier!", { rate }) } };

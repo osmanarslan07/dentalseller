@@ -11,7 +11,7 @@ import { Avatar, initials } from "@/components/Avatar";
 import { useT } from "@/i18n/client";
 import { LanguageList } from "@/components/LanguageSwitch";
 
-function HomeIcon({ className = "" }: { className?: string }) {
+export function HomeIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M3 11.5 12 4l9 7.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -20,7 +20,7 @@ function HomeIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function PatientsIcon({ className = "" }: { className?: string }) {
+export function PatientsIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="9" cy="8" r="3.25" />
@@ -31,7 +31,7 @@ function PatientsIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function QuotesIcon({ className = "" }: { className?: string }) {
+export function QuotesIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" strokeLinecap="round" strokeLinejoin="round" />
@@ -85,7 +85,7 @@ function AccountingIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function TeamIcon({ className = "" }: { className?: string }) {
+export function TeamIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="8" cy="8" r="3" />
@@ -110,7 +110,7 @@ function SettingsIcon({ className = "" }: { className?: string }) {
 }
 
 
-function ActivityIcon({ className = "" }: { className?: string }) {
+export function ActivityIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M3 12h4l3-8 4 16 3-8h4" strokeLinecap="round" strokeLinejoin="round" />
@@ -127,7 +127,7 @@ function PerformanceIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function PinIcon({ className = "" }: { className?: string }) {
+export function PinIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7" strokeLinecap="round" strokeLinejoin="round" />
@@ -135,7 +135,7 @@ function PinIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function SearchIcon({ className = "" }: { className?: string }) {
+export function SearchIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="11" cy="11" r="6.5" />
@@ -163,7 +163,7 @@ function SlidersIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function ChevronIcon({ className = "" }: { className?: string }) {
+export function ChevronIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="m7 10 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
@@ -171,7 +171,7 @@ function ChevronIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function MoreIcon({ className = "" }: { className?: string }) {
+export function MoreIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
@@ -179,7 +179,7 @@ function MoreIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function SignOutIcon({ className = "" }: { className?: string }) {
+export function SignOutIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M15 17.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -245,11 +245,11 @@ const MOBILE_BAR = ["/", "/patients", "/transfers", "/tasks"];
 const MOBILE_BAR_SIZE = MOBILE_BAR.length;
 
 const MY_PROFILE_HREF = "/profile";
-const FOLD_DELAY_MS = 1000;
-const OPEN_DELAY_MS = 120;
+export const FOLD_DELAY_MS = 1000;
+export const OPEN_DELAY_MS = 120;
 
 /** A page is active on its own path and on anything under it (/patients/123 → Patients). */
-function isActive(pathname: string, href: string): boolean {
+export function isActive(pathname: string, href: string): boolean {
   return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
 }
 

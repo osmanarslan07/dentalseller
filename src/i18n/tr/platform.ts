@@ -318,4 +318,8 @@ export const platform: Record<string, string> = {
   "You're about to make changes in {clinic} as DentalSeller support. Every change is logged and shows in the clinic's history as {support}.":
     "DentalSeller destek olarak {clinic} içinde değişiklik yapmak üzeresiniz. Her değişiklik kaydedilir ve kliniğin geçmişinde {support} olarak görünür.",
   "Editing stays unlocked for 30 minutes, or until you lock it.": "Düzenleme 30 dakika boyunca ya da siz kilitleyene kadar açık kalır.",
+  // platform menu groups
+  "Messages": "Mesajlar",
+  "Access": "Erişim",
+  "System": "Sistem",
 };

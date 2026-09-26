@@ -4470,6 +4470,55 @@ $$;
 revoke execute on function public.patient_open_balance_ids(uuid) from public, anon;
 grant execute on function public.patient_open_balance_ids(uuid) to authenticated;
 
+-- ---------- one call for "who is viewing" (perf fix 4) ----------
+-- What every clinic page needs about the signed-in person before anything else, in one round
+-- trip instead of four in a row (profile, then permissions, then the clinic's modules, then
+-- whether the clinic is active). Runs as the caller, so RLS decides exactly as those four
+-- reads did: a deactivated member sees no profile row and gets null.
+create or replace function public.viewer_context()
+returns jsonb
+language sql
+stable
+set search_path = public
+as $$
+  select case when p.id is null then null else jsonb_build_object(
+    'role', p.role,
+    'roles', p.roles,
+    'clinic_id', p.clinic_id,
+    'display_name', p.display_name,
+    'avatar_updated_at', p.avatar_updated_at,
+    'permissions', to_jsonb(public.my_permissions()),
+    'modules', (select to_jsonb(c.modules) from public.clinics c where c.id = p.clinic_id),
+    'clinic_active', (select c.is_active from public.clinics c where c.id = p.clinic_id)
+  ) end
+  from (select 1) as one
+  left join public.profiles p on p.id = auth.uid();
+$$;
+revoke execute on function public.viewer_context() from public, anon;
+grant execute on function public.viewer_context() to authenticated;
+
+-- Per responsible seller: how many patients, and how many confirmed from..to (to exclusive).
+-- One query for the Sales performance table instead of two per seller. One JSON value, so
+-- the API's 1,000-row cap never applies.
+create or replace function public.patient_counts_by_seller(p_clinic uuid, p_from date, p_to date)
+returns jsonb
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(jsonb_object_agg(seller, jsonb_build_array(total, confirmed)), '{}')
+  from (
+    select responsible_seller_id as seller,
+           count(*) as total,
+           count(*) filter (where confirmation_date >= p_from and confirmation_date < p_to) as confirmed
+    from public.patients
+    where clinic_id = p_clinic and responsible_seller_id is not null
+    group by 1
+  ) x;
+$$;
+revoke execute on function public.patient_counts_by_seller(uuid, date, date) from public, anon;
+grant execute on function public.patient_counts_by_seller(uuid, date, date) to authenticated;
+
 -- ---------- RLS: check the caller once per query, not once per row ----------
 -- The policy helpers (has_permission, my_clinic_id, is_active_profile, ...) are SECURITY
 -- DEFINER, which Postgres never inlines, so a bare call in a policy runs again for every row

@@ -25,9 +25,10 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Verified here against the project's public signing key (no Auth-server round trip); an
+  // expired access token is refreshed on the way, and the new cookies are set below.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims ?? null;
 
   const path = request.nextUrl.pathname;
   const isAuthRoute = path.startsWith("/login");

@@ -1,4 +1,5 @@
 import { getLang } from "@/i18n/server";
+import { getAuthClaims } from "@/lib/viewer";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/data";
@@ -12,9 +13,7 @@ import { Button } from "@/components/ui";
  * Outside the (app) layout, whose gate sends admins here — so the gate can't loop. */
 export default async function AcceptTermsPage({ searchParams }: { searchParams: Promise<{ lang?: string }> }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthClaims();
   if (!user) redirect("/login");
 
   const profile = await getMyProfile(supabase, user.id);

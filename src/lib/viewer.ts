@@ -37,45 +37,70 @@ export interface Viewer {
    * hiding things no permission covers, like the travel and transfer cards). */
   modules: ClinicModule[];
   clinicId: string;
+  /** False when the clinic is suspended (members only; support can still help). */
+  clinicActive: boolean;
+  /** When the viewer's own photo last changed (members only), for the menu avatar. */
+  avatarUpdatedAt: string | null;
   support: SupportContext | null;
+}
+
+/** The signed-in account, from the session's access token — verified on this server against
+ * the project's public signing key (getClaims), so no round trip to the Auth server. Once per
+ * request. A session signed out elsewhere stays valid until its token expires (≤ 1 hour);
+ * database rules still refuse a deactivated member. null = signed out. */
+export const getAuthClaims = cache(async (): Promise<{ id: string; email: string; aal: string | null } | null> => {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims?.sub) return null;
+  return { id: claims.sub, email: typeof claims.email === "string" ? claims.email : "", aal: (claims.aal as string | undefined) ?? null };
+});
+
+/** What viewer_context() returns (one round trip instead of four in a row). */
+interface ViewerContextRow {
+  role: string;
+  roles: string[] | null;
+  clinic_id: string | null;
+  display_name: string | null;
+  avatar_updated_at: string | null;
+  permissions: string[] | null;
+  modules: string[] | null;
+  clinic_active: boolean | null;
 }
 
 /** Resolved once per request. null when there is no usable clinic context (signed out, a
  * superadmin with no open session or without two-factor, an unassigned account). */
 export const getViewer = cache(async (): Promise<Viewer | null> => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthClaims();
   if (!user) return null;
+  const supabase = await createClient();
 
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("role, roles, clinic_id, display_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data: ctx, error } = await supabase.rpc("viewer_context");
+  if (error) console.error("viewer_context failed:", error.message);
+  const me = ctx as ViewerContextRow | null;
   if (!me) return null;
 
   if (me.role !== "superadmin") {
     if (!me.clinic_id) return null;
     return {
       authUserId: user.id,
-      email: user.email ?? "",
+      email: user.email,
       userId: user.id,
       displayName: me.display_name,
       role: me.role as SellerRole,
       roles: (me.roles ?? []) as MemberRole[],
-      permissions: await loadPermissions(supabase),
-      modules: await loadModules(supabase, me.clinic_id),
+      permissions: (me.permissions ?? []) as Permission[],
+      modules: (me.modules ?? []) as ClinicModule[],
       clinicId: me.clinic_id,
+      clinicActive: me.clinic_active !== false,
+      avatarUpdatedAt: me.avatar_updated_at,
       support: null,
     };
   }
 
   // Superadmin: only inside an open support session, and only with two-factor done — the
   // same conditions the database's support_clinic_id() enforces.
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aal?.currentLevel !== "aal2") return null;
+  if (user.aal !== "aal2") return null;
 
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
@@ -109,16 +134,19 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   const editingUntil = session.editing_until as string | null;
   return {
     authUserId: user.id,
-    email: user.email ?? "",
+    email: user.email,
     // Nobody to view as (an empty clinic): fall back to the superadmin's own id, which
     // simply owns nothing.
     userId: viewAs?.id ?? user.id,
     displayName: viewAs?.name ?? me.display_name,
     role: viewAs?.role ?? "admin",
     roles: viewAs?.roles ?? ["admin"],
-    permissions: await loadPermissions(supabase),
+    // my_permissions() already applies support mode (the viewed-as member's roles)
+    permissions: (me.permissions ?? []) as Permission[],
     modules: await loadModules(admin, session.clinic_id),
     clinicId: session.clinic_id,
+    clinicActive: true,
+    avatarUpdatedAt: null,
     support: {
       sessionId: session.id,
       clinicName: clinic?.name ?? "Clinic",
@@ -130,17 +158,6 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     },
   };
 });
-
-/** The caller's permissions as the database sees them (my_permissions()). A failed read
- * grants nothing — a page that can't tell shows less, never more. */
-async function loadPermissions(supabase: Awaited<ReturnType<typeof createClient>>): Promise<Permission[]> {
-  const { data, error } = await supabase.rpc("my_permissions");
-  if (error) {
-    console.error("my_permissions failed:", error.message);
-    return [];
-  }
-  return (data ?? []) as Permission[];
-}
 
 async function loadModules(
   client: Pick<Awaited<ReturnType<typeof createClient>>, "from">,

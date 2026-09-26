@@ -18,7 +18,7 @@ import { Button } from "@/components/ui";
 import { logout } from "@/lib/auth-actions";
 import { REQUIRE_TERMS_ACCEPTANCE } from "@/lib/terms";
 import { hasAcceptedCurrentTerms } from "@/lib/terms-status";
-import { getViewer } from "@/lib/viewer";
+import { Viewer, getAuthClaims, getViewer } from "@/lib/viewer";
 import { SupportBar } from "@/components/SupportBar";
 import { PermissionsProvider } from "@/components/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -27,10 +27,7 @@ import { getT } from "@/i18n/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getAuthClaims();
   if (!user) redirect("/login");
 
   const viewer = await getViewer();
@@ -55,8 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
     // RLS already locks a suspended clinic's team out of every shared record (is_active_profile);
     // this just explains why, instead of rendering an app full of empty pages.
-    const { data: clinic } = await supabase.from("clinics").select("is_active").eq("id", viewer.clinicId).maybeSingle();
-    if (clinic && !clinic.is_active) return <ClinicSuspended />;
+    if (!viewer.clinicActive) return <ClinicSuspended />;
 
     // The clinic's admin accepts the current terms (incl. the DPA) on the clinic's behalf before
     // using the app; sellers aren't asked.
@@ -75,7 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       todayIsoLocal()
     ),
     cookies(),
-    getMyAvatarUrl(supabase, viewer.userId),
+    getMyAvatarUrl(supabase, viewer),
   ]);
   const menuPinned = cookieStore.get(`${PIN_COOKIE}_${viewer.authUserId}`)?.value === "1";
   const main = clinicConfig.mainCurrency;
@@ -135,10 +131,14 @@ async function getLiveAnnouncements(supabase: Awaited<ReturnType<typeof createCl
   return (data ?? []) as LiveAnnouncement[];
 }
 
-async function getMyAvatarUrl(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string | null> {
-  const { data } = await supabase.from("profiles").select("id, clinic_id, avatar_updated_at").eq("id", userId).maybeSingle();
-  if (!data) return null;
-  return (await signedAvatarUrls(supabase, [data])).get(userId) ?? null;
+/** The menu photo. A member's photo date comes with the viewer; in support mode it's the
+ * viewed-as member's, read here. */
+async function getMyAvatarUrl(supabase: Awaited<ReturnType<typeof createClient>>, viewer: Viewer): Promise<string | null> {
+  const person = viewer.support
+    ? (await supabase.from("profiles").select("id, clinic_id, avatar_updated_at").eq("id", viewer.userId).maybeSingle()).data
+    : { id: viewer.userId, clinic_id: viewer.clinicId, avatar_updated_at: viewer.avatarUpdatedAt };
+  if (!person) return null;
+  return (await signedAvatarUrls(supabase, [person])).get(viewer.userId) ?? null;
 }
 
 /** A member switched off by their admin. Their sign-in is blocked too; this is what an

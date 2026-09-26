@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getAuthClaims } from "@/lib/viewer";
 import { createClient } from "@/lib/supabase/server";
 import { getMyProfile } from "@/lib/data";
 import { WelcomeForm } from "./WelcomeForm";
@@ -7,9 +8,7 @@ import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 export default async function WelcomePage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthClaims();
   if (!user) redirect("/login");
 
   const profile = await getMyProfile(supabase, user.id);

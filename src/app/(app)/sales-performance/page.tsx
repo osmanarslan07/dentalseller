@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { countPatients, getClinicConfig, getPatients, getProfiles, getSellerIdsWithPatients, getSellers, getSettings } from "@/lib/data";
+import { getClinicConfig, getPatientCountsBySeller, getPatients, getProfiles, getSellers, getSettings } from "@/lib/data";
 import {
   addMonths,
   computeMonthlyAggregates,
@@ -22,19 +22,19 @@ export default async function SalesPerformancePage({ searchParams }: { searchPar
   const locale = localeOf(await getLang());
   const supabase = await createClient();
 
-  const profiles = await getProfiles(supabase);
-
   const { month: monthParam } = await searchParams;
   const selectedMonth = monthParam && MONTH_KEY_RE.test(monthParam) ? monthParam : currentMonthKey();
 
   // A month's totals only read visits dated in that month (computeMonthTotals), so patients
   // with a visit in it are all the commission maths needs; the counts come from the database.
   const month = { from: `${selectedMonth}-01`, to: `${addMonths(selectedMonth, 1)}-01` };
-  const [monthPatients, sellers, clinicConfig, withPatients] = await Promise.all([
+  const [monthPatients, sellers, clinicConfig, counts, profiles] = await Promise.all([
     getPatients(supabase, { visitIn: month }),
     getSellers(supabase),
     getClinicConfig(supabase),
-    getSellerIdsWithPatients(supabase),
+    // every seller's patient count and sold-in-month count, in one query
+    getPatientCountsBySeller(supabase, month),
+    getProfiles(supabase),
   ]);
   const roleById = new Map(profiles.map((p) => [p.id, p.role]));
 
@@ -42,18 +42,16 @@ export default async function SalesPerformancePage({ searchParams }: { searchPar
   // or are still on the list (a retired one with no history just adds noise).
   // (an account's record is active only while it has the Sales role, so a coordinator or
   // accountant without patients doesn't show up as a seller)
-  const shown = sellers.filter((s) => s.is_active || withPatients.has(s.id));
+  const shown = sellers.filter((s) => s.is_active || counts.has(s.id));
 
   const rows = await Promise.all(
     shown.map(async (seller) => {
       // Pipeline counts (patient count, sold-in-month) follow current ownership; money and
       // "came in month" follow visit-level attribution so reassigning a patient away doesn't
       // erase a seller's already-earned commission from their own breakdown here.
-      const [settings, patientCount, patientsSoldInMonth] = await Promise.all([
-        getSettings(supabase, seller.id),
-        countPatients(supabase, { responsible: seller.id }),
-        countPatients(supabase, { responsible: seller.id, confirmedIn: month }),
-      ]);
+      const settings = await getSettings(supabase, seller.id);
+      const patientCount = counts.get(seller.id)?.total ?? 0;
+      const patientsSoldInMonth = counts.get(seller.id)?.confirmed ?? 0;
       const aggregates = computeMonthlyAggregates(monthPatients, settings, seller.id);
       const monthAgg = aggregates.find((a) => a.month === selectedMonth);
 

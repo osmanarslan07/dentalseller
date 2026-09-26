@@ -310,6 +310,24 @@ export async function countPatients(
   return count ?? 0;
 }
 
+/** Per responsible seller: all their patients, and those confirmed in `confirmedIn` — one query
+ * for a whole team (sellers without patients are simply absent). */
+export async function getPatientCountsBySeller(
+  supabase: SupabaseClient,
+  confirmedIn: DateRange
+): Promise<Map<string, { total: number; confirmed: number }>> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return new Map();
+  const r = checkRange(confirmedIn);
+  const { data, error } = await withRetry(() =>
+    supabase.rpc("patient_counts_by_seller", { p_clinic: clinicId, p_from: r.from, p_to: r.to })
+  );
+  if (error) throw error;
+  return new Map(
+    Object.entries((data ?? {}) as Record<string, [number, number]>).map(([id, [total, confirmed]]) => [id, { total: Number(total), confirmed: Number(confirmed) }])
+  );
+}
+
 /** Every seller responsible for at least one of the clinic's patients. */
 export async function getSellerIdsWithPatients(supabase: SupabaseClient): Promise<Set<string>> {
   const clinicId = await getMyClinicId();

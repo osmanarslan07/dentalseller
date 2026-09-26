@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getMyProfile, getNavBadges, getSettings } from "@/lib/data";
+import { getClinicConfig, getMyProfile, getNavBadges, getOwnAccountStatus, getSettings } from "@/lib/data";
 import { todayIsoLocal } from "@/lib/balance";
 import { cookies } from "next/headers";
 import { PIN_COOKIE } from "@/lib/nav-pin";
@@ -21,7 +21,6 @@ import { hasAcceptedCurrentTerms } from "@/lib/terms-status";
 import { Viewer, getAuthClaims, getViewer } from "@/lib/viewer";
 import { SupportBar } from "@/components/SupportBar";
 import { PermissionsProvider } from "@/components/permissions";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { signedAvatarUrls } from "@/lib/avatars";
 import { getT } from "@/i18n/server";
 
@@ -36,10 +35,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // A superadmin only enters a clinic through an open support session (with two-factor
     // done); otherwise this shell is meaningless for them.
     if (profile?.role === "superadmin") redirect("/platform");
-    // RLS hides a deactivated member's own row too, so ask the service role why there's none
+    // RLS hides a member's own row once they're deactivated or their clinic is suspended, so
+    // ask the service role why there's none — and say so, instead of treating them as new
     if (!profile) {
-      const { data: own } = await createAdminClient().from("profiles").select("is_active, clinic_id").eq("id", user.id).maybeSingle();
-      if (own?.clinic_id && !own.is_active) return <AccountDeactivated />;
+      const own = await getOwnAccountStatus(user.id);
+      if (own?.clinicId && !own.isActive) return <AccountDeactivated />;
+      if (own?.clinicSuspended) return <ClinicSuspended />;
     }
     if (!profile?.display_name) redirect("/welcome");
     return <AccountNotReady />;

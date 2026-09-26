@@ -654,6 +654,30 @@ export async function getMyProfile(supabase: SupabaseClient, userId: string): Pr
   return data as Profile | null;
 }
 
+/** Why someone signed in has no usable profile. RLS hides a member's own row once they're
+ * deactivated or their clinic is suspended, so this reads it with the service role — only
+ * ever for the signed-in person's own id, and only these few fields. */
+export async function getOwnAccountStatus(userId: string): Promise<{
+  isActive: boolean;
+  displayName: string | null;
+  clinicId: string | null;
+  clinicSuspended: boolean;
+} | null> {
+  const { data } = await createAdminClient()
+    .from("profiles")
+    .select("is_active, display_name, clinic_id, clinic:clinics(is_active)")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!data) return null;
+  const clinic = data.clinic as unknown as { is_active: boolean } | null;
+  return {
+    isActive: !!data.is_active,
+    displayName: (data.display_name as string | null) ?? null,
+    clinicId: (data.clinic_id as string | null) ?? null,
+    clinicSuspended: !!data.clinic_id && clinic?.is_active === false,
+  };
+}
+
 export async function getProfiles(supabase: SupabaseClient): Promise<Profile[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];

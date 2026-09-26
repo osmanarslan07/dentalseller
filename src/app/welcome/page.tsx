@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthClaims } from "@/lib/viewer";
 import { createClient } from "@/lib/supabase/server";
-import { getMyProfile } from "@/lib/data";
+import { getMyProfile, getOwnAccountStatus } from "@/lib/data";
 import { WelcomeForm } from "./WelcomeForm";
 import { getT } from "@/i18n/server";
 import { LanguageSwitch } from "@/components/LanguageSwitch";
@@ -13,6 +13,12 @@ export default async function WelcomePage() {
 
   const profile = await getMyProfile(supabase, user.id);
   if (profile?.display_name) redirect("/");
+  // No visible profile can also mean deactivated or a suspended clinic (RLS hides the row):
+  // the app shell explains those, this page is only for choosing a first name.
+  if (!profile) {
+    const own = await getOwnAccountStatus(user.id);
+    if (own && (own.displayName || !own.isActive || own.clinicSuspended)) redirect("/");
+  }
   const t = await getT();
 
   return (

@@ -886,6 +886,47 @@ To do:
 
 ---
 
+## SCALING — performance by growth stage (from the 2026-09-26 capacity test)
+
+Measured on a seeded copy (10 clinics × 3,000 patients ≈ 2 busy years each). Full report:
+`reports/Performance and capacity test 2026-09-26.md`; repeatable kit: `reports/perf-test-kit/`.
+Rule of thumb: rerun the kit before each big release and at each stage below.
+
+**Done (live 2026-09-26)**
+- RLS helpers checked once per query, not per row (`e3533b5`) — pages stopped timing out at ~1,100 patients.
+- Pages load only what they show, lists read past the 1,000-row API cap (phase A `f405af0`, phase B `6485204`).
+- Per-page overhead cut: local sign-in check, one viewer-context call (`fbd87ba`) — live pages ~500 → ~300–430 ms.
+- Suspended-clinic members now see "suspended" instead of the welcome form.
+
+**Now — before the first paying clinic**
+- Phase C of fix 2: Dashboard and Patients list stop loading every patient (Patients list as slim rows).
+- Move off the free database: Supabase Pro (no auto-pause after a week idle, daily backups). The free
+  Nano size is also why the first load after a quiet period can take a few seconds (cold cache).
+
+**At ~5 clinics**
+- Database compute Small or larger. On Nano, ~25 busy users at once was the ceiling in the test.
+- Turn on Vercel Speed Insights to watch real load times per page.
+
+**At ~10 clinics — platform overview (superadmin only)**
+- `/platform` builds each clinic's card with **10 separate queries per clinic** (`getClinicStats` in
+  `src/lib/platform.ts`): 110 queries at once for 11 clinics, 500 at 50. It works today but grows
+  with every clinic and loads the database each time a superadmin opens the page.
+- Fix (~1 hour): one SQL function returning every clinic's numbers in one call (members, patients,
+  patients this month, quotes, quotes this month, last activity, confirmed patients, branding, billing,
+  terms), the same pattern as `patient_counts_by_seller`; keep the page's output identical and prove it
+  with an old-vs-new comparison as in the fix-2 phases.
+- `platform_monthly_usage` is fine (~180 ms warm at 30,000 patients / 200,000 activity entries); if
+  the activity log passes a few million rows, switch it to a monthly summary table.
+
+**At ~20+ clinics or ~10,000 patients in one clinic**
+- Patients list: from slim rows to server-side pages (search, filters and sort in the database) — slim
+  rows are fine up to roughly 10,000 patients per clinic.
+- Activity log: keep it fast as it grows (retention/archiving or partitioning by month).
+- Accounting in support mode opens many "open balance" patients at once; if one clinic has thousands of
+  unsettled visits, page that list too.
+
+---
+
 ## LATER (design for it now, don't build yet)
 
 - **Leads**: leads table, owner = a seller record, manual entry/import, and the pipeline below.

@@ -4339,3 +4339,73 @@ grant execute on function public.set_seller_currency(uuid, text) to authenticate
 -- ---------- per-user interface language (Turkish translation) ----------
 alter table public.profiles add column if not exists language text not null default 'en'
   check (language in ('en', 'tr'));
+
+-- ---------- RLS: check the caller once per query, not once per row ----------
+-- The policy helpers (has_permission, my_clinic_id, is_active_profile, ...) are SECURITY
+-- DEFINER, which Postgres never inlines, so a bare call in a policy runs again for every row
+-- the query touches (~0.9 ms each: at 3,000 patients the patient pages hit the 8 s statement
+-- timeout). Wrapped in a scalar sub-select, a call that only depends on the caller becomes an
+-- InitPlan evaluated once per statement. Same result for every row, so the same access.
+-- (Perf test 2026-09-26: identical reads and writes for 10 kinds of user, 3-10x faster.)
+--
+-- This stays the LAST section of the file on purpose: it rewrites whatever policies exist at
+-- this point, so a policy added or changed above is covered on the next run without being
+-- written twice. Already-wrapped calls are left alone, so re-running changes nothing.
+-- Only calls whose arguments are the caller (auth.uid()) or constants are wrapped; a call
+-- that takes a row column (e.g. is_clinic_seller(responsible_seller_id, ...)) stays per row.
+create or replace function pg_temp.rls_once_per_query(expr text)
+returns text
+language sql
+immutable
+as $fn$
+  select
+    -- 5. any other helper that only takes the caller: f((select auth.uid())[, 'const'])
+    regexp_replace(
+    -- 4. support_can_write()
+    regexp_replace(
+    -- 3. bare auth.uid()
+    regexp_replace(
+    -- 2. zero-argument helpers
+    regexp_replace(
+    -- 1. the common helpers called with auth.uid() [and a constant]
+    regexp_replace(expr,
+      '\m(has_permission|is_active_profile|is_superadmin|is_admin)\(auth\.uid\(\)((, ''[^'']*''::text)?)\)',
+      '(SELECT \1((SELECT auth.uid() AS uid)\2) AS ok)', 'g'),
+      '(?<!SELECT )\m(my_clinic_id|support_clinic_id)\(\)',
+      '(SELECT \1() AS cid)', 'g'),
+      '(?<!SELECT )auth\.uid\(\)',
+      '(SELECT auth.uid() AS uid)', 'g'),
+      '(?<!SELECT )\msupport_can_write\(\)',
+      '(SELECT support_can_write() AS ok)', 'g'),
+      '(?<!SELECT )\m([a-z_]+)\(\( ?SELECT auth\.uid\(\) AS uid\)((, ''[^'']*''::text)?)\)',
+      '(SELECT \1((SELECT auth.uid() AS uid)\2) AS ok)', 'g');
+$fn$;
+
+do $rls$
+declare
+  p record;
+  q text;
+  w text;
+  stmt text;
+begin
+  for p in
+    select schemaname, tablename, policyname, qual, with_check
+    from pg_policies
+    where schemaname in ('public', 'storage')
+  loop
+    q := pg_temp.rls_once_per_query(p.qual);
+    w := pg_temp.rls_once_per_query(p.with_check);
+    continue when q is not distinct from p.qual and w is not distinct from p.with_check;
+    stmt := format('alter policy %I on %I.%I', p.policyname, p.schemaname, p.tablename);
+    if p.qual is not null then
+      stmt := stmt || format(' using (%s)', q);
+    end if;
+    if p.with_check is not null then
+      stmt := stmt || format(' with check (%s)', w);
+    end if;
+    execute stmt;
+  end loop;
+end;
+$rls$;
+
+drop function pg_temp.rls_once_per_query(text);

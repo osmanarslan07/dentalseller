@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Select } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { monthLabel } from "@/lib/commission";
@@ -23,13 +24,32 @@ type LedgerRow = { payment: PatientPayment; patient: Patient; visit: string };
  * clinic's main currency: each payment at the rate on the day it came in. A payment in another
  * currency also shows what was handed over, and the difference against the rate the price was
  * agreed at is the exchange-rate gain / loss. */
-export function AccountingClient({ patients, profiles, sellers }: { patients: Patient[]; profiles: Profile[]; sellers: Seller[] }) {
+export function AccountingClient({
+  patients,
+  month,
+  months,
+  anyForeign,
+  profiles,
+  sellers,
+}: {
+  /** The patients paid in `month` plus every patient whose balance may not add up. */
+  patients: Patient[];
+  month: string;
+  /** Months with payments (and the current one), newest first. */
+  months: string[];
+  /** Any price agreed or payment made in another currency, in any month. */
+  anyForeign: boolean;
+  profiles: Profile[];
+  sellers: Seller[];
+}) {
   const today = todayIso();
   const t = useT();
   const locale = useLocale();
   const { main } = useCurrencies();
   const gbp = (n: number) => formatCurrency(n, main);
-  const [month, setMonth] = useState(today.slice(0, 7));
+  const router = useRouter();
+  const [loading, startLoading] = useTransition();
+  const setMonth = (m: string) => startLoading(() => router.push(`/accounting?month=${m}`));
   const [receivedBy, setReceivedBy] = useState("all");
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name || "—";
   const sellerNames = sellerNameMap(sellers);
@@ -45,11 +65,6 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
       ),
     [patients]
   );
-
-  const months = useMemo(() => {
-    const set = new Set([today.slice(0, 7), ...allPayments.map((r) => r.payment.paid_on.slice(0, 7))]);
-    return [...set].sort().reverse();
-  }, [allPayments, today]);
 
   const ledger = useMemo(
     () =>
@@ -71,8 +86,6 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
     sum.fx = Math.round(sum.fx * 100) / 100;
     return sum;
   }, [ledger]);
-  // only a clinic with payments in (or prices agreed in) other currencies has any of this
-  const anyForeign = allPayments.some((r) => r.payment.currency !== main || r.patient.currency !== main);
 
   const openBalances = useMemo(
     () =>
@@ -135,7 +148,7 @@ export function AccountingClient({ patients, profiles, sellers }: { patients: Pa
           <p className="mt-1 text-sm text-slate-500">{t("Payments collected, by month, and every visit that doesn't add up yet.")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select value={month} onChange={(e) => setMonth(e.target.value)} className="w-auto" aria-label={t("Month")}>
+          <Select value={month} onChange={(e) => setMonth(e.target.value)} disabled={loading} className="w-auto" aria-label={t("Month")}>
             {months.map((m) => (
               <option key={m} value={m}>
                 {monthLabel(m, locale)}

@@ -15,6 +15,7 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { Badge, Card, StatCard } from "@/components/ui";
 import { CloseoutSummary } from "./CloseoutSummary";
+import { closeoutStats } from "./closeout";
 import { Money, Percent, PrivateEarningsChart } from "@/components/privacy";
 import { RelativeTime } from "@/components/RelativeTime";
 import { EARNINGS_CARD_IDS, DASHBOARD_CARDS, DashboardCardId } from "@/lib/dashboard-cards";
@@ -49,8 +50,9 @@ export default async function EarningsPage() {
   const supabase = await createClient();
   // in support mode this is the member being viewed as — every "my …" view is theirs
   const user = await getViewerUser();
+  // every patient whose visits can earn this seller commission — exactly what the maths below reads
   const [allPatients, settings, clinicConfig] = await Promise.all([
-    getPatients(supabase),
+    user ? getPatients(supabase, { creditedTo: user.id }) : Promise.resolve([]),
     getSettings(supabase, user?.id ?? ""),
     getClinicConfig(supabase),
   ]);
@@ -280,9 +282,7 @@ export default async function EarningsPage() {
       </Card>
 
       <CloseoutSummary
-        allPatients={allPatients}
-        currentUserId={user?.id ?? ""}
-        settings={settings}
+        statsByMonth={closeoutStats(allPatients, user?.id ?? "", settings, fullRange)}
         months={[...fullRange].reverse()}
         defaultMonth={thisMonth}
       />

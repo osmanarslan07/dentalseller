@@ -1,24 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Patient, CommissionSettings } from "@/types";
-import { computeMonthlyAggregates, monthKey, monthLabel } from "@/lib/commission";
+import { useState } from "react";
+import { monthLabel } from "@/lib/commission";
 import { formatCurrency } from "@/lib/format";
 import { Card, Select } from "@/components/ui";
 import { Money } from "@/components/privacy";
 import { useCurrencies } from "@/components/currency";
 import { useLocale, useT } from "@/i18n/client";
+import type { CloseoutStats } from "./closeout";
 
 export function CloseoutSummary({
-  allPatients,
-  currentUserId,
-  settings,
+  statsByMonth,
   months,
   defaultMonth,
 }: {
-  allPatients: Patient[];
-  currentUserId: string;
-  settings: CommissionSettings;
+  /** Worked out on the server (closeoutStats) for every month in `months`. */
+  statsByMonth: Record<string, CloseoutStats>;
   months: string[];
   defaultMonth: string;
 }) {
@@ -26,43 +23,7 @@ export function CloseoutSummary({
   const t = useT();
   const locale = useLocale();
   const { main: currency } = useCurrencies();
-
-  // Pipeline counts (confirmed/visits done) follow current ownership; money follows
-  // visit-level attribution so a reassigned-away patient's already-earned commission
-  // still counts here — see patientCommissionContribution in lib/commission.
-  const patients = useMemo(
-    () => allPatients.filter((p) => p.responsible_seller_id === currentUserId),
-    [allPatients, currentUserId]
-  );
-
-  const aggregateMap = useMemo(() => {
-    const aggregates = computeMonthlyAggregates(allPatients, settings, currentUserId);
-    return new Map(aggregates.map((a) => [a.month, a]));
-  }, [allPatients, settings, currentUserId]);
-
-  const stats = useMemo(() => {
-    let confirmed = 0;
-    let visit1Done = 0;
-    let visit2Done = 0;
-    let paymentsReceived = 0;
-
-    for (const p of patients) {
-      if (p.confirmation_date && monthKey(p.confirmation_date) === month) confirmed++;
-      if (p.visit1_date && monthKey(p.visit1_date) === month && p.visit1_status === "completed") visit1Done++;
-      if (p.visit2_date && monthKey(p.visit2_date) === month && p.visit2_status === "completed") visit2Done++;
-      if (p.visit1_date && monthKey(p.visit1_date) === month && p.visit1_actual != null) paymentsReceived++;
-      if (p.visit2_date && monthKey(p.visit2_date) === month && p.visit2_actual != null) paymentsReceived++;
-    }
-
-    const agg = aggregateMap.get(month);
-    return {
-      confirmed,
-      visitsDone: visit1Done + visit2Done,
-      paymentsReceived,
-      paymentsTotal: agg?.actualTotal ?? 0,
-      commission: agg?.actualCommission ?? settings.fixed_monthly_payment,
-    };
-  }, [patients, month, aggregateMap, settings]);
+  const stats = statsByMonth[month] ?? statsByMonth[defaultMonth];
 
   return (
     <Card className="p-5">

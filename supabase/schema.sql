@@ -4383,6 +4383,93 @@ $$;
 revoke execute on function public.patient_stay_options(uuid) from public, anon;
 grant execute on function public.patient_stay_options(uuid) to authenticated;
 
+-- ---------- more of the same (perf fix 2, phase B) ----------
+-- Every seller responsible for at least one patient (seller filters list only those).
+create or replace function public.patient_seller_ids(p_clinic uuid)
+returns setof uuid
+language sql
+stable
+set search_path = public
+as $$
+  select distinct responsible_seller_id
+  from public.patients
+  where clinic_id = p_clinic and responsible_seller_id is not null;
+$$;
+revoke execute on function public.patient_seller_ids(uuid) from public, anon;
+grant execute on function public.patient_seller_ids(uuid) to authenticated;
+
+-- The months (YYYY-MM, newest first) that have at least one payment.
+create or replace function public.payment_months(p_clinic uuid)
+returns text[]
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(array_agg(m order by m desc), '{}')
+  from (select distinct to_char(paid_on, 'YYYY-MM') m from public.patient_payments where clinic_id = p_clinic) x;
+$$;
+revoke execute on function public.payment_months(uuid) from public, anon;
+grant execute on function public.payment_months(uuid) to authenticated;
+
+-- Patients with a visit whose money may not add up: owed (price + extras − discount) differs
+-- from what was paid toward it, once it's due (money taken, completed, or its date reached —
+-- with two days' margin for the viewer's time zone). A deliberately wide net — the app's own
+-- balance rules (lib/balance: visitBalances + isMismatch) decide what is really listed; this
+-- only saves loading every patient to find those few. It must never be narrower than those
+-- rules: visit 2 is checked even when not needed, and every due visit with a percentage
+-- discount is included whatever its rounding.
+-- One array, not a set of rows: the API caps a set at 1,000 rows without saying so.
+drop function if exists public.patient_open_balance_ids(uuid);
+create or replace function public.patient_open_balance_ids(p_clinic uuid)
+returns uuid[]
+language sql
+stable
+set search_path = public
+as $$
+  with visits as (
+    select p.id as patient_id, null::uuid as extra_id, 1 as visit_number, p.visit1_status as status, p.visit1_date as visit_date,
+           p.visit1_expected as expected, p.visit1_discount_type as dtype, p.visit1_discount_value as dvalue
+    from public.patients p where p.clinic_id = p_clinic
+    union all
+    select p.id, null, 2, p.visit2_status, p.visit2_date, p.visit2_expected, p.visit2_discount_type, p.visit2_discount_value
+    from public.patients p where p.clinic_id = p_clinic
+    union all
+    select v.patient_id, v.id, null, v.status, v.visit_date, v.expected, v.discount_type, v.discount_value
+    from public.patient_visits v where v.clinic_id = p_clinic
+  ),
+  extras as (
+    select patient_id, extra_visit_id, visit_number, sum(total) as total
+    from public.patient_extras where clinic_id = p_clinic group by 1, 2, 3
+  ),
+  paid as (
+    select patient_id, extra_visit_id, visit_number, sum(amount) as amount
+    from public.patient_payments where clinic_id = p_clinic group by 1, 2, 3
+  ),
+  balances as (
+    select v.patient_id, v.status, v.visit_date, v.expected, v.dtype, v.dvalue,
+           coalesce(e.total, 0) as extras, coalesce(pd.amount, 0) as paid
+    from visits v
+    left join extras e on e.patient_id = v.patient_id
+      and (e.extra_visit_id = v.extra_id or (v.extra_id is null and e.extra_visit_id is null and e.visit_number = v.visit_number))
+    left join paid pd on pd.patient_id = v.patient_id
+      and (pd.extra_visit_id = v.extra_id or (v.extra_id is null and pd.extra_visit_id is null and pd.visit_number = v.visit_number))
+  )
+  select coalesce(array_agg(distinct b.patient_id), '{}')
+  from balances b,
+    lateral (select coalesce(b.expected, 0) + b.extras as base) x,
+    lateral (
+      select case
+        when b.dtype is null or b.dvalue is null or b.dvalue <= 0 or x.base <= 0 then 0
+        else round(least(b.dvalue, x.base), 2)
+      end as off
+    ) d
+  where (b.paid > 0 or b.status = 'completed' or b.visit_date <= current_date + 2)
+    and (b.dtype = 'percent'
+      or abs((case when b.expected is null and b.extras = 0 then 0 else x.base - d.off end) - b.paid) > 0.001);
+$$;
+revoke execute on function public.patient_open_balance_ids(uuid) from public, anon;
+grant execute on function public.patient_open_balance_ids(uuid) to authenticated;
+
 -- ---------- RLS: check the caller once per query, not once per row ----------
 -- The policy helpers (has_permission, my_clinic_id, is_active_profile, ...) are SECURITY
 -- DEFINER, which Postgres never inlines, so a bare call in a policy runs again for every row

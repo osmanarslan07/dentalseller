@@ -188,13 +188,41 @@ export interface PatientScope {
    * responsible seller — see patientVisits in lib/commission). Exactly the patients that
    * seller's commission maths reads. */
   creditedTo?: string;
+  /** Just these patients. */
+  ids?: string[];
+  /** Patients with visit 1, visit 2 or an extra visit dated from..to (to exclusive) — every
+   * patient a month's commission totals read (computeMonthTotals keys visits by their date). */
+  visitIn?: DateRange;
 }
+
+/** YYYY-MM-DD from, to exclusive. */
+export interface DateRange {
+  from: string;
+  to: string;
+}
+
+function checkRange({ from, to }: DateRange): DateRange {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error("Invalid date");
+  return { from, to };
+}
+const within = ({ from, to }: DateRange, col: string) => `and(${col}.gte.${from},${col}.lt.${to})`;
 
 export async function getPatients(supabase: SupabaseClient, scope: PatientScope = {}): Promise<Patient[]> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return [];
   let rows: Record<string, unknown>[];
-  if (scope.creditedTo) {
+  if (scope.ids) {
+    rows = await withPatients(supabase, clinicId, PATIENT_SELECT, [], scope.ids.filter((id) => UUID_RE.test(id)));
+  } else if (scope.visitIn) {
+    const range = checkRange(scope.visitIn);
+    const [direct, viaExtraVisits] = await Promise.all([
+      fetchPatientRows(supabase, clinicId, PATIENT_SELECT, (q) =>
+        q.or([within(range, "visit1_date"), within(range, "visit2_date")].join(","))
+      ),
+      patientIdsWithExtraVisit(supabase, clinicId, (q) => q.gte("visit_date", range.from).lt("visit_date", range.to)),
+    ]);
+    rows = await withPatients(supabase, clinicId, PATIENT_SELECT, direct, viaExtraVisits);
+  } else if (scope.creditedTo) {
     const s = uuidOnly(scope.creditedTo);
     const [direct, viaExtraVisits] = await Promise.all([
       fetchPatientRows(supabase, clinicId, PATIENT_SELECT, (q) =>
@@ -221,8 +249,11 @@ export interface RosterScope {
   responsible?: string;
   coordinator?: string;
   /** Coordinated patients with a visit still to come, or with any visit, arrival or extra visit
-   * dated from..to (to exclusive) — every patient the coordinator workload can count. */
-  coordinatedActive?: { from: string; to: string };
+   * dated in the range — every patient the coordinator workload can count. */
+  coordinatedActive?: DateRange;
+  /** Patients with any calendar event in the range: visit, arrival or departure of visit 1 or
+   * 2, or an extra visit (see flattenCalendarEvents). */
+  eventsIn?: DateRange;
 }
 
 export async function getPatientRoster(supabase: SupabaseClient, scope: RosterScope): Promise<PatientRoster[]> {
@@ -235,24 +266,21 @@ export async function getPatientRoster(supabase: SupabaseClient, scope: RosterSc
     return q;
   };
   let rows: Record<string, unknown>[];
-  if (scope.coordinatedActive) {
-    const { from, to } = scope.coordinatedActive;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error("Invalid date");
-    const within = (col: string) => `and(${col}.gte.${from},${col}.lt.${to})`;
+  if (scope.coordinatedActive || scope.eventsIn) {
+    const range = checkRange((scope.coordinatedActive ?? scope.eventsIn)!);
+    const conditions = scope.coordinatedActive
+      ? [
+          "visit1_status.eq.upcoming",
+          "and(needs_visit2.is.true,visit2_status.eq.upcoming)",
+          ...["visit1_arrival_date", "visit1_date", "visit2_arrival_date", "visit2_date"].map((c) => within(range, c)),
+        ]
+      : ["visit1_arrival_date", "visit1_departure_date", "visit1_date", "visit2_arrival_date", "visit2_departure_date", "visit2_date"].map(
+          (c) => within(range, c)
+        );
+    const extraVisitFilter = scope.coordinatedActive ? `status.eq.upcoming,${within(range, "visit_date")}` : within(range, "visit_date");
     const [direct, viaExtraVisits] = await Promise.all([
-      fetchPatientRows(supabase, clinicId, ROSTER_SELECT, (q) =>
-        filter(q).or(
-          [
-            "visit1_status.eq.upcoming",
-            "and(needs_visit2.is.true,visit2_status.eq.upcoming)",
-            within("visit1_arrival_date"),
-            within("visit1_date"),
-            within("visit2_arrival_date"),
-            within("visit2_date"),
-          ].join(",")
-        )
-      ),
-      patientIdsWithExtraVisit(supabase, clinicId, (q) => q.or(`status.eq.upcoming,${within("visit_date")}`)),
+      fetchPatientRows(supabase, clinicId, ROSTER_SELECT, (q) => filter(q).or(conditions.join(","))),
+      patientIdsWithExtraVisit(supabase, clinicId, (q) => q.or(extraVisitFilter)),
     ]);
     rows = await withPatients(supabase, clinicId, ROSTER_SELECT, direct, viaExtraVisits, filter);
   } else {
@@ -264,7 +292,7 @@ export async function getPatientRoster(supabase: SupabaseClient, scope: RosterSc
 /** How many of the clinic's patients match — without loading them. */
 export async function countPatients(
   supabase: SupabaseClient,
-  filter: { responsible?: string; withoutCoordinator?: boolean } = {}
+  filter: { responsible?: string; withoutCoordinator?: boolean; confirmedIn?: DateRange } = {}
 ): Promise<number> {
   const clinicId = await getMyClinicId();
   if (!clinicId) return 0;
@@ -272,10 +300,82 @@ export async function countPatients(
     let q = supabase.from("patients").select("id", { count: "exact", head: true }).eq("clinic_id", clinicId);
     if (filter.responsible) q = q.eq("responsible_seller_id", filter.responsible);
     if (filter.withoutCoordinator) q = q.is("coordinator_id", null);
+    if (filter.confirmedIn) {
+      const r = checkRange(filter.confirmedIn);
+      q = q.gte("confirmation_date", r.from).lt("confirmation_date", r.to);
+    }
     return q;
   });
   if (error) throw error;
   return count ?? 0;
+}
+
+/** Every seller responsible for at least one of the clinic's patients. */
+export async function getSellerIdsWithPatients(supabase: SupabaseClient): Promise<Set<string>> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return new Set();
+  const { data, error } = await withRetry(() => supabase.rpc("patient_seller_ids", { p_clinic: clinicId }));
+  if (error) throw error;
+  return new Set(((data ?? []) as string[]).filter(Boolean));
+}
+
+/** Months (YYYY-MM, newest first) with at least one payment. */
+export async function getPaymentMonths(supabase: SupabaseClient): Promise<string[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() => supabase.rpc("payment_months", { p_clinic: clinicId }));
+  if (error) throw error;
+  return (data ?? []) as string[];
+}
+
+/** Patients with a payment dated in the range. */
+export async function getPatientIdsPaidIn(supabase: SupabaseClient, range: DateRange): Promise<string[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const r = checkRange(range);
+  const rows = await fetchAll((from, to) =>
+    supabase
+      .from("patient_payments")
+      .select("id, patient_id")
+      .eq("clinic_id", clinicId)
+      .gte("paid_on", r.from)
+      .lt("paid_on", r.to)
+      .order("id")
+      .range(from, to)
+  );
+  return [...new Set((rows as { patient_id: string }[]).map((x) => x.patient_id))];
+}
+
+/** Patients whose balances may not add up — a superset for lib/balance's own rules to narrow
+ * (see patient_open_balance_ids in schema.sql). */
+export async function getOpenBalanceCandidateIds(supabase: SupabaseClient): Promise<string[]> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return [];
+  const { data, error } = await withRetry(() => supabase.rpc("patient_open_balance_ids", { p_clinic: clinicId }));
+  if (error) throw error;
+  // an array, not rows: a set of rows would be cut off at the API's 1,000-row cap
+  return ((data as string[] | null) ?? []).filter(Boolean);
+}
+
+/** Whether any payment was made in a currency other than `main`, or toward a price agreed in
+ * one — the payments ledger only has exchange-rate columns to show then. */
+export async function hasForeignMoney(supabase: SupabaseClient, main: string): Promise<boolean> {
+  const clinicId = await getMyClinicId();
+  if (!clinicId) return false;
+  const [patients, payments] = await Promise.all([
+    withRetry(() =>
+      supabase
+        .from("patient_payments")
+        .select("id, patient:patients!inner(currency)")
+        .eq("clinic_id", clinicId)
+        .neq("patient.currency", main)
+        .limit(1)
+    ),
+    withRetry(() => supabase.from("patient_payments").select("id").eq("clinic_id", clinicId).neq("currency", main).limit(1)),
+  ]);
+  if (patients.error) throw patients.error;
+  if (payments.error) throw payments.error;
+  return (patients.data?.length ?? 0) > 0 || (payments.data?.length ?? 0) > 0;
 }
 
 /** Names of just these patients (activity entries, task labels), by id. */

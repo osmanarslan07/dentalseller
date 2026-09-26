@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { getClinicConfig, getPatients, getProfiles, getSellers, getSettings } from "@/lib/data";
+import { countPatients, getClinicConfig, getPatients, getProfiles, getSellerIdsWithPatients, getSellers, getSettings } from "@/lib/data";
 import {
+  addMonths,
   computeMonthlyAggregates,
   countPatientsWithCompletedVisitInMonth,
   currentMonthKey,
@@ -26,28 +27,35 @@ export default async function SalesPerformancePage({ searchParams }: { searchPar
   const { month: monthParam } = await searchParams;
   const selectedMonth = monthParam && MONTH_KEY_RE.test(monthParam) ? monthParam : currentMonthKey();
 
-  const [allPatients, sellers, clinicConfig] = await Promise.all([getPatients(supabase), getSellers(supabase), getClinicConfig(supabase)]);
+  // A month's totals only read visits dated in that month (computeMonthTotals), so patients
+  // with a visit in it are all the commission maths needs; the counts come from the database.
+  const month = { from: `${selectedMonth}-01`, to: `${addMonths(selectedMonth, 1)}-01` };
+  const [monthPatients, sellers, clinicConfig, withPatients] = await Promise.all([
+    getPatients(supabase, { visitIn: month }),
+    getSellers(supabase),
+    getClinicConfig(supabase),
+    getSellerIdsWithPatients(supabase),
+  ]);
   const roleById = new Map(profiles.map((p) => [p.id, p.role]));
 
   // Every seller, account or not — a seller without an account only once they have a patient
   // or are still on the list (a retired one with no history just adds noise).
   // (an account's record is active only while it has the Sales role, so a coordinator or
   // accountant without patients doesn't show up as a seller)
-  const shown = sellers.filter((s) => s.is_active || allPatients.some((p) => p.responsible_seller_id === s.id));
+  const shown = sellers.filter((s) => s.is_active || withPatients.has(s.id));
 
   const rows = await Promise.all(
     shown.map(async (seller) => {
       // Pipeline counts (patient count, sold-in-month) follow current ownership; money and
       // "came in month" follow visit-level attribution so reassigning a patient away doesn't
       // erase a seller's already-earned commission from their own breakdown here.
-      const sellerPatients = allPatients.filter((p) => p.responsible_seller_id === seller.id);
-      const settings = await getSettings(supabase, seller.id);
-      const aggregates = computeMonthlyAggregates(allPatients, settings, seller.id);
+      const [settings, patientCount, patientsSoldInMonth] = await Promise.all([
+        getSettings(supabase, seller.id),
+        countPatients(supabase, { responsible: seller.id }),
+        countPatients(supabase, { responsible: seller.id, confirmedIn: month }),
+      ]);
+      const aggregates = computeMonthlyAggregates(monthPatients, settings, seller.id);
       const monthAgg = aggregates.find((a) => a.month === selectedMonth);
-
-      const patientsSoldInMonth = sellerPatients.filter(
-        (p) => p.confirmation_date && p.confirmation_date.slice(0, 7) === selectedMonth
-      ).length;
 
       const role = roleById.get(seller.id);
       return {
@@ -59,9 +67,9 @@ export default async function SalesPerformancePage({ searchParams }: { searchPar
         },
         // commission and tiers are in the clinic's main currency, whatever the deals were in
         currency: clinicConfig.mainCurrency,
-        patientCount: sellerPatients.length,
+        patientCount,
         patientsSoldInMonth,
-        patientsCameInMonth: countPatientsWithCompletedVisitInMonth(allPatients, selectedMonth, seller.id),
+        patientsCameInMonth: countPatientsWithCompletedVisitInMonth(monthPatients, selectedMonth, seller.id),
         paidInMonth: monthAgg?.actualTotal ?? 0,
         commissionInMonth: monthAgg?.actualCommission ?? 0,
       };

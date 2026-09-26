@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   addMonths,
   eachDayOfInterval,
@@ -15,7 +16,7 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { Patient, Seller } from "@/types";
+import { PatientRoster, Seller } from "@/types";
 import { sellerLabel } from "@/lib/sellers";
 import { Button, Card } from "@/components/ui";
 import { PeopleFilter, matchesPeopleFilter, sellerFilterOptions } from "@/lib/people-filter";
@@ -28,15 +29,21 @@ const WEEKDAYS_TR = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 const MAX_VISIBLE = 3;
 
 export function CalendarClient({
+  month,
   patients,
   sellers,
+  sellerIdsWithPatients,
   coordinators,
   initialFilter,
   savedFilter,
   currentUserId,
 }: {
-  patients: Patient[];
+  /** The month shown (YYYY-MM). `patients` are those with an event on its grid. */
+  month: string;
+  patients: PatientRoster[];
   sellers: Seller[];
+  /** Sellers responsible for at least one patient, in any month. */
+  sellerIdsWithPatients: string[];
   coordinators: PersonOption[];
   initialFilter: PeopleFilter;
   savedFilter: PeopleFilter;
@@ -53,11 +60,16 @@ export function CalendarClient({
 
   // Only sellers who actually have a patient here — no point listing an empty roster.
   const sellerOptions = useMemo(() => {
-    const ids = new Set([...patients.map((p) => p.responsible_seller_id), ...people.sellers]);
+    const ids = new Set([...sellerIdsWithPatients, ...people.sellers]);
     return sellerFilterOptions(sellers).filter((s) => ids.has(s.id));
-  }, [patients, sellers, people.sellers]);
+  }, [sellerIdsWithPatients, sellers, people.sellers]);
 
-  const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
+  // the month lives in the URL: another month is loaded from the server
+  const router = useRouter();
+  const [loading, startLoading] = useTransition();
+  const cursor = useMemo(() => new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1), [month]);
+  const setCursor = (next: (c: Date) => Date) =>
+    startLoading(() => router.push(`/calendar?month=${format(next(cursor), "yyyy-MM")}`, { scroll: false }));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const filteredPatients = useMemo(
     () => patients.filter((p) => matchesPeopleFilter(p, people, currentUserId)),
@@ -81,7 +93,7 @@ export function CalendarClient({
   }, [cursor, eventsByDate]);
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`} aria-busy={loading}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{t("Calendar")}</h1>
@@ -101,7 +113,7 @@ export function CalendarClient({
             variant="ghost"
             size="sm"
             onClick={() => {
-              setCursor(startOfMonth(new Date()));
+              setCursor(() => startOfMonth(new Date()));
               setSelectedDate(new Date());
             }}
           >
